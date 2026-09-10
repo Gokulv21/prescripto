@@ -12,7 +12,8 @@ import { cn, formatAge } from '@/lib/utils';
 import { 
   Plus, History, Stethoscope, User, Users, Trash2, Printer, 
   Phone, Pencil, ArrowLeft, Activity, Scale, Wind, 
-  Thermometer, Droplet, MessageCircle, X, HeartPulse, Loader2, Sparkles, Info, GripVertical
+  Thermometer, Droplet, MessageCircle, X, HeartPulse, Loader2, Sparkles, Info, GripVertical,
+  Move, LayoutGrid, Zap, Volume2, ShieldCheck
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import DigitalPrescription from '@/components/DigitalPrescription';
@@ -21,7 +22,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { printPrescription } from '@/lib/printPrescription';
 import PageBanner from '@/components/PageBanner';
 import consultationBanner from '@/assets/consultation_banner.png';
-import { useCommunication } from '@/lib/communication';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { useConsultation } from '@/hooks/useConsultation';
 import QueuePanel from '@/components/consultation/QueuePanel';
@@ -33,7 +33,6 @@ export default function DoctorConsultation() {
   const { user, hasRole, profile } = useAuth();
   const { slug } = useParams();
   const navigate = useNavigate();
-  const { makeCall, onlineUsers, allUsers } = useCommunication();
   const { clinic } = useOutletContext<{ clinic: any }>();
 
   // 1. Hook Extraction
@@ -83,7 +82,7 @@ export default function DoctorConsultation() {
     applyProtocol,
     handleCallPatient,
     myProfile,
-  } = useConsultation(clinic, allUsers, onlineUsers, makeCall);
+  } = useConsultation(clinic);
 
   // Vitals Edit Modal State
   const [showVitalsEdit, setShowVitalsEdit] = useState(false);
@@ -116,14 +115,14 @@ export default function DoctorConsultation() {
   }, [selectedVisit, showVitalsEdit]);
 
   useEffect(() => {
-    const acknowledged = localStorage.getItem('prescripto_version_2_1_acknowledged');
+    const acknowledged = localStorage.getItem('prescripto_version_1_4_acknowledged');
     if (!acknowledged) {
       setShowChangelog(true);
     }
   }, []);
 
   const handleAcknowledgeChangelog = () => {
-    localStorage.setItem('prescripto_version_2_1_acknowledged', 'true');
+    localStorage.setItem('prescripto_version_1_4_acknowledged', 'true');
     setShowChangelog(false);
   };
 
@@ -733,10 +732,10 @@ Wishing you a quick recovery!
           <DialogHeader className="p-6 bg-gradient-to-r from-blue-650 to-indigo-650 text-white relative">
             <DialogTitle className="text-xl font-black flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-yellow-300 animate-pulse" />
-              IN THIS VERSION (v2.2)
+              IN THIS VERSION (v1.4)
             </DialogTitle>
             <DialogDescription className="text-blue-100 font-bold text-xs mt-1">
-              Key updates and workflow enhancements requested by our clinics.
+              Major mobile navigation upgrades, performance refinements, and clinic branding security.
             </DialogDescription>
           </DialogHeader>
           
@@ -744,46 +743,34 @@ Wishing you a quick recovery!
             <div className="space-y-3.5">
               {[
                 {
-                  icon: GripVertical,
+                  icon: Move,
                   color: 'text-blue-500 bg-blue-50 dark:bg-blue-950/30',
-                  title: 'Draggable Floating Canvas Toolbar',
-                  desc: 'Handwriting canvas toolbar is now a draggable floating card with large touch targets, designed for tablets and styluses.'
+                  title: 'VisionOS Floating Glass Dock (Draggable)',
+                  desc: 'Freely drag the mobile navigation bar anywhere on screen. Your custom position is saved automatically across browser reloads.'
                 },
                 {
-                  icon: Sparkles,
-                  color: 'text-pink-500 bg-pink-50 dark:bg-pink-950/30',
-                  title: 'Marching Ants Bounding Box',
-                  desc: 'Selected handwriting drawings now feature animated dashed outlines to clearly represent active selection.'
+                  icon: Zap,
+                  color: 'text-amber-500 bg-amber-50 dark:bg-amber-950/30',
+                  title: 'Zero-Lag Navigation & Borderless Design',
+                  desc: 'Removed box outlines and heavy animations for instant, fluid tab transitions with subtle glowing active indicators.'
                 },
                 {
-                  icon: Stethoscope,
-                  color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-950/30',
-                  title: 'Patient Queue Wait Times',
-                  desc: 'Shows real-time waiting timers (e.g. "15m wait") directly in the patient queue sidebar.'
+                  icon: LayoutGrid,
+                  color: 'text-purple-500 bg-purple-50 dark:bg-purple-950/30',
+                  title: 'Ultra-Compact "All Modules" Launcher',
+                  desc: 'Compact 4-column quick module grid that fits completely on screen with zero scrolling required.'
                 },
                 {
-                  icon: Info,
-                  color: 'text-red-500 bg-red-50 dark:bg-red-950/30',
-                  title: 'Abnormal Vitals Warning Flags',
-                  desc: 'Flags high/low SpO2 (<95%), high Temperature (>100.4°F), or abnormal BP in the queue for rapid triage support.'
+                  icon: Volume2,
+                  color: 'text-rose-500 bg-rose-50 dark:bg-rose-950/30',
+                  title: 'TV Queue Display Default Audio Chime',
+                  desc: 'Audible token call chime active by default with Web Audio context unlock and multi-device responsive layout.'
                 },
                 {
-                  icon: Activity,
-                  color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10',
-                  title: 'Patient Vitals Trend Sparklines',
-                  desc: 'Shows inline SVG line charts inside vitals cells to visualize patient vital history trends over previous visits.'
-                },
-                {
-                  icon: Droplet,
-                  color: 'text-purple-500 bg-purple-50 dark:bg-purple-500/10',
-                  title: 'Visual Frequency Toggles',
-                  desc: 'Tap visual Morning/Afternoon/Night pill buttons below frequency inputs to quickly fill standard medical shorthand (e.g. 1-0-1).'
-                },
-                {
-                  icon: Printer,
-                  color: 'text-slate-500 bg-slate-50 dark:bg-slate-900/30',
-                  title: 'Pre-printed Stationery Switcher',
-                  desc: 'Toggle branding headers off to print digital prescriptions directly onto physical letterhead pads.'
+                  icon: ShieldCheck,
+                  color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30',
+                  title: 'Clinic Branding Lockdown',
+                  desc: 'Clinic branding, name customization, and photo uploads secured exclusively to clinic owners and doctors.'
                 }
               ].map((item, index) => (
                 <div key={index} className="flex gap-3.5 items-start p-3 bg-muted/30 dark:bg-slate-900/10 border border-border/50 rounded-2xl">

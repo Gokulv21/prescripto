@@ -9,9 +9,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { 
   ClipboardList, PenTool, Eye, Loader2, RefreshCw, Save, 
-  Search, X, Trash2, HeartPulse, Plus, ChevronDown, UserX, CloudLightning, Check, Cloud
+  Search, X, Trash2, HeartPulse, Plus, ChevronDown, UserX, CloudLightning, Check, Cloud,
+  AlertTriangle, Sparkles
 } from 'lucide-react';
 import { Medicine } from '@/types/consultation';
+import { evaluateMedicineSafety, SafetyWarning } from '@/lib/medicalSafety';
 
 const COMMON_FREQUENCIES = [
   '1-0-1', '1-1-1', '0-0-1', '1-0-0', '0-1-0', '1-1-0', '0-1-1', 
@@ -371,203 +373,230 @@ export default function ConsultationForm({
                 </div>
               </div>
               <div className="space-y-3">
-                {medicines.map((med, i) => (
-                  <div key={i} className="medicine-row flex gap-2 items-start bg-muted/30 p-3 rounded-2xl border border-border group relative">
-                    <div className="flex flex-col md:flex-row gap-3 flex-1">
-                      <div className="md:w-32 shrink-0">
-                        <p className="text-[9px] font-bold text-muted-foreground uppercase ml-1 mb-1">Type</p>
-                        <select 
-                          value={med.type} 
-                          onChange={e => updateMedicine(i, 'type', e.target.value)}
-                          onKeyDown={e => handleMedicineKeyDown(e, i, 'type')}
-                          className="w-full h-10 text-sm font-bold border border-border bg-card rounded-lg px-2 focus:ring-2 focus:ring-blue-500 outline-none text-foreground"
-                        >
-                          <option value="Inj.">Inj.</option>
-                          <option value="Supp.">Supp.</option>
-                          <option value="Syp.">Syp.</option>
-                          <option value="Tab.">Tab.</option>
-                          <option value="Cap.">Cap.</option>
-                          <option value="Oin.">Oin.</option>
-                          <option value="cr.">cr.</option>
-                          <option value="drops.">drops.</option>
-                          <option value="Sac">Sac</option>
-                        </select>
-                      </div>
+                {medicines.map((med, i) => {
+                  const safetyWarnings = evaluateMedicineSafety(med.name, med.type, patient?.age);
+                  return (
+                    <div key={i} className="medicine-row flex flex-col gap-2 bg-muted/30 p-3 rounded-2xl border border-border group relative transition-all">
+                      <div className="flex gap-2 items-start">
+                        <div className="flex flex-col md:flex-row gap-3 flex-1">
+                          <div className="md:w-32 shrink-0">
+                            <p className="text-[9px] font-bold text-muted-foreground uppercase ml-1 mb-1">Type</p>
+                            <select 
+                              value={med.type} 
+                              onChange={e => updateMedicine(i, 'type', e.target.value)}
+                              onKeyDown={e => handleMedicineKeyDown(e, i, 'type')}
+                              className="w-full h-10 text-sm font-bold border border-border bg-card rounded-lg px-2 focus:ring-2 focus:ring-blue-500 outline-none text-foreground"
+                            >
+                              <option value="Inj.">Inj.</option>
+                              <option value="Supp.">Supp.</option>
+                              <option value="Syp.">Syp.</option>
+                              <option value="Tab.">Tab.</option>
+                              <option value="Cap.">Cap.</option>
+                              <option value="Oin.">Oin.</option>
+                              <option value="cr.">cr.</option>
+                              <option value="drops.">drops.</option>
+                              <option value="Sac">Sac</option>
+                            </select>
+                          </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 flex-1">
-                        <div className="md:col-span-3 space-y-1">
-                          <p className="text-[9px] font-bold text-muted-foreground uppercase ml-1">Name</p>
-                          <Input 
-                            placeholder="Medicine Name" 
-                            value={med.name} 
-                            onChange={e => {
-                              updateMedicine(i, 'name', e.target.value);
-                              setLastInputWay('typing');
-                            }}
-                            onKeyDown={e => handleMedicineKeyDown(e, i, 'name')}
-                            className="h-10 text-sm font-bold border-border bg-card rounded-lg" 
-                          />
-                        </div>
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 flex-1">
+                            <div className="md:col-span-3 space-y-1">
+                              <p className="text-[9px] font-bold text-muted-foreground uppercase ml-1">Name</p>
+                              <Input 
+                                placeholder="Medicine Name" 
+                                value={med.name} 
+                                onChange={e => {
+                                  updateMedicine(i, 'name', e.target.value);
+                                  setLastInputWay('typing');
+                                }}
+                                onKeyDown={e => handleMedicineKeyDown(e, i, 'name')}
+                                className="h-10 text-sm font-bold border-border bg-card rounded-lg" 
+                              />
+                            </div>
 
-                        <div className="md:col-span-2 space-y-1">
-                          <p className="text-[9px] font-bold text-muted-foreground uppercase ml-1">
-                            {(med.type === 'Oin.' || med.type === 'cr.' || med.type === 'drops.' || med.type === 'Sac') ? 'Count' : 'Dosage'}
-                          </p>
-                          <Input 
-                            placeholder={(med.type === 'Oin.' || med.type === 'cr.' || med.type === 'drops.' || med.type === 'Sac') ? "1 Tube / 1 Unit" : "500mg / 5ml"} 
-                            value={med.dosage || med.count || ''} 
-                            onChange={e => {
-                              const key = (med.type === 'Oin.' || med.type === 'cr.' || med.type === 'drops.' || med.type === 'Sac') ? 'count' : 'dosage';
-                              updateMedicine(i, key, e.target.value);
-                            }} 
-                            onKeyDown={e => handleMedicineKeyDown(e, i, 'dosage')} 
-                            className="h-10 text-sm font-bold border-border bg-card rounded-lg placeholder:opacity-50" 
-                          />
-                        </div>
+                            <div className="md:col-span-2 space-y-1">
+                              <p className="text-[9px] font-bold text-muted-foreground uppercase ml-1">
+                                {(med.type === 'Oin.' || med.type === 'cr.' || med.type === 'drops.' || med.type === 'Sac') ? 'Count' : 'Dosage'}
+                              </p>
+                              <Input 
+                                placeholder={(med.type === 'Oin.' || med.type === 'cr.' || med.type === 'drops.' || med.type === 'Sac') ? "1 Tube / 1 Unit" : "500mg / 5ml"} 
+                                value={med.dosage || med.count || ''} 
+                                onChange={e => {
+                                  const key = (med.type === 'Oin.' || med.type === 'cr.' || med.type === 'drops.' || med.type === 'Sac') ? 'count' : 'dosage';
+                                  updateMedicine(i, key, e.target.value);
+                                }} 
+                                onKeyDown={e => handleMedicineKeyDown(e, i, 'dosage')} 
+                                className="h-10 text-sm font-bold border-border bg-card rounded-lg placeholder:opacity-50" 
+                              />
+                            </div>
 
-                        <div className="md:col-span-1 space-y-1">
-                          <p className="text-[9px] font-bold text-blue-600 uppercase ml-1">Route</p>
-                          <Input 
-                            placeholder={med.type === 'Inj.' ? "I.M / I.V" : (med.type === 'Oin.' || med.type === 'cr.' ? "External" : "Oral")} 
-                            value={med.route || ''} 
-                            onChange={e => updateMedicine(i, 'route', e.target.value)} 
-                            onKeyDown={e => handleMedicineKeyDown(e, i, 'route')} 
-                            className="h-10 text-sm font-bold border-blue-500/20 bg-blue-500/5 rounded-lg text-blue-600 dark:text-blue-400 placeholder:text-blue-200/50" 
-                          />
-                        </div>
+                            <div className="md:col-span-1 space-y-1">
+                              <p className="text-[9px] font-bold text-blue-600 uppercase ml-1">Route</p>
+                              <Input 
+                                placeholder={med.type === 'Inj.' ? "I.M / I.V" : (med.type === 'Oin.' || med.type === 'cr.' ? "External" : "Oral")} 
+                                value={med.route || ''} 
+                                onChange={e => updateMedicine(i, 'route', e.target.value)} 
+                                onKeyDown={e => handleMedicineKeyDown(e, i, 'route')} 
+                                className="h-10 text-sm font-bold border-blue-500/20 bg-blue-500/5 rounded-lg text-blue-600 dark:text-blue-400 placeholder:text-blue-200/50" 
+                              />
+                            </div>
 
-                        <div className="md:col-span-2 space-y-1">
-                          <p className="text-[9px] font-bold text-purple-600 uppercase ml-1">Frequency</p>
-                          <div className="relative medicine-freq-container">
-                            <Input 
-                              placeholder={med.type === 'Inj.' ? "Stat / SOS" : "1-0-1"} 
-                              value={med.frequency || ''} 
-                              onChange={e => updateMedicine(i, 'frequency', e.target.value)} 
-                              onKeyDown={e => handleMedicineKeyDown(e, i, 'frequency')} 
-                              className="h-10 pr-9 text-sm font-bold border-purple-500/20 bg-purple-500/5 rounded-lg text-purple-600 dark:text-purple-400 placeholder:text-purple-200/50" 
-                            />
-                            {med.type !== 'Inj.' && (
-                              <div className="flex items-center gap-2 mt-1.5 justify-center">
-                                {(['m', 'a', 'n'] as const).map(pill => {
-                                  const label = pill === 'm' ? 'M' : pill === 'a' ? 'A' : 'N';
-                                  const title = pill === 'm' ? 'Morning' : pill === 'a' ? 'Afternoon' : 'Night';
-                                  const val = getPillState(med.frequency || '')[pill];
-                                  
-                                  const formatVal = (v: number) => {
-                                    if (v === 0) return '0';
-                                    const integer = Math.floor(v);
-                                    const fraction = v - integer;
-                                    if (fraction === 0.5) {
-                                      return integer > 0 ? `${integer} ½` : '½';
-                                    }
-                                    return String(v);
-                                  };
+                            <div className="md:col-span-2 space-y-1">
+                              <p className="text-[9px] font-bold text-purple-600 uppercase ml-1">Frequency</p>
+                              <div className="relative medicine-freq-container">
+                                <Input 
+                                  placeholder={med.type === 'Inj.' ? "Stat / SOS" : "1-0-1"} 
+                                  value={med.frequency || ''} 
+                                  onChange={e => updateMedicine(i, 'frequency', e.target.value)} 
+                                  onKeyDown={e => handleMedicineKeyDown(e, i, 'frequency')} 
+                                  className="h-10 pr-9 text-sm font-bold border-purple-500/20 bg-purple-500/5 rounded-lg text-purple-600 dark:text-purple-400 placeholder:text-purple-200/50" 
+                                />
+                                {med.type !== 'Inj.' && (
+                                  <div className="flex items-center gap-2 mt-1.5 justify-center">
+                                    {(['m', 'a', 'n'] as const).map(pill => {
+                                      const label = pill === 'm' ? 'M' : pill === 'a' ? 'A' : 'N';
+                                      const title = pill === 'm' ? 'Morning' : pill === 'a' ? 'Afternoon' : 'Night';
+                                      const val = getPillState(med.frequency || '')[pill];
+                                      
+                                      const formatVal = (v: number) => {
+                                        if (v === 0) return '0';
+                                        const integer = Math.floor(v);
+                                        const fraction = v - integer;
+                                        if (fraction === 0.5) {
+                                          return integer > 0 ? `${integer} ½` : '½';
+                                        }
+                                        return String(v);
+                                      };
 
-                                  const updatePillVal = (newVal: number) => {
-                                    const state = getPillState(med.frequency || '');
-                                    state[pill] = Math.max(0, newVal);
-                                    const newFreq = `${state.m}-${state.a}-${state.n}`;
-                                    updateMedicine(i, 'frequency', newFreq);
-                                  };
+                                      const updatePillVal = (newVal: number) => {
+                                        const state = getPillState(med.frequency || '');
+                                        state[pill] = Math.max(0, newVal);
+                                        const newFreq = `${state.m}-${state.a}-${state.n}`;
+                                        updateMedicine(i, 'frequency', newFreq);
+                                      };
 
-                                  return (
-                                    <div key={pill} className="flex flex-col items-center gap-1 bg-purple-500/5 dark:bg-purple-500/10 p-1.5 rounded-lg border border-purple-500/10 min-w-[3.5rem]">
-                                      <button
-                                        type="button"
-                                        title={title}
-                                        onClick={() => updatePillVal(val > 0 ? 0 : 1)}
-                                        className={cn(
-                                          "w-6 h-6 rounded-full text-[10px] font-extrabold flex items-center justify-center border transition-all select-none",
-                                          val > 0 
-                                            ? "bg-purple-650 text-white border-purple-650 shadow-sm"
-                                            : "bg-white dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-purple-300"
-                                        )}
-                                      >
-                                        {label}
-                                      </button>
-                                      <span className="text-[10px] font-bold text-purple-700 dark:text-purple-350 text-center min-h-[14px]">
-                                        {formatVal(val)}
-                                      </span>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => updatePillVal(val - 0.5)}
-                                          className="w-4 h-4 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-650 dark:text-slate-300 hover:bg-purple-500/10 shadow-sm"
-                                        >
-                                          -
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => updatePillVal(val + 0.5)}
-                                          className="w-4 h-4 rounded bg-white dark:bg-slate-800 border border-slate-250 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-650 dark:text-slate-300 hover:bg-purple-500/10 shadow-sm"
-                                        >
-                                          +
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                            <Popover open={openFreqPopoverIndex === i} onOpenChange={(open) => setOpenFreqPopoverIndex(open ? i : null)}>
-                              <PopoverTrigger asChild>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  className="absolute right-0 top-0 h-10 w-9 hover:bg-purple-500/10 rounded-r-lg"
-                                  title="Select Frequency"
-                                >
-                                  <ChevronDown className="h-4 w-4 text-purple-500" />
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-[180px] p-0 shadow-xl border-purple-500/20" align="end">
-                                <div className="max-h-60 overflow-auto p-1 bg-card rounded-lg touch-pan-y">
-                                  {(med.type === 'Inj.' ? ['Stat', 'SOS', 'Once daily', 'Twice daily'] : COMMON_FREQUENCIES).map(freq => (
-                                    <button
-                                      key={freq}
-                                      className="w-full text-left px-3 py-2 text-[13px] font-bold hover:bg-purple-500/10 text-foreground rounded-md transition-colors"
-                                      onClick={() => {
-                                        updateMedicine(i, 'frequency', freq);
-                                        setOpenFreqPopoverIndex(null);
-                                      }}
+                                      return (
+                                        <div key={pill} className="flex flex-col items-center gap-1 bg-purple-500/5 dark:bg-purple-500/10 p-1.5 rounded-lg border border-purple-500/10 min-w-[3.5rem]">
+                                          <button
+                                            type="button"
+                                            title={title}
+                                            onClick={() => updatePillVal(val > 0 ? 0 : 1)}
+                                            className={cn(
+                                              "w-6 h-6 rounded-full text-[10px] font-extrabold flex items-center justify-center border transition-all select-none",
+                                              val > 0 
+                                                ? "bg-purple-650 text-white border-purple-650 shadow-sm"
+                                                : "bg-white dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-purple-300"
+                                            )}
+                                          >
+                                            {label}
+                                          </button>
+                                          <span className="text-[10px] font-bold text-purple-700 dark:text-purple-350 text-center min-h-[14px]">
+                                            {formatVal(val)}
+                                          </span>
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => updatePillVal(val - 0.5)}
+                                              className="w-4 h-4 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-650 dark:text-slate-300 hover:bg-purple-500/10 shadow-sm"
+                                            >
+                                              -
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => updatePillVal(val + 0.5)}
+                                              className="w-4 h-4 rounded bg-white dark:bg-slate-800 border border-slate-250 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-650 dark:text-slate-300 hover:bg-purple-500/10 shadow-sm"
+                                            >
+                                              +
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                <Popover open={openFreqPopoverIndex === i} onOpenChange={(open) => setOpenFreqPopoverIndex(open ? i : null)}>
+                                  <PopoverTrigger asChild>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon" 
+                                      className="absolute right-0 top-0 h-10 w-9 hover:bg-purple-500/10 rounded-r-lg"
+                                      title="Select Frequency"
                                     >
-                                      {freq}
-                                    </button>
-                                  ))}
-                                </div>
-                              </PopoverContent>
-                            </Popover>
+                                      <ChevronDown className="h-4 w-4 text-purple-500" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[180px] p-0 shadow-xl border-purple-500/20" align="end">
+                                    <div className="max-h-60 overflow-auto p-1 bg-card rounded-lg touch-pan-y">
+                                      {(med.type === 'Inj.' ? ['Stat', 'SOS', 'Once daily', 'Twice daily'] : COMMON_FREQUENCIES).map(freq => (
+                                        <button
+                                          key={freq}
+                                          className="w-full text-left px-3 py-2 text-[13px] font-bold hover:bg-purple-500/10 text-foreground rounded-md transition-colors"
+                                          onClick={() => {
+                                            updateMedicine(i, 'frequency', freq);
+                                            setOpenFreqPopoverIndex(null);
+                                          }}
+                                        >
+                                          {freq}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                            </div>
+
+                            <div className="md:col-span-2 space-y-1">
+                              <p className="text-[9px] font-bold text-orange-600 uppercase ml-1">Duration</p>
+                              <Input 
+                                placeholder="5 Days / 1 Wk" 
+                                value={med.duration || ''} 
+                                onChange={e => updateMedicine(i, 'duration', e.target.value)} 
+                                onKeyDown={e => handleMedicineKeyDown(e, i, 'duration')} 
+                                className="h-10 text-sm font-bold border-orange-500/20 bg-orange-500/5 rounded-lg text-orange-600 dark:text-orange-400 placeholder:text-orange-200/50" 
+                              />
+                            </div>
+
+                            <div className="md:col-span-2 space-y-1">
+                              <p className="text-[9px] font-bold text-emerald-600 uppercase ml-1">Remarks</p>
+                              <Input 
+                                placeholder="After Food / Night" 
+                                value={med.notes || ''} 
+                                onChange={e => updateMedicine(i, 'notes', e.target.value)} 
+                                onKeyDown={e => handleMedicineKeyDown(e, i, 'notes')} 
+                                className="h-10 text-sm font-bold border-emerald-500/20 bg-emerald-500/5 rounded-lg text-emerald-600 dark:text-emerald-400 placeholder:text-emerald-200/50" 
+                              />
+                            </div>
                           </div>
                         </div>
-
-                        <div className="md:col-span-2 space-y-1">
-                          <p className="text-[9px] font-bold text-orange-600 uppercase ml-1">Duration</p>
-                          <Input 
-                            placeholder="5 Days / 1 Wk" 
-                            value={med.duration || ''} 
-                            onChange={e => updateMedicine(i, 'duration', e.target.value)} 
-                            onKeyDown={e => handleMedicineKeyDown(e, i, 'duration')} 
-                            className="h-10 text-sm font-bold border-orange-500/20 bg-orange-500/5 rounded-lg text-orange-600 dark:text-orange-400 placeholder:text-orange-200/50" 
-                          />
-                        </div>
-
-                        <div className="md:col-span-2 space-y-1">
-                          <p className="text-[9px] font-bold text-emerald-600 uppercase ml-1">Remarks</p>
-                          <Input 
-                            placeholder="After Food / Night" 
-                            value={med.notes || ''} 
-                            onChange={e => updateMedicine(i, 'notes', e.target.value)} 
-                            onKeyDown={e => handleMedicineKeyDown(e, i, 'notes')} 
-                            className="h-10 text-sm font-bold border-emerald-500/20 bg-emerald-500/5 rounded-lg text-emerald-600 dark:text-emerald-400 placeholder:text-emerald-200/50" 
-                          />
-                        </div>
+                        <Button size="icon" variant="ghost" onClick={() => removeMedicine(i)} className="text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg h-10 w-10 mt-1 transition-colors self-end md:self-center">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
+
+                      {/* Pediatric / Geriatric Age Safety Advisory Alert */}
+                      {safetyWarnings.length > 0 && (
+                        <div className="mt-1 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 space-y-1 animate-in fade-in slide-in-from-top-1">
+                          {safetyWarnings.map((warn, wIdx) => (
+                            <div key={wIdx} className="flex items-start gap-2 text-xs font-bold">
+                              <AlertTriangle className={cn("w-4 h-4 shrink-0 mt-0.5", warn.severity === 'critical' ? "text-red-500" : "text-amber-500")} />
+                              <div>
+                                <span className={cn("font-extrabold uppercase tracking-wide mr-1.5", warn.severity === 'critical' ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400")}>
+                                  {warn.title}:
+                                </span>
+                                <span>{warn.message}</span>
+                                {warn.recommendation && (
+                                  <span className="block text-[11px] text-slate-600 dark:text-slate-400 font-normal mt-0.5">
+                                    💡 <strong>Suggestion:</strong> {warn.recommendation}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <Button size="icon" variant="ghost" onClick={() => removeMedicine(i)} className="text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg h-10 w-10 mt-1 transition-colors self-end md:self-center">
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
+                  );
+                })}
                 <div className="pt-4 flex justify-center">
                   <Button 
                     variant="outline" 

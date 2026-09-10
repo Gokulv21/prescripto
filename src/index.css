@@ -89,6 +89,50 @@
     --sidebar-border: 0 0% 15%;
     --sidebar-ring: 224.3 76.3% 48%;
   }
+
+  /* ── Dynamic Accent Theme Overrides ── */
+  :root[data-accent="blue"], .dark[data-accent="blue"] {
+    --primary: 217.2 91.2% 59.8% !important;
+    --ring: 217.2 91.2% 59.8% !important;
+    --primary-hex: #2563eb;
+    --accent-glow: rgba(37,99,235,0.35);
+  }
+  :root[data-accent="emerald"], .dark[data-accent="emerald"] {
+    --primary: 160 84% 39% !important;
+    --ring: 160 84% 39% !important;
+    --primary-hex: #10b981;
+    --accent-glow: rgba(16,185,129,0.35);
+  }
+  :root[data-accent="purple"], .dark[data-accent="purple"] {
+    --primary: 258 90% 66% !important;
+    --ring: 258 90% 66% !important;
+    --primary-hex: #8b5cf6;
+    --accent-glow: rgba(139,92,246,0.35);
+  }
+  :root[data-accent="rose"], .dark[data-accent="rose"] {
+    --primary: 350 89% 60% !important;
+    --ring: 350 89% 60% !important;
+    --primary-hex: #f43f5e;
+    --accent-glow: rgba(244,63,94,0.35);
+  }
+  :root[data-accent="amber"], .dark[data-accent="amber"] {
+    --primary: 38 92% 50% !important;
+    --ring: 38 92% 50% !important;
+    --primary-hex: #f59e0b;
+    --accent-glow: rgba(245,158,11,0.35);
+  }
+  :root[data-accent="cyan"], .dark[data-accent="cyan"] {
+    --primary: 189 94% 43% !important;
+    --ring: 189 94% 43% !important;
+    --primary-hex: #06b6d4;
+    --accent-glow: rgba(6,182,212,0.35);
+  }
+  :root[data-accent="slate"], .dark[data-accent="slate"] {
+    --primary: 215 16% 47% !important;
+    --ring: 215 16% 47% !important;
+    --primary-hex: #64748b;
+    --accent-glow: rgba(100,116,139,0.35);
+  }
 }
 
 @layer base {
@@ -98,6 +142,28 @@
 
   body {
     @apply bg-background text-foreground font-body antialiased;
+    min-height: 100vh;
+  }
+
+  /* Skynex Luminous Ambient Mesh Atmosphere */
+  .skynex-mesh-bg {
+    background-color: #f8fafc;
+    background-image: 
+      radial-gradient(ellipse at 15% 10%, rgba(186, 230, 253, 0.45) 0%, transparent 55%),
+      radial-gradient(ellipse at 85% 15%, rgba(254, 215, 226, 0.40) 0%, transparent 50%),
+      radial-gradient(ellipse at 65% 45%, rgba(221, 214, 254, 0.35) 0%, transparent 60%),
+      radial-gradient(ellipse at 25% 85%, rgba(199, 210, 254, 0.30) 0%, transparent 55%);
+    background-attachment: fixed;
+  }
+
+  .dark .skynex-mesh-bg {
+    background-color: #030712;
+    background-image: 
+      radial-gradient(ellipse at 20% 15%, rgba(30, 58, 138, 0.35) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(88, 28, 135, 0.30) 0%, transparent 55%),
+      radial-gradient(ellipse at 50% 60%, rgba(67, 56, 202, 0.25) 0%, transparent 65%),
+      radial-gradient(ellipse at 20% 90%, rgba(15, 23, 42, 0.8) 0%, transparent 60%);
+    background-attachment: fixed;
   }
 
   h1,

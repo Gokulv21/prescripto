@@ -17,13 +17,10 @@ const env = loadEnv();
 const supabase = createClient(env.VITE_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
 async function main() {
-  const { data: policies, error } = await supabase.rpc('get_policies');
-  if (error) {
-    // query pg_policies directly via rpc or sql if available, or check migrations file
-    console.log('get_policies error, checking supabase_migrations.sql');
-  } else {
-    console.log('Policies:', policies);
-  }
+  const { data: profiles, error } = await supabase.from('profiles').select('id, user_id, full_name, role, is_superadmin, clinic_id');
+  console.log('Profiles:', profiles);
+  const { data: userRoles } = await supabase.from('user_roles').select('*');
+  console.log('User Roles:', userRoles);
 }
 
 main();

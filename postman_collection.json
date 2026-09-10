@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "clinic-flow-api-tests",
 		"name": "Clinic Flow API Health",
-		"description": "Collection to test Supabase and LiveKit endpoints for the Clinic Flow project.",
+		"description": "Collection to test Supabase endpoints for the Clinic Flow project.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -76,28 +76,6 @@
 									"key": "select",
 									"value": "count"
 								}
-							]
-						}
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "LiveKit Health",
-			"item": [
-				{
-					"name": "LiveKit Status",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "https://prescripto-34vg9dx3.livekit.cloud",
-							"protocol": "https",
-							"host": [
-								"prescripto-34vg9dx3",
-								"livekit",
-								"cloud"
 							]
 						}
 					},

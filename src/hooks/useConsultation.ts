@@ -9,7 +9,7 @@ import { uploadPrescriptionImage } from '@/lib/prescriptionStorage';
 
 export type SyncStatus = 'synced' | 'syncing' | 'offline_saved' | 'error';
 
-export function useConsultation(clinic: any, allUsers: any[], onlineUsers: any[], makeCall: any) {
+export function useConsultation(clinic: any) {
   const queryClient = useQueryClient();
   const { user, hasRole, profile } = useAuth();
   

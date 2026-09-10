@@ -1,4 +1,4 @@
-import { useState, ReactNode, useEffect } from "react";
+import { useState, ReactNode, useEffect, lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate, useParams, Outlet } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,26 +9,36 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Loader2, WifiOff, RefreshCw, ShieldAlert, Building2, LogOut } from "lucide-react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import AppLayout from "@/components/AppLayout";
-import Login from "@/pages/Login";
-import Dashboard from "@/pages/Dashboard";
-import NurseEntry from "@/pages/NurseEntry";
-import DoctorConsultation from "@/pages/DoctorConsultation";
-import PrintQueue from "@/pages/PrintQueue";
-import PatientList from "@/pages/PatientList";
-import Analytics from "@/pages/Analytics";
-import UserManagement from "@/pages/UserManagement";
-import DoctorProfile from "@/pages/DoctorProfile";
-import ClinicSelection from "@/pages/ClinicSelection";
-import SaaSManagement from "@/pages/SaaSManagement";
-import PublicPrescription from "@/pages/PublicPrescription";
-import NotFound from "./pages/NotFound.tsx";
-import { CommunicationProvider } from "@/lib/communication";
-import CallOverlay from "@/components/CallOverlay";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import About from "@/pages/About";
-import Help from "@/pages/Help";
 import { logSecurityEvent } from "@/lib/security";
+
+// Lazy-Loaded Route Components for Ultra-Fast Initial Load
+const Login = lazy(() => import("@/pages/Login"));
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const NurseEntry = lazy(() => import("@/pages/NurseEntry"));
+const DoctorConsultation = lazy(() => import("@/pages/DoctorConsultation"));
+const PrintQueue = lazy(() => import("@/pages/PrintQueue"));
+const PatientList = lazy(() => import("@/pages/PatientList"));
+const Analytics = lazy(() => import("@/pages/Analytics"));
+const UserManagement = lazy(() => import("@/pages/UserManagement"));
+const DoctorProfile = lazy(() => import("@/pages/DoctorProfile"));
+const ClinicSelection = lazy(() => import("@/pages/ClinicSelection"));
+const SaaSManagement = lazy(() => import("@/pages/SaaSManagement"));
+const PublicPrescription = lazy(() => import("@/pages/PublicPrescription"));
+const TVDisplay = lazy(() => import("@/pages/TVDisplay"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const About = lazy(() => import("@/pages/About"));
+const Help = lazy(() => import("@/pages/Help"));
+
+function PageLoader() {
+  return (
+    <div className="flex flex-col justify-center items-center h-[60vh] space-y-4 font-sans">
+      <Loader2 className="animate-spin w-8 h-8 text-blue-600" />
+      <p className="text-xs text-slate-500 font-bold tracking-widest uppercase">Loading Module...</p>
+    </div>
+  );
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -312,12 +322,12 @@ const App = () => (
           >
             <AuthProvider>
               <SecuritySentinel />
-              <CommunicationProvider>
-                <CallOverlay />
+              <Suspense fallback={<PageLoader />}>
                 <Routes>
                   {/* 1. Public Routes */}
                   <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
                   <Route path="/rx/:visitId" element={<PublicPrescription />} />
+                  <Route path="/:slug/display" element={<TVDisplay />} />
 
                   {/* 2. Root Redirector & Global Pages */}
                   <Route path="/" element={<RootRouter />} />
@@ -339,7 +349,7 @@ const App = () => (
 
                   <Route path="*" element={<NotFound />} />
                 </Routes>
-              </CommunicationProvider>
+              </Suspense>
             </AuthProvider>
           </BrowserRouter>
         </TooltipProvider>

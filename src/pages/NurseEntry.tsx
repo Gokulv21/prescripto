@@ -52,15 +52,18 @@ export default function NurseEntry() {
   const [tokenNumber, setTokenNumber] = useState<number | null>(null);
   const [assignedDoctorId, setAssignedDoctorId] = useState<string>("general");
   const { clinic } = useOutletContext<{ clinic: any }>();
-  const { profile, user } = useAuth();
+  const { profile, user, roles, hasRole } = useAuth();
   const [showSearch, setShowSearch] = useState(false);
   
   useEffect(() => {
-    if (profile && (profile as any).clinic_id && clinic?.id && (profile as any).clinic_id !== clinic.id) {
+    const isSuperAdmin = roles.includes('superadmin') || hasRole('superadmin') || (profile as any)?.is_superadmin;
+    const isOwner = Boolean(clinic?.owner_id && user?.id && clinic.owner_id === user.id);
+    
+    if (!isSuperAdmin && !isOwner && profile && (profile as any).clinic_id && clinic?.id && (profile as any).clinic_id !== clinic.id) {
        console.warn("Clinic ID mismatch:", (profile as any).clinic_id, clinic.id);
        toast.error("Security Warning: Your account is assigned to a different clinic than current view. Entries may not be visible.");
     }
-  }, [profile, clinic?.id]);
+  }, [profile, clinic?.id, clinic?.owner_id, user?.id, roles, hasRole]);
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -184,7 +187,10 @@ export default function NurseEntry() {
       return;
     }
 
-    if (profile && (profile as any).clinic_id && (profile as any).clinic_id !== clinic.id) {
+    const isSuperAdmin = roles.includes('superadmin') || hasRole('superadmin') || (profile as any)?.is_superadmin;
+    const isOwner = Boolean(clinic?.owner_id && user?.id && clinic.owner_id === user.id);
+
+    if (!isSuperAdmin && !isOwner && profile && (profile as any).clinic_id && (profile as any).clinic_id !== clinic.id) {
       toast.error('Your account clinic does not match the selected clinic. Please switch clinic or contact admin.');
       return;
     }

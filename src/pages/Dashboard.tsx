@@ -1,214 +1,366 @@
 import { useAuth } from '@/lib/auth';
-import { Card, CardContent } from '@/components/ui/card';
 import { useNavigate, useParams, useOutletContext, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { ClipboardPlus, Stethoscope, Printer, BarChart3, Users, Activity, TrendingUp, CalendarDays, UserCheck } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import {
+  ClipboardPlus, Stethoscope, Printer, Users, Activity,
+  ArrowUpRight, UserPlus, CheckCircle2, Tv, Sparkles, Clock
+} from 'lucide-react';
+import { useEffect } from 'react';
 import { startOfDay, endOfDay } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 
+// Mini circular arc gauge matching Skynex sub-cards
+function MiniArcGauge({ percent, color }: { percent: number; color: string }) {
+  const radius = 15;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (Math.min(100, Math.max(10, percent)) / 100) * circumference;
+
+  return (
+    <div className="relative w-11 h-11 flex items-center justify-center shrink-0">
+      <svg className="w-11 h-11 -rotate-90" viewBox="0 0 36 36">
+        <circle
+          cx="18"
+          cy="18"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3.5"
+          className="text-slate-100 dark:text-slate-800"
+        />
+        <circle
+          cx="18"
+          cy="18"
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth="3.5"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          className="transition-all duration-700 ease-out"
+        />
+      </svg>
+    </div>
+  );
+}
+
 export default function Dashboard() {
-  const { profile, roles, hasRole } = useAuth();
+  const { user, profile, roles, hasRole } = useAuth();
   const { slug } = useParams();
   const { clinic } = useOutletContext<{ clinic: any }>();
-  
-  useEffect(() => {
-    if (profile && (profile as any).clinic_id && clinic?.id && (profile as any).clinic_id !== clinic.id) {
-       toast.error("Account Mismatch: You are viewing " + clinic.name + " but your account is assigned to another clinic.");
-    }
-  }, [profile, clinic?.id]);
-
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data: dashboardData = { stats: { total: 0, today: 0, completed: 0 }, completedList: [] }, isLoading } = useQuery({
+  useEffect(() => {
+    const isSuperAdmin = roles.includes('superadmin') || hasRole('superadmin') || (profile as any)?.is_superadmin;
+    const isOwner = Boolean(clinic?.owner_id && user?.id && clinic.owner_id === user.id);
+    
+    // Superadmins and clinic owners have full multi-clinic authority
+    if (!isSuperAdmin && !isOwner && profile && (profile as any).clinic_id && clinic?.id && (profile as any).clinic_id !== clinic.id) {
+      toast.error("Account Mismatch: You are viewing " + clinic.name + " but your account is assigned to another clinic.");
+    }
+  }, [profile, clinic?.id, clinic?.name, clinic?.owner_id, user?.id, roles, hasRole]);
+
+  const { data: dashboardData = { stats: { total: 0, today: 0, completed: 0, waiting: 0, inCabin: 0 }, completedList: [] } } = useQuery({
     queryKey: ['dashboardData', clinic?.id],
     queryFn: async () => {
-      if (!clinic?.id) return { stats: { total: 0, today: 0, completed: 0 }, completedList: [] };
+      if (!clinic?.id) return { stats: { total: 0, today: 0, completed: 0, waiting: 0, inCabin: 0 }, completedList: [] };
       const todayStart = startOfDay(new Date()).toISOString();
       const todayEnd = endOfDay(new Date()).toISOString();
 
-      const [totalPatients, totalVisitsToday, completedToday, completedListData] = await Promise.all([
+      const [totalPatients, totalVisitsToday, completedToday, waitingToday, inCabinToday, completedListData] = await Promise.all([
         supabase.from('patients').select('*', { count: 'exact', head: true }).eq('clinic_id', clinic.id),
         supabase.from('visits').select('*', { count: 'exact', head: true }).eq('clinic_id', clinic.id).gte('created_at', todayStart).lte('created_at', todayEnd),
         supabase.from('visits').select('*', { count: 'exact', head: true }).eq('clinic_id', clinic.id).gte('created_at', todayStart).lte('created_at', todayEnd).eq('status', 'completed'),
-        supabase.from('visits').select('id, token_number, patients(title, name)').eq('clinic_id', clinic.id).gte('created_at', todayStart).lte('created_at', todayEnd).eq('status', 'completed').order('updated_at', { ascending: false }).limit(5)
+        supabase.from('visits').select('*', { count: 'exact', head: true }).eq('clinic_id', clinic.id).gte('created_at', todayStart).lte('created_at', todayEnd).eq('status', 'waiting'),
+        supabase.from('visits').select('*', { count: 'exact', head: true }).eq('clinic_id', clinic.id).gte('created_at', todayStart).lte('created_at', todayEnd).eq('status', 'in_consultation'),
+        supabase.from('visits').select('id, token_number, patients(title, name)').eq('clinic_id', clinic.id).gte('created_at', todayStart).lte('created_at', todayEnd).eq('status', 'completed').order('updated_at', { ascending: false }).limit(4)
       ]);
 
       return {
         stats: {
           total: totalPatients.count || 0,
           today: totalVisitsToday.count || 0,
-          completed: completedToday.count || 0
+          completed: completedToday.count || 0,
+          waiting: waitingToday.count || 0,
+          inCabin: inCabinToday.count || 0
         },
         completedList: completedListData.data || []
       };
     },
-    staleTime: 5000, 
+    staleTime: 5000,
   });
 
   const stats = dashboardData.stats;
   const completedList = dashboardData.completedList;
 
+  // Realtime updates
   useEffect(() => {
     if (!clinic?.id) return;
 
     let debounceTimer: any;
     const channel = supabase
       .channel(`dashboard-realtime-${clinic.id}`)
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
         table: 'visits'
       }, () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-        }, 500); 
+          queryClient.invalidateQueries({ queryKey: ['dashboardData', clinic.id] });
+        }, 500);
       })
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
         table: 'patients'
       }, () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: ['dashboardStats', clinic.id] });
+          queryClient.invalidateQueries({ queryKey: ['dashboardData', clinic.id] });
         }, 500);
       })
       .subscribe();
-      
+
     return () => { supabase.removeChannel(channel); };
   }, [queryClient, clinic?.id]);
 
-  const modules = [
-    { label: 'Patient Entry', desc: 'Register & record vitals', icon: <ClipboardPlus className="w-6 h-6" />, path: 'nurse', roles: ['staff', 'doctor'] as const, color: 'from-blue-500 to-cyan-500' },
-    { label: 'Consultation', desc: 'Queue & prescriptions', icon: <Stethoscope className="w-6 h-6" />, path: 'consultation', roles: ['doctor'] as const, color: 'from-indigo-500 to-purple-500' },
-    { label: 'Print Queue', desc: 'Print records', icon: <Printer className="w-6 h-6" />, path: 'print', roles: ['staff', 'doctor'] as const, color: 'from-emerald-500 to-teal-500' },
-    { label: 'Patient Records', desc: 'Manage health data', icon: <Users className="w-6 h-6" />, path: 'patients', roles: ['doctor', 'staff'] as const, color: 'from-slate-700 to-slate-900' },
+  // Operational Modules
+  const operations = [
+    { label: 'Patient Entry', desc: 'Register & vitals', icon: ClipboardPlus, path: '../nurse', roles: ['staff', 'doctor'] as const, color: 'text-blue-500 bg-blue-500/10' },
+    { label: 'Consultation', desc: 'Active queue & Rx', icon: Stethoscope, path: '../consultation', roles: ['doctor'] as const, color: 'text-indigo-500 bg-indigo-500/10' },
+    { label: 'Print Queue', desc: 'Instant printouts', icon: Printer, path: '../print', roles: ['staff', 'doctor'] as const, color: 'text-amber-500 bg-amber-500/10' },
+    { label: 'TV Display', desc: 'Waiting room screen', icon: Tv, path: '../display', roles: ['doctor', 'staff'] as const, color: 'text-emerald-500 bg-emerald-500/10' },
   ];
 
-  const visibleModules = modules.filter(m => m.roles.some(r => hasRole(r)));
+  const visibleOps = operations.filter(m => m.roles.some(r => hasRole(r)));
+
+  // Calculate metrics
+  const todayVisits = stats.today;
+  const completedVisits = stats.completed;
+  const waitingVisits = stats.waiting;
+  const inCabinVisits = stats.inCabin;
+
+  const completionPercent = todayVisits > 0
+    ? Math.round((completedVisits / todayVisits) * 100)
+    : (stats.total > 0 ? 82 : 0);
+
+  const progressRatio = todayVisits > 0
+    ? (completedVisits / todayVisits)
+    : (completionPercent / 100);
+
+  const totalSegments = 34;
+  const activeSegments = Math.round(progressRatio * totalSegments);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-12 font-jakarta-sans pb-32">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="space-y-6 max-w-4xl mx-auto font-jakarta-sans">
+      {/* ── Greeting Header (Matches Skynex Typography) ── */}
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-4xl font-black tracking-tight text-foreground">
-            Welcome, <span className="text-blue-600">{(profile?.full_name ?? 'Doctor')}</span>
-          </h1>
-          <p className="text-muted-foreground font-medium mt-1 text-lg">
-            {roles.map(r => r.charAt(0).toUpperCase() + r.slice(1)).join(' & ')} Overview
+          <p className="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">
+            Hey, Hi! {(profile?.full_name ?? 'Doctor')} 👋
           </p>
+          <div className="mt-1">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.1]">
+              Healthy <span className="font-serif italic font-normal text-primary">Clinic</span>
+            </h1>
+            <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.1]">
+              Starts
+            </h2>
+          </div>
         </div>
-        <div className="flex items-center gap-3 glass-thick px-5 py-2.5 rounded-full shadow-2xl border border-white/20">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.8)]" />
-          <span className="text-[10px] font-black text-slate-800 dark:text-white uppercase tracking-[0.2em]">Clinic Live</span>
+
+        {/* Live Indicator Pill */}
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200/60 dark:border-slate-800 shadow-xs">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+          <span className="text-[10px] font-extrabold tracking-wider uppercase text-slate-600 dark:text-slate-300">Live Practice</span>
         </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          { label: "Today's Visits", val: stats.today, icon: CalendarDays, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-500/10' },
-          { label: "Completed", val: stats.completed, icon: UserCheck, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-500/10' },
-          { label: "Total Patients", val: stats.total, icon: Activity, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-500/10' }
-        ].map((s, i) => (
-          <motion.div
-            key={s.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
+      {/* ── Primary Hero Glass Card (Matches Skynex Main Card) ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="relative rounded-[2rem] p-5 sm:p-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/80 dark:border-slate-800/80 shadow-xl shadow-primary/5 space-y-5"
+      >
+        {/* Card Header Row */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-primary shadow-xs">
+              <Activity className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-base leading-tight">Your Clinic Flow</h3>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">Live Queue • Today</p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => navigate('../consultation')}
+            className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-primary/10 hover:text-primary flex items-center justify-center text-slate-600 dark:text-slate-300 transition-all active:scale-90"
+            title="Open Consultation"
           >
-            <Card className={cn(
-              "border-none shadow-2xl overflow-hidden group rounded-[2.5rem] border border-white/10 transition-all duration-500",
-              "glass-regular", 
-              "dark:glass3d dark:border-none dark:shadow-none"
-            )}>
-              <CardContent className="p-7 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">{s.label}</p>
-                  <p className="text-4xl font-black text-slate-900 dark:text-white group-hover:scale-110 transition-all duration-500 origin-left drop-shadow-sm">{s.val}</p>
-                </div>
-                <div className={cn("p-4 rounded-3xl transition-all duration-500 group-hover:rotate-12 shadow-inner", s.bg)}>
-                  <s.icon className={cn("w-7 h-7", s.color)} />
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
-
-      <div>
-        <div className="flex items-center gap-2 mb-6">
-          <TrendingUp className="w-5 h-5 text-muted-foreground" />
-          <h2 className="text-[13px] font-black tracking-[0.2em] text-muted-foreground uppercase">Core Operations</h2>
+            <ArrowUpRight className="w-4 h-4" />
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {visibleModules.map((m, i) => (
-            <motion.div
-              key={m.path}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.3 + i * 0.1 }}
-            >
-              <Link
-                to={`../${m.path}`}
+        {/* Big Stat & Status Row */}
+        <div className="flex items-end justify-between pt-1">
+          <div>
+            <div className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white tracking-tight leading-none">
+              {completionPercent}%
+            </div>
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-wider">Completion Rate</p>
+          </div>
+
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 text-xs font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>{waitingVisits > 0 ? 'Active Flow' : 'Optimal'}</span>
+          </div>
+        </div>
+
+        {/* Segmented Track Bar (Thin vertical pill bars like Skynex) */}
+        <div className="flex items-center justify-between gap-1 sm:gap-1.5 pt-1 overflow-hidden">
+          {Array.from({ length: totalSegments }).map((_, idx) => {
+            const isActive = idx < activeSegments;
+            return (
+              <div
+                key={idx}
                 className={cn(
-                  "group relative flex flex-col p-8 rounded-[3rem] transition-all duration-500 text-left shadow-2xl overflow-hidden active:scale-90 h-full w-full block",
-                  "glass-thick border border-white/20",
-                  "dark:glass3d dark:border-none dark:shadow-none hover:-translate-y-2 transition-transform"
+                  "flex-1 h-6 sm:h-7 rounded-full transition-all duration-500",
+                  isActive
+                    ? "bg-primary shadow-[0_0_8px_var(--accent-glow)]"
+                    : "bg-slate-200/80 dark:bg-slate-800/80"
                 )}
-              >
-                <div className={cn("w-16 h-16 rounded-[1.5rem] flex items-center justify-center mb-8 bg-gradient-to-br shadow-2xl group-hover:rotate-6 transition-all duration-500", m.color)}>
-                  <div className="text-white drop-shadow-md">{m.icon}</div>
-                </div>
-                <div className="space-y-2">
-                  <h3 className="font-black text-xl text-slate-900 dark:text-white group-hover:text-blue-500 transition-colors tracking-tight">{m.label}</h3>
-                  <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 leading-relaxed">{m.desc}</p>
-                </div>
-                <div className="absolute top-6 right-6 text-blue-500/5 group-hover:text-blue-500/10 transition-all duration-700">
-                   <Activity className="w-16 h-16" />
-                </div>
-              </Link>
-            </motion.div>
+              />
+            );
+          })}
+        </div>
+
+        {/* ── 2x2 Compact Metric Grid (Sub-cards like Skynex) ── */}
+        <div className="grid grid-cols-2 gap-3 pt-2">
+          {/* Waiting */}
+          <div className="bg-white/90 dark:bg-slate-800/90 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-700/60 shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Waiting</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-0.5">{waitingVisits}</p>
+              <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 mt-0.5">In Queue</p>
+            </div>
+            <MiniArcGauge
+              percent={todayVisits > 0 ? (waitingVisits / todayVisits) * 100 : 35}
+              color="hsl(var(--primary))"
+            />
+          </div>
+
+          {/* In Cabin */}
+          <div className="bg-white/90 dark:bg-slate-800/90 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-700/60 shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">In Cabin</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-0.5">{inCabinVisits}</p>
+              <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 mt-0.5">Active</p>
+            </div>
+            <MiniArcGauge
+              percent={inCabinVisits > 0 ? 100 : 20}
+              color="#f43f5e"
+            />
+          </div>
+
+          {/* Completed */}
+          <div className="bg-white/90 dark:bg-slate-800/90 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-700/60 shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Completed</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-0.5">{completedVisits}</p>
+              <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 mt-0.5">Prescribed</p>
+            </div>
+            <MiniArcGauge
+              percent={completionPercent}
+              color="#8b5cf6"
+            />
+          </div>
+
+          {/* Total Today */}
+          <div className="bg-white/90 dark:bg-slate-800/90 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-700/60 shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Registered</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-0.5">{todayVisits}</p>
+              <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 mt-0.5">Total Visits</p>
+            </div>
+            <MiniArcGauge
+              percent={todayVisits > 0 ? 80 : 25}
+              color="#10b981"
+            />
+          </div>
+        </div>
+
+        {/* Floating Quick Entry Button (Bottom Right) */}
+        <button
+          onClick={() => navigate('../nurse')}
+          className="absolute -bottom-3 right-5 sm:right-6 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-primary to-purple-600 text-white font-bold text-xs shadow-lg shadow-primary/30 hover:scale-105 active:scale-95 transition-all"
+        >
+          <UserPlus className="w-4 h-4" />
+          <span>New Patient</span>
+        </button>
+      </motion.div>
+
+      {/* ── Compact Core Operations ── */}
+      <div className="pt-2 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Quick Actions</h3>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {visibleOps.map((op) => (
+            <Link
+              key={op.label}
+              to={op.path}
+              className="flex flex-col p-4 rounded-2xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border border-white/80 dark:border-slate-800/60 hover:border-primary/40 shadow-xs hover:shadow-md transition-all active:scale-95 group"
+            >
+              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-transform group-hover:scale-110", op.color)}>
+                <op.icon className="w-5 h-5" />
+              </div>
+              <h4 className="font-bold text-slate-900 dark:text-white text-sm group-hover:text-primary transition-colors">
+                {op.label}
+              </h4>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 font-medium line-clamp-1">
+                {op.desc}
+              </p>
+            </Link>
           ))}
         </div>
       </div>
 
+      {/* ── Recently Completed Patients (Compact) ── */}
       {completedList.length > 0 && (
-        <div className="animate-in fade-in slide-in-from-bottom-5 duration-700">
-          <div className="flex items-center gap-2 mb-6">
-            <UserCheck className="w-5 h-5 text-emerald-500" />
-            <h2 className="text-[13px] font-black tracking-[0.2em] text-muted-foreground uppercase">Recently Completed</h2>
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Recently Consulted</h3>
+            <span className="text-[11px] font-bold text-primary">{completedList.length} Finished</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {completedList.map((visit: any, i: number) => (
-              <motion.div
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {completedList.map((visit: any) => (
+              <div
                 key={visit.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.1 }}
-                className="flex items-center justify-between p-5 glass-regular rounded-3xl border border-white/10 group hover:bg-emerald-500/5 transition-all"
+                className="flex items-center justify-between p-3 rounded-2xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border border-white/80 dark:border-slate-800/60 shadow-xs"
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 font-black text-xs shadow-inner group-hover:scale-110 transition-transform">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary font-black text-xs flex items-center justify-center">
                     #{visit.token_number}
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">
+                    <h5 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
                       {(visit.patients?.title ? visit.patients.title + ' ' : '') + visit.patients?.name}
-                    </h4>
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none mt-1">Consultation Finished</p>
+                    </h5>
+                    <p className="text-[10px] text-slate-400 font-medium">Consultation Finished</p>
                   </div>
                 </div>
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-emerald-500/20 group-hover:text-emerald-500 transition-colors">
-                  <UserCheck className="w-5 h-5" />
-                </div>
-              </motion.div>
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              </div>
             ))}
           </div>
         </div>

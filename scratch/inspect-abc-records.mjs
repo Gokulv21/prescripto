@@ -17,13 +17,13 @@ const env = loadEnv();
 const supabase = createClient(env.VITE_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
 async function main() {
-  const { data: policies, error } = await supabase.rpc('get_policies');
-  if (error) {
-    // query pg_policies directly via rpc or sql if available, or check migrations file
-    console.log('get_policies error, checking supabase_migrations.sql');
-  } else {
-    console.log('Policies:', policies);
-  }
+  const abcId = '2385e763-dc58-476a-8847-67c4ec3ef4ad';
+  const { data: patients } = await supabase.from('patients').select('*').eq('clinic_id', abcId);
+  console.log('ABC Patients:', patients);
+  const { data: visits } = await supabase.from('visits').select('*').eq('clinic_id', abcId);
+  console.log('ABC Visits:', visits);
+  const { data: rxs } = await supabase.from('prescriptions').select('*').eq('clinic_id', abcId);
+  console.log('ABC Prescriptions:', rxs);
 }
 
 main();

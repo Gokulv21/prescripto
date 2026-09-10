@@ -1,20 +1,73 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sparkles, HeartPulse, Star, GripVertical, Activity, Info, Printer, Droplet, Stethoscope, ArrowLeft, CheckCircle2, Clock } from 'lucide-react';
+import { Sparkles, HeartPulse, Star, GripVertical, Activity, Info, Printer, Droplet, Stethoscope, ArrowLeft, CheckCircle2, Clock, Move, Zap, LayoutGrid, Smartphone, Volume2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-const CURRENT_VERSION = '1.3';
+const CURRENT_VERSION = '1.4';
 
 const versionHistory = [
   {
-    version: '1.3',
-    date: 'July 2026',
-    label: 'Current',
-    accent: 'from-blue-600 to-indigo-600',
-    textAccent: 'text-blue-600',
+    version: '1.4',
+    date: 'September 2026',
+    label: 'Current Release',
+    accent: 'from-blue-600 via-indigo-600 to-purple-600',
+    textAccent: 'text-blue-600 dark:text-blue-400',
     bgAccent: 'bg-blue-50 dark:bg-blue-950/30',
     borderAccent: 'border-blue-200 dark:border-blue-800/50',
+    updates: [
+      {
+        icon: Move,
+        iconColor: 'text-sky-500',
+        iconBg: 'bg-sky-500/15',
+        title: 'VisionOS Floating Glass Dock (Freely Draggable)',
+        desc: 'Sleek iOS/VisionOS-inspired floating mobile navigation bar that users can freely drag and reposition anywhere on screen. Automatically remembers coordinates across sessions.'
+      },
+      {
+        icon: Zap,
+        iconColor: 'text-amber-500',
+        iconBg: 'bg-amber-500/15',
+        title: 'Zero-Lag Navigation & Borderless Dock',
+        desc: 'Eliminated route-switching stutter with instantaneous micro-transitions. Removed bulky box outlines in favor of clean illuminated accent dots.'
+      },
+      {
+        icon: LayoutGrid,
+        iconColor: 'text-purple-500',
+        iconBg: 'bg-purple-500/15',
+        title: 'Ultra-Compact "All Modules" Launcher (Zero Scroll)',
+        desc: 'Redesigned the quick modules bottom sheet into a streamlined 4-column compact grid that fits 100% on any mobile viewport with zero scrolling required.'
+      },
+      {
+        icon: Smartphone,
+        iconColor: 'text-emerald-500',
+        iconBg: 'bg-emerald-500/15',
+        title: 'Ergonomic Top Header & Profile Swap',
+        desc: 'Doctor avatar profile and quick settings relocated to the sticky mobile top header, reserving the bottom floating dock strictly for core clinical workflows.'
+      },
+      {
+        icon: Volume2,
+        iconColor: 'text-rose-500',
+        iconBg: 'bg-rose-500/15',
+        title: 'TV Queue Display Default Audio Chime',
+        desc: 'Token calling chime now activates by default with automatic Web Audio context unlocking, paired with responsive layout support for TV, tablet, and mobile screens.'
+      },
+      {
+        icon: ShieldCheck,
+        iconColor: 'text-indigo-500',
+        iconBg: 'bg-indigo-500/15',
+        title: 'Clinic Branding & Superadmin Security Isolation',
+        desc: 'Clinic branding, name customization, and photo uploads are locked exclusively to clinic owners and doctors, preventing superadmin cross-clinic interference.'
+      },
+    ]
+  },
+  {
+    version: '1.3',
+    date: 'July 2026',
+    label: 'Previous Release',
+    accent: 'from-violet-600 to-indigo-600',
+    textAccent: 'text-violet-600 dark:text-violet-400',
+    bgAccent: 'bg-violet-50 dark:bg-violet-950/30',
+    borderAccent: 'border-violet-200 dark:border-violet-800/50',
     updates: [
       { icon: Info, iconColor: 'text-sky-500', iconBg: 'bg-sky-500/15', title: 'About & Version History', desc: 'Dedicated About page with full release notes and version changelog.' },
       { icon: Star, iconColor: 'text-amber-500', iconBg: 'bg-amber-500/15', title: 'Consult Staff Feature Removed', desc: 'Streamlined the UI by removing the in-app staff call feature for a cleaner navigation experience.' },
@@ -23,11 +76,11 @@ const versionHistory = [
     ]
   },
   {
-    version: '1.3',
+    version: '1.2',
     date: 'July 2026',
-    label: 'New Features',
+    label: 'Feature Pack',
     accent: 'from-violet-600 to-purple-600',
-    textAccent: 'text-violet-600',
+    textAccent: 'text-violet-600 dark:text-violet-400',
     bgAccent: 'bg-violet-50 dark:bg-violet-950/30',
     borderAccent: 'border-violet-200 dark:border-violet-800/50',
     updates: [
@@ -41,11 +94,11 @@ const versionHistory = [
     ]
   },
   {
-    version: '1.3',
+    version: '1.1',
     date: 'June 2026',
-    label: 'Major Release',
+    label: 'Major Architecture',
     accent: 'from-emerald-600 to-teal-600',
-    textAccent: 'text-emerald-600',
+    textAccent: 'text-emerald-600 dark:text-emerald-400',
     bgAccent: 'bg-emerald-50 dark:bg-emerald-950/30',
     borderAccent: 'border-emerald-200 dark:border-emerald-800/50',
     updates: [
@@ -56,11 +109,11 @@ const versionHistory = [
     ]
   },
   {
-    version: '1.3',
+    version: '1.0',
     date: 'May 2026',
-    label: 'Stable',
+    label: 'Initial Stable',
     accent: 'from-amber-500 to-orange-500',
-    textAccent: 'text-amber-600',
+    textAccent: 'text-amber-600 dark:text-amber-400',
     bgAccent: 'bg-amber-50 dark:bg-amber-950/30',
     borderAccent: 'border-amber-200 dark:border-amber-800/50',
     updates: [

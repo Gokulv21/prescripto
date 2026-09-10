@@ -9,8 +9,10 @@ import {
     UserCheck, BarChart3, PieChart, Settings, Mail, Phone, MapPin,
     Medal, FileSignature, Save, RefreshCw, Plus, Stethoscope, Printer,
     ArrowRight, CheckCircle2, Circle, PanelLeft, LayoutDashboard,
-    Group, Info, Moon, Sun, HeartPulse, TrendingUp, Search, UserPlus, Camera, Trash2, Eye, X, Pencil, ChevronDown
+    Group, Info, Moon, Sun, HeartPulse, TrendingUp, Search, UserPlus, Camera, Trash2, Eye, X, Pencil, ChevronDown,
+    Lock, Building2, Upload, Palette, Sparkles, Check
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { startOfDay, endOfDay, subDays, format, isSameDay, parseISO } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from '@/components/ui/button';
@@ -24,7 +26,7 @@ import {
     PieChart as RePieChart, Pie, Cell, LineChart, Line, AreaChart, Area, Legend
 } from 'recharts';
 import SignaturePad from '@/components/SignaturePad';
-import { useTheme } from 'next-themes';
+import { useTheme, ACCENT_OPTIONS, AccentColor } from '@/components/ThemeProvider';
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
     DialogDescription, DialogFooter
@@ -44,6 +46,7 @@ type ProfileData = {
     clinic_name?: string;
     clinic_address?: string;
     clinic_phone?: string;
+    clinic_photo?: string;
     signature_data?: string;
     avatar_url?: string;
     theme?: string;
@@ -73,10 +76,11 @@ const COMMON_FREQUENCIES = [
 
 export default function DoctorProfile() {
     const { user, roles, hasRole } = useAuth();
-    const { theme, setTheme } = useTheme();
+    const { theme, setTheme, accent, setAccent } = useTheme();
     const { slug } = useParams();
     const { clinic } = useOutletContext<{ clinic: any }>();
     const navigate = useNavigate();
+    const isClinicOwner = Boolean(clinic?.id && clinic?.owner_id === user?.id);
     const [profile, setProfile] = useState<ProfileData | null>(null);
     const [ownerProfile, setOwnerProfile] = useState<any>(null);
     const [activeTab, setActiveTab] = useState(() => {
@@ -85,8 +89,10 @@ export default function DoctorProfile() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [clinicUploading, setClinicUploading] = useState(false);
     const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const clinicFileInputRef = useRef<HTMLInputElement>(null);
 
     // Stats & Analytics State
     const [stats, setStats] = useState({
@@ -131,26 +137,28 @@ export default function DoctorProfile() {
             if (clinic?.id) {
                 const { data: clinicData } = await supabase
                     .from('clinics')
-                    .select('name, address, phone, owner_id')
+                    .select('name, address, phone, owner_id, photo_url')
                     .eq('id', clinic.id)
                     .single();
                 
                 if (clinicData) {
                     // Update profile state with clinic specific data if needed
-                    // For owners, we want them to see/edit this specific clinic's branding
+                    // ONLY the clinic's true owner can edit this specific clinic's branding
                     if (clinicData.owner_id === user.id) {
                         setProfile(prev => ({
                             ...prev!,
                             clinic_name: clinicData.name,
                             clinic_address: clinicData.address || '',
-                            clinic_phone: clinicData.phone || ''
+                            clinic_phone: clinicData.phone || '',
+                            clinic_photo: clinicData.photo_url || prev?.clinic_photo || ''
                         }));
                     } else {
-                        // For non-owners, we show the clinic branding from the clinic record
+                        // For non-owners (including superadmin), show clinic branding in read-only
                         setOwnerProfile({
                             clinic_name: clinicData.name,
                             clinic_address: clinicData.address,
-                            clinic_phone: clinicData.phone
+                            clinic_phone: clinicData.phone,
+                            clinic_photo: clinicData.photo_url
                         });
                     }
                 }
@@ -275,6 +283,7 @@ export default function DoctorProfile() {
                     clinic_name: sData.clinic_name,
                     clinic_address: sData.clinic_address,
                     clinic_phone: sData.clinic_phone,
+                    clinic_photo: profile.clinic_photo,
                     signature_data: profile.signature_data,
                     // @ts-ignore
                     avatar_url: profile.avatar_url,
@@ -284,20 +293,21 @@ export default function DoctorProfile() {
 
             if (error) throw error;
 
-            // 2. Update Clinic Branding (if owner/admin)
-            if (hasRole('owner') || hasRole('superadmin')) {
+            // 2. Update Clinic Branding (ONLY if true owner of this clinic)
+            if (isClinicOwner) {
                 const { error: clinicError } = await supabase
                     .from('clinics')
                     .update({
                         name: sData.clinic_name,
                         address: sData.clinic_address,
-                        phone: sData.clinic_phone
+                        phone: sData.clinic_phone,
+                        photo_url: profile.clinic_photo || null
                     })
                     .eq('id', clinic?.id);
                 if (clinicError) throw clinicError;
             }
 
-            toast.success('Profile and Clinic Branding updated');
+            toast.success('Profile and settings updated');
             
             // 3. Navigate to Consultation Page as requested
             setTimeout(() => {
@@ -307,6 +317,101 @@ export default function DoctorProfile() {
             toast.error(err.message);
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleClinicPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!isClinicOwner) {
+            toast.error('Only the Clinic Owner can change the clinic branding photo.');
+            return;
+        }
+        const file = e.target.files?.[0];
+        if (!file || !user?.id) return;
+
+        if (!file.type.startsWith('image/')) {
+            toast.error('Please upload an image file');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error('Image size must be less than 5MB');
+            return;
+        }
+
+        setClinicUploading(true);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `clinic-${clinic?.id || user.id}-${Date.now()}.${fileExt}`;
+            const filePath = `${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(filePath, file);
+
+            if (uploadError) {
+                if (uploadError.message.includes('bucket not found')) {
+                    throw new Error('Please create a storage bucket named "avatars" in your Supabase dashboard.');
+                }
+                throw uploadError;
+            }
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('avatars')
+                .getPublicUrl(filePath);
+
+            if (clinic?.id) {
+                await supabase
+                    .from('clinics')
+                    .update({ photo_url: publicUrl })
+                    .eq('id', clinic.id);
+            }
+
+            await supabase
+                .from('profiles')
+                .update({ clinic_photo: publicUrl })
+                .eq('user_id', user.id);
+
+            setProfile(prev => prev ? { ...prev, clinic_photo: publicUrl } : null);
+            toast.success('Clinic photo uploaded successfully');
+        } catch (err: any) {
+            console.error(err);
+            toast.error(err.message || 'Failed to upload clinic photo');
+        } finally {
+            setClinicUploading(false);
+        }
+    };
+
+    const handleDeleteClinicPhoto = async () => {
+        if (!isClinicOwner) {
+            toast.error('Only the Clinic Owner can delete the clinic photo.');
+            return;
+        }
+        const currentPhoto = profile?.clinic_photo;
+        if (!currentPhoto) return;
+
+        const confirmDelete = window.confirm('Are you sure you want to delete the clinic photo?');
+        if (!confirmDelete) return;
+
+        setClinicUploading(true);
+        try {
+            if (currentPhoto.includes('/storage/v1/object/public/avatars/')) {
+                const urlParts = currentPhoto.split('/');
+                const fileName = urlParts[urlParts.length - 1].split('?')[0];
+                await supabase.storage.from('avatars').remove([fileName]);
+            }
+
+            if (clinic?.id) {
+                await supabase.from('clinics').update({ photo_url: null }).eq('id', clinic.id);
+            }
+
+            await supabase.from('profiles').update({ clinic_photo: null }).eq('user_id', user?.id);
+
+            setProfile(prev => prev ? { ...prev, clinic_photo: undefined } : null);
+            toast.success('Clinic photo removed');
+        } catch (err: any) {
+            console.error(err);
+            toast.error(err.message || 'Failed to delete clinic photo');
+        } finally {
+            setClinicUploading(false);
         }
     };
 
@@ -924,25 +1029,105 @@ export default function DoctorProfile() {
                     </Card>
                 </TabsContent>
 
-                <TabsContent value="settings" className="focus-visible:outline-none">
+                <TabsContent value="settings" className="focus-visible:outline-none space-y-8">
                     <form onSubmit={handleUpdateProfile} className="space-y-8">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            {/* Identity Card */}
-                            <Card className="border-slate-100 dark:border-slate-800 rounded-[2rem] p-8 space-y-8 bg-white dark:bg-slate-900 shadow-sm">
+                        {/* 1. App Appearance & Themes Customizer Card */}
+                        <Card className="border-slate-100 dark:border-slate-800 rounded-2xl p-6 space-y-6 bg-white dark:bg-slate-900 shadow-sm transition-all">
+                            <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/40 rounded-2xl">
-                                        <User className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                                    <div className="p-2.5 bg-primary/10 rounded-xl">
+                                        <Palette className="w-5 h-5 text-primary" />
                                     </div>
-                                    <h3 className="text-2xl font-black tracking-tight dark:text-slate-100">Professional Identity</h3>
+                                    <div>
+                                        <h3 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">App Appearance & Colors</h3>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">Personalize display theme and accent color</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Theme Mode */}
+                                <div className="space-y-2.5">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Interface Display Mode</Label>
+                                    <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/60 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
+                                        {[
+                                            { id: 'light', label: 'Light', icon: <Sun className="w-4 h-4" /> },
+                                            { id: 'dark', label: 'Dark', icon: <Moon className="w-4 h-4" /> },
+                                            { id: 'system', label: 'Auto', icon: <Sparkles className="w-4 h-4" /> }
+                                        ].map(t => (
+                                            <button
+                                                key={t.id}
+                                                type="button"
+                                                onClick={() => setTheme(t.id as any)}
+                                                className={cn(
+                                                    "flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-xs transition-all active:scale-95",
+                                                    theme === t.id
+                                                        ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                                                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                                )}
+                                            >
+                                                {t.icon}
+                                                <span>{t.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
 
-                                <div className="space-y-6">
+                                {/* Color Swatches */}
+                                <div className="space-y-2.5">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Theme Color</Label>
+                                        <span className="text-xs font-bold text-primary capitalize">
+                                            {ACCENT_OPTIONS.find(a => a.id === accent)?.name}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2.5 p-2 bg-slate-100 dark:bg-slate-800/60 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
+                                        {ACCENT_OPTIONS.map((opt) => {
+                                            const isSelected = accent === opt.id;
+                                            return (
+                                                <button
+                                                    key={opt.id}
+                                                    type="button"
+                                                    onClick={() => setAccent(opt.id)}
+                                                    className={cn(
+                                                        "relative group/swatch flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-200 active:scale-90",
+                                                        isSelected ? "ring-2 ring-offset-2 ring-primary dark:ring-offset-slate-900 scale-105 shadow-md" : "hover:scale-105 opacity-85 hover:opacity-100"
+                                                    )}
+                                                    style={{
+                                                        backgroundColor: opt.color,
+                                                        boxShadow: isSelected ? `0 6px 16px ${opt.glow}` : undefined
+                                                    }}
+                                                    title={opt.name}
+                                                >
+                                                    {isSelected && (
+                                                        <Check className="w-4 h-4 text-white stroke-[3] drop-shadow-sm" />
+                                                    )}
+                                                    <span className="sr-only">{opt.name}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        </Card>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            {/* Identity Card */}
+                            <Card className="border-slate-100 dark:border-slate-800 rounded-2xl p-6 space-y-6 bg-white dark:bg-slate-900 shadow-sm">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-primary/10 rounded-2xl">
+                                        <User className="w-6 h-6 text-primary" />
+                                    </div>
+                                    <h3 className="text-xl font-bold tracking-tight dark:text-slate-100">Professional Identity</h3>
+                                </div>
+
+                                <div className="space-y-4">
                                     <div className="space-y-2">
-                                        <Label className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Display Name</Label>
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Display Name</Label>
                                         <Input
                                             value={profile?.full_name}
                                             onChange={e => setProfile(p => ({ ...p!, full_name: e.target.value }))}
-                                            className="h-12 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold focus:ring-blue-500"
+                                            className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold focus:ring-primary"
                                         />
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -992,20 +1177,116 @@ export default function DoctorProfile() {
                             </Card>
 
                             {/* Clinic Branding */}
-                            <Card className={cn(
-                                "border-slate-100 dark:border-slate-800 rounded-[2rem] p-8 space-y-8 bg-white dark:bg-slate-900 shadow-sm transition-opacity",
-                                !(hasRole('owner') || hasRole('superadmin')) && "opacity-60 pointer-events-none"
-                            )}>
+                            <Card className="border-slate-100 dark:border-slate-800 rounded-[2rem] p-8 space-y-8 bg-white dark:bg-slate-900 shadow-sm transition-all duration-300">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className="p-3 bg-emerald-50 dark:bg-emerald-900/40 rounded-2xl">
-                                            <HeartPulse className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                                            <Building2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                                         </div>
-                                        <h3 className="text-2xl font-black tracking-tight dark:text-slate-100">Clinic Branding</h3>
+                                        <div>
+                                            <h3 className="text-2xl font-black tracking-tight dark:text-slate-100">Clinic Branding</h3>
+                                            <p className="text-xs font-bold text-slate-400 dark:text-slate-500">Live details displayed across Prescriptions & TV Screen</p>
+                                        </div>
                                     </div>
-                                    {!(hasRole('owner') || hasRole('superadmin')) && (
-                                        <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 border-none text-[10px] uppercase tracking-widest text-slate-500">View Only</Badge>
+                                    {isClinicOwner ? (
+                                        <Badge className="bg-emerald-50 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-[10px] uppercase font-black tracking-widest px-3 py-1 rounded-full">
+                                            Clinic Owner Control
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 border-none text-[10px] uppercase tracking-widest text-slate-500 gap-1 px-3 py-1 rounded-full">
+                                            <Lock className="w-3 h-3" /> Managed by Clinic Owner (View Only)
+                                        </Badge>
                                     )}
+                                </div>
+
+                                {/* Clinic Photo Upload / Display Section */}
+                                <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center gap-5">
+                                    <div className="relative group/clinicphoto shrink-0">
+                                        <div className="w-24 h-24 rounded-[1.75rem] bg-gradient-to-tr from-slate-200 to-slate-100 dark:from-slate-800 dark:to-slate-700 border-2 border-white dark:border-slate-600 shadow-md overflow-hidden flex items-center justify-center">
+                                            {(isClinicOwner ? profile?.clinic_photo : ownerProfile?.clinic_photo) ? (
+                                                <img
+                                                    src={isClinicOwner ? profile?.clinic_photo : ownerProfile?.clinic_photo}
+                                                    alt="Clinic"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <Building2 className="w-10 h-10 text-slate-400 dark:text-slate-500" />
+                                            )}
+                                        </div>
+
+                                        {isClinicOwner && (
+                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/clinicphoto:opacity-100 transition-opacity rounded-[1.75rem] flex items-center justify-center gap-2 p-1 backdrop-blur-xs">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => clinicFileInputRef.current?.click()}
+                                                    disabled={clinicUploading}
+                                                    className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-xl transition-transform hover:scale-110"
+                                                    title="Upload Clinic Photo"
+                                                >
+                                                    {clinicUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                                                </button>
+                                                {profile?.clinic_photo && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleDeleteClinicPhoto}
+                                                        disabled={clinicUploading}
+                                                        className="p-2 bg-red-500/40 hover:bg-red-500/60 text-white rounded-xl transition-transform hover:scale-110"
+                                                        title="Delete Clinic Photo"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <input
+                                        type="file"
+                                        ref={clinicFileInputRef}
+                                        onChange={handleClinicPhotoUpload}
+                                        className="hidden"
+                                        accept="image/*"
+                                    />
+
+                                    <div className="space-y-1 text-center sm:text-left flex-1">
+                                        <div className="flex items-center justify-center sm:justify-start gap-2">
+                                            <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">Clinic Display Photo</h4>
+                                            {((isClinicOwner ? profile?.clinic_photo : ownerProfile?.clinic_photo)) && (
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">Active</span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-slate-400 dark:text-slate-500">
+                                            {isClinicOwner
+                                                ? "Upload high-res clinic exterior/reception photo to feature on Waiting Room TV screen & branding."
+                                                : "Displayed on the Waiting Room TV screen. Managed by Clinic Owner."}
+                                        </p>
+                                        {isClinicOwner && (
+                                            <div className="pt-2 flex items-center gap-2 justify-center sm:justify-start">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={clinicUploading}
+                                                    onClick={() => clinicFileInputRef.current?.click()}
+                                                    className="rounded-xl h-8 px-3 text-xs font-bold gap-1.5 border-slate-200 dark:border-slate-700"
+                                                >
+                                                    {clinicUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                                                    {profile?.clinic_photo ? 'Change Photo' : 'Upload Photo'}
+                                                </Button>
+                                                {profile?.clinic_photo && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => setImagePreviewUrl(profile?.clinic_photo || null)}
+                                                        className="rounded-xl h-8 px-2.5 text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
+                                                    >
+                                                        <Eye className="w-3.5 h-3.5 mr-1" /> View
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="space-y-6">
@@ -1013,32 +1294,32 @@ export default function DoctorProfile() {
                                         <div className="space-y-2">
                                             <Label className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Clinic Name</Label>
                                             <Input
-                                                value={(hasRole('owner') || hasRole('superadmin') ? profile?.clinic_name : ownerProfile?.clinic_name) || ''}
+                                                value={(isClinicOwner ? profile?.clinic_name : ownerProfile?.clinic_name) || ''}
                                                 onChange={e => setProfile(p => ({ ...p!, clinic_name: e.target.value }))}
                                                 placeholder="e.g. GV Clinic"
                                                 className="h-12 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold"
-                                                readOnly={!(hasRole('owner') || hasRole('superadmin'))}
+                                                readOnly={!isClinicOwner}
                                             />
                                         </div>
                                         <div className="space-y-2">
                                             <Label className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Contact Number</Label>
                                             <Input
-                                                value={(hasRole('owner') || hasRole('superadmin') ? profile?.clinic_phone : ownerProfile?.clinic_phone) || ''}
+                                                value={(isClinicOwner ? profile?.clinic_phone : ownerProfile?.clinic_phone) || ''}
                                                 onChange={e => setProfile(p => ({ ...p!, clinic_phone: e.target.value }))}
                                                 placeholder="+91 00000 00000"
                                                 className="h-12 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold"
-                                                readOnly={!(hasRole('owner') || hasRole('superadmin'))}
+                                                readOnly={!isClinicOwner}
                                             />
                                         </div>
                                     </div>
                                     <div className="space-y-2">
                                         <Label className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Full Address</Label>
                                         <Input
-                                            value={(hasRole('owner') || hasRole('superadmin') ? profile?.clinic_address : ownerProfile?.clinic_address) || ''}
+                                            value={(isClinicOwner ? profile?.clinic_address : ownerProfile?.clinic_address) || ''}
                                             onChange={e => setProfile(p => ({ ...p!, clinic_address: e.target.value }))}
                                             placeholder="Complete street address with pincode"
                                             className="h-12 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold"
-                                            readOnly={!(hasRole('owner') || hasRole('superadmin'))}
+                                            readOnly={!isClinicOwner}
                                         />
                                     </div>
                                 </div>
