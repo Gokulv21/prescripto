@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { Bell, Check, X, Loader2, Eye, EyeOff, ShieldCheck, PhoneCall } from 'lucide-react';
+import { Bell, Check, X, Loader2, Eye, EyeOff, ShieldCheck, PhoneCall, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -207,16 +207,19 @@ export default function NotificationCenter() {
     }
   };
 
-  const markAsRead = async (id: string) => {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('id', id);
-    
-    if (!error) fetchSystemNotifications();
+  // Permanently delete a single notification from DB
+  const dismissNotification = async (id: string) => {
+    setSystemNotifications(prev => prev.filter(n => n.id !== id)); // optimistic
+    await supabase.from('notifications').delete().eq('id', id);
   };
 
-  const totalCount = requests.length + systemNotifications.filter(n => !n.is_read).length;
+  // Permanently delete ALL notifications for this user
+  const deleteAllNotifications = async () => {
+    setSystemNotifications([]); // optimistic
+    await supabase.from('notifications').delete().eq('user_id', user?.id);
+  };
+
+  const totalCount = requests.length + systemNotifications.length;
 
   if (!user) return null;
 
@@ -235,28 +238,49 @@ export default function NotificationCenter() {
         <DropdownMenuContent align="end" className="w-[340px] p-2 glass-thick border-primary/20 shadow-2xl rounded-2xl mt-2 overflow-hidden">
           <div className="px-3 py-2 border-b border-primary/5 mb-2 flex items-center justify-between">
             <span className="text-sm font-black uppercase tracking-widest text-slate-500">Notifications</span>
-            {totalCount > 0 && <Badge variant="outline" className="bg-primary/5 text-primary border-primary/10 text-[10px]">{totalCount} new</Badge>}
+            <div className="flex items-center gap-2">
+              {totalCount > 0 && <Badge variant="outline" className="bg-primary/5 text-primary border-primary/10 text-[10px]">{totalCount} new</Badge>}
+              {systemNotifications.length > 0 && (
+                <button
+                  onClick={deleteAllNotifications}
+                  className="text-[9px] font-black text-slate-400 hover:text-red-500 uppercase tracking-wider flex items-center gap-0.5 transition-colors"
+                  title="Clear all notifications"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                  Clear all
+                </button>
+              )}
+            </div>
           </div>
           
           <div className="space-y-1 max-h-[400px] overflow-auto no-scrollbar">
-            {/* System Notifications */}
             {systemNotifications.length > 0 && (
               <div className="mb-2">
                 {systemNotifications.map(notif => (
                   <div 
                     key={notif.id} 
-                    onClick={() => !notif.is_read && markAsRead(notif.id)}
                     className={cn(
-                      "p-3 rounded-xl transition-all border border-transparent mb-1 cursor-pointer group relative",
+                      "p-3 rounded-xl transition-all border border-transparent mb-1 relative group",
                       notif.is_read 
-                        ? "opacity-60 grayscale-[0.5]" 
+                        ? "opacity-60" 
                         : notif.title === 'CALLING PATIENT'
                           ? "bg-red-500/10 dark:bg-red-500/10 border-red-500/30 animate-pulse"
                           : "bg-blue-500/5 dark:bg-blue-400/5 border-blue-500/10"
                     )}
                   >
+                    {/* Unread indicator bar */}
                     {!notif.is_read && <div className="absolute left-1 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-600 rounded-full" />}
-                    <div className="flex flex-col gap-1">
+
+                    {/* Dismiss ✕ button — always visible on hover, always clickable */}
+                    <button
+                      onClick={() => dismissNotification(notif.id)}
+                      className="absolute top-2 right-2 w-5 h-5 rounded-full bg-slate-200/70 dark:bg-slate-700/70 hover:bg-red-500 hover:text-white text-slate-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+                      title="Delete notification"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+
+                    <div className="flex flex-col gap-1 pr-5">
                       <p className={cn(
                         "text-[11px] font-black uppercase tracking-tight flex items-center gap-1.5",
                         notif.title === 'CALLING PATIENT' ? "text-red-500" :
@@ -269,23 +293,9 @@ export default function NotificationCenter() {
                       <p className="text-[11px] font-medium text-slate-900 dark:text-white leading-tight">
                         {notif.message}
                       </p>
-                      <div className="flex items-center justify-between gap-2 mt-1">
-                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
-                          {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                        {!notif.is_read && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              markAsRead(notif.id);
-                            }}
-                            className="text-[9px] font-black text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 uppercase tracking-wider flex items-center gap-0.5 hover:underline"
-                          >
-                            <Check className="w-2.5 h-2.5" />
-                            Mark read
-                          </button>
-                        )}
-                      </div>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                        {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
                     </div>
                   </div>
                 ))}

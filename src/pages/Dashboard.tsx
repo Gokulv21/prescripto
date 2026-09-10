@@ -162,7 +162,7 @@ export default function Dashboard() {
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">
-            Hey, Hi! {(profile?.full_name ?? 'Doctor')} 👋
+            Hey, Hi! {(profile?.full_name ?? 'Doctor')} 🩺
           </p>
           <div className="mt-1">
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.1]">
