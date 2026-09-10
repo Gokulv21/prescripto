@@ -1,0 +1,1 @@
+function o(t){const e=Object.prototype.toString.call(t);return t instanceof Date||typeof t=="object"&&e==="[object Date]"?new t.constructor(+t):typeof t=="number"||e==="[object Number]"||typeof t=="string"||e==="[object String]"?new Date(t):new Date(NaN)}function r(t){const e=o(t);return e.setHours(0,0,0,0),e}export{r as s,o as t};

@@ -1,0 +1,1 @@
+const s=(e,r=2e3)=>{if(!e)return"";let t=e.replace(/<\/?[^>]+(>|$)/g,"");return t=t.replace(/[<>]/g,""),t.trim().substring(0,r)},a=e=>e?/^\+?[\d\s-]{10,15}$/.test(e.trim()):!0,i=(e,r,t)=>{const n=typeof e=="string"?parseFloat(e):e;return isNaN(n)?!1:n>=r&&n<=t};export{i as a,s,a as v};
