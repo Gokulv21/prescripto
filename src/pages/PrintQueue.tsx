@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -8,16 +8,37 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PageBanner from '@/components/PageBanner';
 import printQueueBanner from '@/assets/print_queue_banner.png';
-import { Printer, CheckCircle, Clock, RefreshCw } from 'lucide-react';
+import { Printer, CheckCircle, Clock, RefreshCw, BellRing } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import PrescriptionTemplate from '@/components/PrescriptionTemplate';
 import { printPrescription as renderAndPrintPrescription } from '@/lib/printPrescription';
+import type { Clinic } from '@/types/clinic';
 
 export default function PrintQueue() {
-  const { clinic } = useOutletContext<{ clinic: any }>();
+  const { clinic } = useOutletContext<{ clinic: Clinic }>();
   const queryClient = useQueryClient();
+  const [missedUpdates, setMissedUpdates] = useState(false);
+  const missedUpdatesRef = useRef(false);
+
+  // Dynamic page title
+  useEffect(() => {
+    document.title = `Print Queue${clinic?.name ? ` — ${clinic.name}` : ''} | Prescripto`;
+    return () => { document.title = 'Prescripto'; };
+  }, [clinic?.name]);
+
+  // Show banner when tab becomes visible after missed updates
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!document.hidden && missedUpdatesRef.current) {
+        setMissedUpdates(true);
+        missedUpdatesRef.current = false;
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
 
   // 1. Fetch Active Print Requests via React Query
   const { data: prescriptions = [], isLoading, refetch: refetchPrescriptions } = useQuery({
@@ -55,8 +76,11 @@ export default function PrintQueue() {
         debounceTimer = setTimeout(() => {
           if (!document.hidden) {
             queryClient.invalidateQueries({ queryKey: ['prescriptionsToPrint', clinic.id] });
+            setMissedUpdates(false);
+          } else {
+            missedUpdatesRef.current = true;
           }
-        }, 500); // Super fast 500ms sync for prints
+        }, 500);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -98,6 +122,31 @@ export default function PrintQueue() {
         description="Monitor and process prescription print requests in real-time for efficient patient service."
         imageSrc={printQueueBanner}
       />
+
+      {/* Missed Updates Banner */}
+      <AnimatePresence>
+        {missedUpdates && (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            className="mx-4 md:mx-8 mt-3 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-700 dark:text-amber-400"
+          >
+            <div className="flex items-center gap-2 text-sm font-bold">
+              <BellRing className="w-4 h-4 animate-bounce" />
+              New prescriptions available while you were away!
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { refetchPrescriptions(); setMissedUpdates(false); }}
+              className="h-7 text-xs font-bold border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-xl"
+            >
+              Refresh Now
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Hidden print container */}
       {printData && (

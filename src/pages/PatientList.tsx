@@ -22,8 +22,10 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 
+import type { Clinic } from '@/types/clinic';
+
 export default function PatientList() {
-  const { clinic } = useOutletContext<{ clinic: any }>();
+  const { clinic } = useOutletContext<{ clinic: Clinic }>();
   const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
@@ -61,6 +63,12 @@ export default function PatientList() {
     setTotalCount(count || 0);
   };
 
+  // Dynamic page title
+  useEffect(() => {
+    document.title = `Patients${clinic?.name ? ` — ${clinic.name}` : ''} | Prescripto`;
+    return () => { document.title = 'Prescripto'; };
+  }, [clinic?.name]);
+
   useEffect(() => { 
     setPage(1); // Reset page on search or clinic change
     fetchPatients(); 
@@ -69,6 +77,28 @@ export default function PatientList() {
   useEffect(() => {
     fetchPatients();
   }, [page, clinic?.id]);
+
+  // Realtime subscription — auto-refresh when patients are added/updated
+  useEffect(() => {
+    if (!clinic?.id) return;
+    let debounceTimer: ReturnType<typeof setTimeout>;
+    const channel = supabase
+      .channel(`patientlist-realtime-${clinic.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'patients',
+        filter: `clinic_id=eq.${clinic.id}`
+      }, () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => fetchPatients(), 600);
+      })
+      .subscribe();
+    return () => {
+      clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [clinic?.id]);
 
   const viewPatient = async (p: any) => {
     setSelectedPatient(p);

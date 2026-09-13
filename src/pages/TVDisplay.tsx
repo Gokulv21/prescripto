@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -75,8 +75,15 @@ export default function TVDisplay() {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [channelStatus, setChannelStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
   const prevActiveTokenRef = useRef<number | null>(null);
   const startupPingPlayedRef = useRef(false);
+
+  // Dynamic page title
+  useEffect(() => {
+    document.title = 'Waiting Room Display | Prescripto';
+    return () => { document.title = 'Prescripto'; };
+  }, []);
 
   // Auto-unlock AudioContext + play startup ping to confirm audio is active
   useEffect(() => {
@@ -120,7 +127,7 @@ export default function TVDisplay() {
   }, []);
 
   // Fetch Clinic Info
-  const { data: clinic, isLoading: isLoadingClinic } = useQuery({
+  const { data: clinic, isLoading: isLoadingClinic, refetch: refetchClinic } = useQuery({
     queryKey: ['tvClinic', slug],
     queryFn: async () => {
       if (!slug) return null;
@@ -133,6 +140,29 @@ export default function TVDisplay() {
       return data;
     }
   });
+
+  // Fetch Clinic Branding Photo from Supabase Storage
+  const [clinicPhoto, setClinicPhoto] = useState<string | null>(null);
+
+  const fetchClinicPhoto = useCallback(async () => {
+    if (!clinic?.id) return;
+    try {
+      const { data: list } = await supabase.storage.from('avatars').list(clinic.id);
+      const brandingFile = list?.find(f => f.name.startsWith('clinic-branding'));
+      if (brandingFile) {
+        const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(`${clinic.id}/${brandingFile.name}`);
+        setClinicPhoto(`${publicUrl}?t=${new Date(brandingFile.updated_at || Date.now()).getTime()}`);
+      } else {
+        setClinicPhoto(null);
+      }
+    } catch (e) {
+      console.warn('Failed to load clinic branding photo:', e);
+    }
+  }, [clinic?.id]);
+
+  useEffect(() => {
+    fetchClinicPhoto();
+  }, [fetchClinicPhoto]);
 
   // Fetch Active & Waiting Queue
   const { data: queue = [], refetch: refetchQueue } = useQuery({
@@ -153,7 +183,7 @@ export default function TVDisplay() {
     }
   });
 
-  // Realtime subscription for visits
+  // Realtime subscription for visits and clinic branding
   useEffect(() => {
     if (!clinic?.id) return;
 
@@ -171,12 +201,29 @@ export default function TVDisplay() {
           refetchQueue();
         }
       )
-      .subscribe();
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'clinics',
+          filter: `id=eq.${clinic.id}`
+        },
+        () => {
+          refetchClinic();
+          fetchClinicPhoto();
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') setChannelStatus('connected');
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') setChannelStatus('error');
+        else setChannelStatus('connecting');
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [clinic?.id, refetchQueue]);
+  }, [clinic?.id, refetchQueue, refetchClinic]);
 
   const activeVisit = queue.find((v: any) => v.status === 'in_consultation');
   const waitingVisits = queue.filter((v: any) => v.status === 'waiting');
@@ -229,10 +276,19 @@ export default function TVDisplay() {
       {/* 1. Responsive Header Bar */}
       <header className="h-14 sm:h-16 md:h-20 border-b border-slate-800/80 px-3 sm:px-5 md:px-8 flex items-center justify-between bg-slate-900/80 backdrop-blur-2xl shrink-0 gap-2 overflow-hidden">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 overflow-hidden">
-          {clinic.photo_url ? (
+          {/* Connection status indicator */}
+          {channelStatus !== 'connected' && (
+            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider shrink-0 ${
+              channelStatus === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${channelStatus === 'error' ? 'bg-red-400' : 'bg-amber-400 animate-pulse'}`} />
+              {channelStatus === 'error' ? 'Disconnected' : 'Reconnecting…'}
+            </div>
+          )}
+          {(clinicPhoto || clinic.photo_url) ? (
             <div className="w-9 h-9 sm:w-11 sm:h-11 md:w-14 md:h-14 rounded-xl md:rounded-2xl overflow-hidden border-2 border-white/20 shadow-lg shadow-cyan-500/20 bg-slate-800 shrink-0">
               <img
-                src={clinic.photo_url}
+                src={clinicPhoto || clinic.photo_url}
                 alt={clinic.name}
                 className="w-full h-full object-cover"
               />

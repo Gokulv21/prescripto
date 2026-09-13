@@ -9,7 +9,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   roles: AppRole[];
-  profile: { id?: string; full_name: string; clinic_id?: string; role?: string } | null;
+  profile: { id?: string; full_name: string; clinic_id?: string; role?: string; is_superadmin?: boolean; avatar_url?: string } | null;
   loading: boolean;
   error: string | null;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
@@ -34,8 +34,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [roles, setRoles] = useState<AppRole[]>(() => getSafeStorageItem<AppRole[]>('app_roles', []));
-  const [profile, setProfile] = useState<{ id?: string; full_name: string; clinic_id?: string; role?: string } | null>(() => 
-    getSafeStorageItem<{ id?: string; full_name: string; clinic_id?: string; role?: string } | null>('user_profile', null)
+  const [profile, setProfile] = useState<{ id?: string; full_name: string; clinic_id?: string; role?: string; is_superadmin?: boolean; avatar_url?: string } | null>(() => 
+    getSafeStorageItem<{ id?: string; full_name: string; clinic_id?: string; role?: string; is_superadmin?: boolean; avatar_url?: string } | null>('user_profile', null)
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const fetchPromise = Promise.all([
         supabase.from('user_roles').select('role').eq('user_id', userId),
-        supabase.from('profiles').select('id, full_name, is_superadmin, clinic_id, role').eq('user_id', userId).maybeSingle(),
+        supabase.from('profiles').select('id, full_name, is_superadmin, clinic_id, role, avatar_url').eq('user_id', userId).maybeSingle(),
       ]);
 
       const raceResult = await Promise.race([fetchPromise, timeoutPromise]);

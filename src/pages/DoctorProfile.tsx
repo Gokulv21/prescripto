@@ -37,6 +37,7 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from '@/lib/utils';
+import type { Clinic } from '@/types/clinic';
 
 type ProfileData = {
     full_name: string;
@@ -59,14 +60,52 @@ const AVATAR_OPTIONS = [
     { name: 'Dr. Female (Purple)', url: '/prescripto/avatars/doctor_female_2.png' },
 ];
 
-const getAvatarUrl = (url?: string) => {
-    if (!url) return AVATAR_OPTIONS[0].url;
-    // If it's a full URL (Supabase or external)
-    if (url.startsWith('http')) return url;
-    // If it's a local relative path starting with /avatars/
-    if (url.startsWith('/avatars/')) return `/prescripto${url}`;
-    // Fallback
-    return url;
+const getAvatarUrl = (url?: string | null) => {
+    if (!url || typeof url !== 'string' || url.trim() === '') return AVATAR_OPTIONS[2].url;
+    const clean = url.trim();
+    if (clean.startsWith('data:') || clean.startsWith('http://') || clean.startsWith('https://')) return clean;
+    if (clean.startsWith('/prescripto/')) return clean;
+    if (clean.startsWith('/avatars/')) return `/prescripto${clean}`;
+    return `/prescripto/${clean.replace(/^\//, '')}`;
+};
+
+// Converts image file to a compressed binary JPEG Blob for direct Supabase Storage upload
+const fileToOptimizedBlob = (file: File, maxWidth = 1200, quality = 0.85): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                let width = img.width;
+                let height = img.height;
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    resolve(file);
+                    return;
+                }
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob(
+                    (blob) => {
+                        if (blob) resolve(blob);
+                        else resolve(file);
+                    },
+                    'image/jpeg',
+                    quality
+                );
+            };
+            img.onerror = () => resolve(file);
+            img.src = e.target?.result as string;
+        };
+        reader.onerror = () => reject(new Error('Failed to read image file'));
+        reader.readAsDataURL(file);
+    });
 };
 
 const COMMON_FREQUENCIES = [
@@ -75,12 +114,27 @@ const COMMON_FREQUENCIES = [
 ];
 
 export default function DoctorProfile() {
-    const { user, roles, hasRole } = useAuth();
+    const { user, roles, hasRole, refresh: refreshAuth } = useAuth();
     const { theme, setTheme, accent, setAccent } = useTheme();
     const { slug } = useParams();
-    const { clinic } = useOutletContext<{ clinic: any }>();
+    const { clinic } = useOutletContext<{ clinic: Clinic }>();
     const navigate = useNavigate();
-    const isClinicOwner = Boolean(clinic?.id && clinic?.owner_id === user?.id);
+    const isClinicOwner = Boolean(
+        clinic?.id && (
+            clinic?.owner_id === user?.id ||
+            hasRole('owner') ||
+            roles?.includes('owner') ||
+            hasRole('superadmin') ||
+            roles?.includes('superadmin') ||
+            profile?.is_superadmin
+        )
+    );
+
+    // Dynamic page title
+    useEffect(() => {
+        document.title = `Profile${clinic?.name ? ` — ${clinic.name}` : ''} | Prescripto`;
+        return () => { document.title = 'Prescripto'; };
+    }, [clinic?.name]);
     const [profile, setProfile] = useState<ProfileData | null>(null);
     const [ownerProfile, setOwnerProfile] = useState<any>(null);
     const [activeTab, setActiveTab] = useState(() => {
@@ -133,24 +187,50 @@ export default function DoctorProfile() {
                 });
             }
 
-            // Fetch Clinic branding (prioritize clinics table, fallback to owner profile)
+            // Fetch Clinic branding from Supabase Storage avatars bucket & profile metadata
+            let clinicPhotoUrl = '';
+            if (profData?.bio) {
+                try {
+                    const parsed = JSON.parse(profData.bio);
+                    if (parsed?.clinic_photo) clinicPhotoUrl = parsed.clinic_photo;
+                } catch (e) {}
+            }
+
             if (clinic?.id) {
+                try {
+                    const { data: list } = await supabase.storage.from('avatars').list(clinic.id);
+                    const brandingFile = list?.find(f => f.name.startsWith('clinic-branding'));
+                    if (brandingFile) {
+                        const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(`${clinic.id}/${brandingFile.name}`);
+                        clinicPhotoUrl = `${publicUrl}?t=${new Date(brandingFile.updated_at || Date.now()).getTime()}`;
+                    }
+                } catch (storageErr) {
+                    console.warn('Avatars storage check warning:', storageErr);
+                }
+
                 const { data: clinicData } = await supabase
                     .from('clinics')
-                    .select('name, address, phone, owner_id, photo_url')
+                    .select('name, address, phone, owner_id')
                     .eq('id', clinic.id)
                     .single();
                 
                 if (clinicData) {
                     // Update profile state with clinic specific data if needed
-                    // ONLY the clinic's true owner can edit this specific clinic's branding
-                    if (clinicData.owner_id === user.id) {
+                    const isOwnerUser = Boolean(
+                        clinicData.owner_id === user.id ||
+                        hasRole('owner') ||
+                        roles?.includes('owner') ||
+                        hasRole('superadmin') ||
+                        roles?.includes('superadmin') ||
+                        profData?.is_superadmin
+                    );
+                    if (isOwnerUser) {
                         setProfile(prev => ({
                             ...prev!,
                             clinic_name: clinicData.name,
                             clinic_address: clinicData.address || '',
                             clinic_phone: clinicData.phone || '',
-                            clinic_photo: clinicData.photo_url || prev?.clinic_photo || ''
+                            clinic_photo: clinicPhotoUrl || prev?.clinic_photo || ''
                         }));
                     } else {
                         // For non-owners (including superadmin), show clinic branding in read-only
@@ -158,7 +238,7 @@ export default function DoctorProfile() {
                             clinic_name: clinicData.name,
                             clinic_address: clinicData.address,
                             clinic_phone: clinicData.phone,
-                            clinic_photo: clinicData.photo_url
+                            clinic_photo: clinicPhotoUrl
                         });
                     }
                 }
@@ -274,6 +354,7 @@ export default function DoctorProfile() {
                 return;
             }
 
+            // Update profiles table (only columns that actually exist in DB)
             const { error } = await supabase
                 .from('profiles')
                 .update({
@@ -283,7 +364,6 @@ export default function DoctorProfile() {
                     clinic_name: sData.clinic_name,
                     clinic_address: sData.clinic_address,
                     clinic_phone: sData.clinic_phone,
-                    clinic_photo: profile.clinic_photo,
                     signature_data: profile.signature_data,
                     // @ts-ignore
                     avatar_url: profile.avatar_url,
@@ -293,28 +373,26 @@ export default function DoctorProfile() {
 
             if (error) throw error;
 
-            // 2. Update Clinic Branding (ONLY if true owner of this clinic)
-            if (isClinicOwner) {
+            // 2. Update Clinic Branding (ONLY if true owner of this clinic and only existing columns)
+            if (isClinicOwner && clinic?.id) {
                 const { error: clinicError } = await supabase
                     .from('clinics')
                     .update({
                         name: sData.clinic_name,
                         address: sData.clinic_address,
-                        phone: sData.clinic_phone,
-                        photo_url: profile.clinic_photo || null
+                        phone: sData.clinic_phone
                     })
-                    .eq('id', clinic?.id);
-                if (clinicError) throw clinicError;
+                    .eq('id', clinic.id);
+                if (clinicError) {
+                    console.warn('Clinic info update warning:', clinicError);
+                }
             }
 
-            toast.success('Profile and settings updated');
-            
-            // 3. Navigate to Consultation Page as requested
-            setTimeout(() => {
-                navigate(slug ? `/${slug}/consultation` : '/consultation');
-            }, 1000);
+            toast.success('Profile and settings updated successfully');
+            await refreshAuth().catch(() => {});
         } catch (err: any) {
-            toast.error(err.message);
+            console.error(err);
+            toast.error(err.message || 'Failed to update profile');
         } finally {
             setSaving(false);
         }
@@ -326,57 +404,60 @@ export default function DoctorProfile() {
             return;
         }
         const file = e.target.files?.[0];
-        if (!file || !user?.id) return;
+        if (!file || !user?.id || !clinic?.id) return;
 
         if (!file.type.startsWith('image/')) {
             toast.error('Please upload an image file');
             return;
         }
-        if (file.size > 5 * 1024 * 1024) {
-            toast.error('Image size must be less than 5MB');
+        if (file.size > 10 * 1024 * 1024) {
+            toast.error('Image size must be less than 10MB');
             return;
         }
 
         setClinicUploading(true);
         try {
-            const fileExt = file.name.split('.').pop();
-            const fileName = `clinic-${clinic?.id || user.id}-${Date.now()}.${fileExt}`;
-            const filePath = `${fileName}`;
+            // 1. Client-side compress to clean JPEG Blob (< 500KB, valid MIME)
+            const compressedBlob = await fileToOptimizedBlob(file, 1200, 0.85);
 
+            // 2. Upload directly to Supabase Storage bucket 'avatars' with clinic ID prefix for RLS compliance
+            const filePath = `${clinic.id}/clinic-branding.jpg`;
             const { error: uploadError } = await supabase.storage
                 .from('avatars')
-                .upload(filePath, file);
+                .upload(filePath, compressedBlob, {
+                    contentType: 'image/jpeg',
+                    upsert: true
+                });
 
-            if (uploadError) {
-                if (uploadError.message.includes('bucket not found')) {
-                    throw new Error('Please create a storage bucket named "avatars" in your Supabase dashboard.');
-                }
-                throw uploadError;
-            }
+            if (uploadError) throw uploadError;
 
+            // 3. Obtain public URL from Supabase Storage
             const { data: { publicUrl } } = supabase.storage
                 .from('avatars')
                 .getPublicUrl(filePath);
 
-            if (clinic?.id) {
-                await supabase
-                    .from('clinics')
-                    .update({ photo_url: publicUrl })
-                    .eq('id', clinic.id);
+            const finalUrl = `${publicUrl}?t=${Date.now()}`;
+
+            // 4. Save metadata reference in profiles.bio as clean JSON
+            try {
+                const meta = { clinic_photo: finalUrl };
+                await supabase.from('profiles').update({ bio: JSON.stringify(meta) }).eq('user_id', user.id);
+            } catch (bioErr) {
+                console.warn('Bio update warning:', bioErr);
             }
 
-            await supabase
-                .from('profiles')
-                .update({ clinic_photo: publicUrl })
-                .eq('user_id', user.id);
+            // 5. Update local state so it displays immediately
+            setProfile(prev => prev ? { ...prev, clinic_photo: finalUrl } : null);
+            setOwnerProfile(prev => prev ? { ...prev, clinic_photo: finalUrl } : null);
 
-            setProfile(prev => prev ? { ...prev, clinic_photo: publicUrl } : null);
-            toast.success('Clinic photo uploaded successfully');
+            toast.success('Clinic photo stored in Supabase Storage successfully');
+            refreshAuth().catch(() => {});
         } catch (err: any) {
             console.error(err);
             toast.error(err.message || 'Failed to upload clinic photo');
         } finally {
             setClinicUploading(false);
+            if (clinicFileInputRef.current) clinicFileInputRef.current.value = '';
         }
     };
 
@@ -385,28 +466,24 @@ export default function DoctorProfile() {
             toast.error('Only the Clinic Owner can delete the clinic photo.');
             return;
         }
-        const currentPhoto = profile?.clinic_photo;
-        if (!currentPhoto) return;
+        if (!clinic?.id) return;
 
         const confirmDelete = window.confirm('Are you sure you want to delete the clinic photo?');
         if (!confirmDelete) return;
 
         setClinicUploading(true);
         try {
-            if (currentPhoto.includes('/storage/v1/object/public/avatars/')) {
-                const urlParts = currentPhoto.split('/');
-                const fileName = urlParts[urlParts.length - 1].split('?')[0];
-                await supabase.storage.from('avatars').remove([fileName]);
-            }
+            // 1. Remove from Supabase Storage avatars bucket
+            await supabase.storage.from('avatars').remove([`${clinic.id}/clinic-branding.jpg`]);
 
-            if (clinic?.id) {
-                await supabase.from('clinics').update({ photo_url: null }).eq('id', clinic.id);
-            }
+            // 2. Clear metadata in profiles.bio
+            await supabase.from('profiles').update({ bio: null }).eq('user_id', user?.id);
 
-            await supabase.from('profiles').update({ clinic_photo: null }).eq('user_id', user?.id);
-
+            // 3. Update local state
             setProfile(prev => prev ? { ...prev, clinic_photo: undefined } : null);
+            setOwnerProfile(prev => prev ? { ...prev, clinic_photo: null } : null);
             toast.success('Clinic photo removed');
+            refreshAuth().catch(() => {});
         } catch (err: any) {
             console.error(err);
             toast.error(err.message || 'Failed to delete clinic photo');
@@ -419,87 +496,70 @@ export default function DoctorProfile() {
         const file = e.target.files?.[0];
         if (!file || !user?.id) return;
 
-        // Validate file type and size (5MB max)
         if (!file.type.startsWith('image/')) {
             toast.error('Please upload an image file');
-            return;
-        }
-        if (file.size > 5 * 1024 * 1024) {
-            toast.error('Image size must be less than 5MB');
             return;
         }
 
         setUploading(true);
         try {
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${user.id}-${Math.random()}.${fileExt}`;
-            const filePath = `${fileName}`;
+            // 1. Compress image to clean JPEG Blob
+            const compressedBlob = await fileToOptimizedBlob(file, 600, 0.85);
 
-            // Upload to Supabase Storage (Assumes 'avatars' bucket exists)
+            // 2. Supabase Storage upload inside clinic folder for strict RLS compliance
+            const clinicFolder = clinic?.id || profile?.clinic_id;
+            const filePath = `${clinicFolder}/avatar-${user.id}.jpg`;
+
             const { error: uploadError } = await supabase.storage
                 .from('avatars')
-                .upload(filePath, file);
+                .upload(filePath, compressedBlob, {
+                    contentType: 'image/jpeg',
+                    upsert: true
+                });
 
-            if (uploadError) {
-                // If bucket doesn't exist, this might fail. Let's provide a helpful error.
-                if (uploadError.message.includes('bucket not found')) {
-                    throw new Error('Please create a storage bucket named "avatars" in your Supabase dashboard.');
-                }
-                throw uploadError;
-            }
+            if (uploadError) throw uploadError;
 
-            // Get Public URL
+            // 3. Get Public URL
             const { data: { publicUrl } } = supabase.storage
                 .from('avatars')
                 .getPublicUrl(filePath);
 
-            // Update Profile
+            const finalUrl = `${publicUrl}?t=${Date.now()}`;
+
+            // 4. Update Profile in database (avatar_url exists on profiles)
             const { error: updateError } = await supabase
                 .from('profiles')
-                .update({ avatar_url: publicUrl })
+                .update({ avatar_url: finalUrl })
                 .eq('user_id', user.id);
 
             if (updateError) throw updateError;
 
-            setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : null);
-            toast.success('Profile photo updated');
+            setProfile(prev => prev ? { ...prev, avatar_url: finalUrl } : null);
+            toast.success('Profile photo updated in Supabase Storage successfully');
+            refreshAuth().catch(() => {});
         } catch (err: any) {
             console.error(err);
             toast.error(err.message || 'Failed to upload photo');
         } finally {
             setUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
     const handleDeletePhoto = async () => {
         if (!profile?.avatar_url || !user?.id) return;
 
-        // Only delete if it's a custom uploaded photo (contains Supabase storage path)
-        const isCustomPhoto = profile.avatar_url.includes('/storage/v1/object/public/avatars/');
-
-        if (!isCustomPhoto) {
-            // If it's just a default avatar, just reset it
-            setProfile(prev => prev ? { ...prev, avatar_url: undefined } : null);
-            return;
-        }
-
         const confirmDelete = window.confirm('Are you sure you want to delete your profile photo?');
         if (!confirmDelete) return;
 
         setUploading(true);
         try {
-            // Extract filename from URL
-            const urlParts = profile.avatar_url.split('/');
-            const fileName = urlParts[urlParts.length - 1].split('?')[0];
+            const clinicFolder = clinic?.id || profile?.clinic_id;
+            if (clinicFolder) {
+                await supabase.storage.from('avatars').remove([`${clinicFolder}/avatar-${user.id}.jpg`]);
+            }
 
-            // 1. Delete from Supabase Storage
-            const { error: storageError } = await supabase.storage
-                .from('avatars')
-                .remove([fileName]);
-
-            if (storageError) console.error('Storage deletion error:', storageError);
-
-            // 2. Update Profile to null/default
+            // Update Profile to null
             const { error: updateError } = await supabase
                 .from('profiles')
                 .update({ avatar_url: null })
@@ -509,6 +569,7 @@ export default function DoctorProfile() {
 
             setProfile(prev => prev ? { ...prev, avatar_url: undefined } : null);
             toast.success('Profile photo removed');
+            refreshAuth().catch(() => {});
         } catch (err: any) {
             console.error(err);
             toast.error(err.message || 'Failed to delete photo');
@@ -606,60 +667,62 @@ export default function DoctorProfile() {
         <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-10 animate-in fade-in duration-700 font-jakarta-sans pb-24">
 
             {/* Header Section */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div className="flex items-center gap-6">
-                    <div className="relative group perspective-1000">
-                        <div className="w-28 h-36 md:w-32 md:h-44 rounded-[2rem] bg-gradient-to-b from-blue-500 to-blue-700 shadow-2xl overflow-hidden flex items-center justify-center transform transition-all duration-500 group-hover:rotate-y-12 group-hover:scale-105 border-4 border-white dark:border-slate-800">
+            <div className="flex flex-col lg:flex-row items-center lg:items-start justify-between gap-6 p-5 sm:p-8 rounded-3xl sm:rounded-[2.5rem] bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 sm:gap-6 text-center sm:text-left w-full lg:w-auto">
+                    {/* Profile Photo Card */}
+                    <div className="relative group perspective-1000 shrink-0">
+                        <div className="w-28 h-36 sm:w-36 sm:h-44 rounded-2xl sm:rounded-[2rem] bg-slate-100 dark:bg-slate-800 shadow-lg overflow-hidden flex items-center justify-center transform transition-all duration-500 group-hover:scale-105 border-4 border-white dark:border-slate-800 relative">
                             <img
                                 src={getAvatarUrl(profile?.avatar_url)}
                                 className="w-full h-full object-cover"
                                 alt="Profile"
                                 onError={(e) => {
-                                    e.currentTarget.src = AVATAR_OPTIONS[0].url;
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = AVATAR_OPTIONS[2].url;
                                 }}
                             />
-                            <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/20 to-transparent" />
+                            <div className="absolute inset-x-0 bottom-0 h-1/4 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
 
                             {/* Upload Overlay */}
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-3 cursor-pointer p-2 backdrop-blur-sm">
-                                <div className="grid grid-cols-2 gap-2 w-full px-4">
+                            <div className="absolute inset-0 z-20 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-2 cursor-pointer p-2 backdrop-blur-xs">
+                                <div className="grid grid-cols-2 gap-1.5 w-full px-2">
                                     <button
+                                        type="button"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             setImagePreviewUrl(getAvatarUrl(profile?.avatar_url));
                                         }}
-                                        className="flex flex-col items-center gap-1 hover:scale-110 transition-transform bg-white/10 hover:bg-white/20 p-2 rounded-xl"
+                                        className="flex flex-col items-center gap-1 hover:scale-105 transition-transform bg-white/20 hover:bg-white/30 p-2 rounded-xl text-white"
                                     >
-                                        <Eye className="w-6 h-6" />
-                                        <span className="text-[9px] font-black uppercase tracking-widest">Open</span>
+                                        <Eye className="w-4 h-4" />
+                                        <span className="text-[9px] font-black uppercase tracking-wider">Open</span>
                                     </button>
 
                                     <button
+                                        type="button"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             fileInputRef.current?.click();
                                         }}
                                         disabled={uploading}
-                                        className="flex flex-col items-center gap-1 hover:scale-110 transition-transform bg-white/10 hover:bg-white/20 p-2 rounded-xl"
+                                        className="flex flex-col items-center gap-1 hover:scale-105 transition-transform bg-white/20 hover:bg-white/30 p-2 rounded-xl text-white"
                                     >
-                                        {uploading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Camera className="w-6 h-6" />}
-                                        <span className="text-[9px] font-black uppercase tracking-widest text-center">Browse</span>
+                                        {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                                        <span className="text-[9px] font-black uppercase tracking-wider text-center">Browse</span>
                                     </button>
                                 </div>
 
-                                {profile?.avatar_url?.includes('http') && (
+                                {profile?.avatar_url?.startsWith('http') && (
                                     <button
+                                        type="button"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             handleDeletePhoto();
                                         }}
                                         disabled={uploading}
-                                        className="flex flex-col items-center gap-1 text-red-100 hover:text-white bg-red-500/20 hover:bg-red-500/40 p-2 rounded-xl w-full mx-4 transition-all"
+                                        className="flex items-center justify-center gap-1 text-red-200 hover:text-white bg-red-500/40 hover:bg-red-500/60 py-1.5 px-2 rounded-xl w-full mx-2 text-[9px] font-black uppercase tracking-wider transition-all"
                                     >
-                                        <div className="flex items-center gap-2">
-                                            <Trash2 className="w-4 h-4" />
-                                            <span className="text-[9px] font-black uppercase tracking-widest">Remove Photo</span>
-                                        </div>
+                                        <Trash2 className="w-3.5 h-3.5" /> Remove
                                     </button>
                                 )}
                             </div>
@@ -671,37 +734,45 @@ export default function DoctorProfile() {
                             className="hidden"
                             accept="image/*"
                         />
-                        <div className="absolute -bottom-3 -right-3 bg-emerald-500 text-white p-2 rounded-2xl border-4 border-white dark:border-slate-800 shadow-xl">
-                            <CheckCircle2 className="w-5 h-5" />
+                        <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-white p-1.5 sm:p-2 rounded-2xl border-4 border-white dark:border-slate-800 shadow-xl z-20">
+                            <CheckCircle2 className="w-4 h-4" />
                         </div>
                     </div>
 
-                    <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <h1 className="text-3xl md:text-5xl font-black tracking-tighter text-slate-900 dark:text-slate-50 group">
-                                {profile?.full_name}
+                    <div className="space-y-2 max-w-xl">
+                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-slate-900 dark:text-slate-50">
+                                {profile?.full_name || 'Dr. Doctor'}
                             </h1>
                             {roles.map(role => (
-                                <span key={role} className="bg-slate-900 dark:bg-slate-50 dark:text-slate-900 text-white text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest">
+                                <span key={role} className="bg-slate-900 dark:bg-slate-50 dark:text-slate-900 text-white text-[10px] px-3 py-0.5 rounded-full font-black uppercase tracking-widest">
                                     {role}
                                 </span>
                             ))}
                         </div>
-                        <p className="text-blue-600 font-bold text-lg md:text-xl tracking-tight">
+                        <p className="text-primary font-bold text-sm sm:text-base tracking-tight">
                             {profile?.qualifications || "Update your credentials"}
                         </p>
-                        <div className="flex items-center gap-4 text-slate-400 text-sm font-medium pt-2">
-                            <div className="flex items-center gap-1.5"><Mail className="w-4 h-4" /> {user?.email}</div>
-                            {profile?.registration_id && <div className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> Reg: {profile.registration_id}</div>}
+                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-slate-500 dark:text-slate-400 text-xs font-medium pt-1">
+                            <div className="flex items-center gap-1.5 bg-slate-100/80 dark:bg-slate-800/80 px-2.5 py-1 rounded-xl">
+                                <Mail className="w-3.5 h-3.5 text-primary" />
+                                <span className="truncate max-w-[190px]">{user?.email}</span>
+                            </div>
+                            {profile?.registration_id && (
+                                <div className="flex items-center gap-1.5 bg-slate-100/80 dark:bg-slate-800/80 px-2.5 py-1 rounded-xl font-bold text-slate-700 dark:text-slate-300">
+                                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                                    <span>Reg: {profile.registration_id}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="grid grid-cols-2 sm:flex sm:items-center gap-2.5 w-full lg:w-auto justify-center lg:justify-end shrink-0 pt-2 lg:pt-0">
                     <Button
                         variant="outline"
                         size="sm"
-                        className="rounded-2xl border-slate-200 dark:border-slate-800 gap-2 font-bold h-11 px-6 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+                        className="rounded-2xl border-slate-200 dark:border-slate-800 gap-2 font-bold h-11 px-5 shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800"
                         onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                     >
                         {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -712,26 +783,26 @@ export default function DoctorProfile() {
                             fetchData();
                             toast.success('Medical records synchronized');
                         }}
-                        className="rounded-2xl bg-blue-600 hover:bg-blue-700 gap-2 font-bold h-11 px-6 shadow-lg shadow-blue-200 text-white border-none"
+                        className="rounded-2xl bg-blue-600 hover:bg-blue-700 gap-2 font-bold h-11 px-5 shadow-lg shadow-blue-500/20 text-white border-none"
                     >
                         <RefreshCw className="w-4 h-4" /> Sync Records
                     </Button>
                 </div>
             </div>
 
-            <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full space-y-8">
-                <TabsList className="bg-white/50 dark:bg-slate-900/50 backdrop-blur p-1.5 rounded-[2rem] border border-slate-200 dark:border-slate-800 w-full md:w-auto h-auto grid grid-cols-2 md:grid-cols-4 gap-2">
-                    <TabsTrigger value="overview" className="rounded-full px-8 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white dark:data-[state=active]:bg-slate-50 dark:data-[state=active]:text-slate-900 font-black text-xs uppercase tracking-widest gap-2">
-                        <LayoutDashboard className="w-4 h-4" /> Overview
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full space-y-6 sm:space-y-8">
+                <TabsList className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md p-1.5 rounded-2xl sm:rounded-full border border-slate-200/80 dark:border-slate-800/80 w-full sm:w-auto h-auto grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 shadow-xs">
+                    <TabsTrigger value="overview" className="rounded-xl sm:rounded-full px-3 sm:px-6 py-2 sm:py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white dark:data-[state=active]:bg-slate-100 dark:data-[state=active]:text-slate-900 font-extrabold text-[11px] sm:text-xs uppercase tracking-wider gap-1.5 shadow-2xs">
+                        <LayoutDashboard className="w-3.5 h-3.5" /> Overview
                     </TabsTrigger>
-                    <TabsTrigger value="analytics" className="rounded-full px-8 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white font-black text-xs uppercase tracking-widest gap-2">
-                        <BarChart3 className="w-4 h-4" /> Analytics
+                    <TabsTrigger value="analytics" className="rounded-xl sm:rounded-full px-3 sm:px-6 py-2 sm:py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white dark:data-[state=active]:bg-slate-100 dark:data-[state=active]:text-slate-900 font-extrabold text-[11px] sm:text-xs uppercase tracking-wider gap-1.5 shadow-2xs">
+                        <BarChart3 className="w-3.5 h-3.5" /> Analytics
                     </TabsTrigger>
-                    <TabsTrigger value="protocols" className="rounded-full px-8 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white font-black text-xs uppercase tracking-widest gap-2">
-                        <Stethoscope className="w-4 h-4" /> Protocols
+                    <TabsTrigger value="protocols" className="rounded-xl sm:rounded-full px-3 sm:px-6 py-2 sm:py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white dark:data-[state=active]:bg-slate-100 dark:data-[state=active]:text-slate-900 font-extrabold text-[11px] sm:text-xs uppercase tracking-wider gap-1.5 shadow-2xs">
+                        <Stethoscope className="w-3.5 h-3.5" /> Protocols
                     </TabsTrigger>
-                    <TabsTrigger value="settings" className="rounded-full px-8 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white font-black text-xs uppercase tracking-widest gap-2">
-                        <Settings className="w-4 h-4" /> Settings
+                    <TabsTrigger value="settings" className="rounded-xl sm:rounded-full px-3 sm:px-6 py-2 sm:py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white dark:data-[state=active]:bg-slate-100 dark:data-[state=active]:text-slate-900 font-extrabold text-[11px] sm:text-xs uppercase tracking-wider gap-1.5 shadow-2xs">
+                        <Settings className="w-3.5 h-3.5" /> Settings
                     </TabsTrigger>
                 </TabsList>
 
@@ -1111,62 +1182,68 @@ export default function DoctorProfile() {
                             </div>
                         </Card>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 items-start">
                             {/* Identity Card */}
-                            <Card className="border-slate-100 dark:border-slate-800 rounded-2xl p-6 space-y-6 bg-white dark:bg-slate-900 shadow-sm">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-3 bg-primary/10 rounded-2xl">
-                                        <User className="w-6 h-6 text-primary" />
+                            <Card className="border-slate-200/80 dark:border-slate-800/80 rounded-[2rem] p-6 sm:p-8 space-y-6 bg-white/80 dark:bg-slate-900/80 shadow-xs backdrop-blur-sm">
+                                <div className="flex items-center gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+                                    <div className="p-2.5 bg-primary/10 rounded-xl">
+                                        <User className="w-5 h-5 text-primary" />
                                     </div>
-                                    <h3 className="text-xl font-bold tracking-tight dark:text-slate-100">Professional Identity</h3>
+                                    <div>
+                                        <h3 className="text-xl font-black tracking-tight dark:text-slate-100">Professional Identity</h3>
+                                        <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Doctor credentials shown on Prescriptions & Reports</p>
+                                    </div>
                                 </div>
 
                                 <div className="space-y-4">
-                                    <div className="space-y-2">
+                                    <div className="space-y-1.5">
                                         <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Display Name</Label>
                                         <Input
                                             value={profile?.full_name}
                                             onChange={e => setProfile(p => ({ ...p!, full_name: e.target.value }))}
-                                            className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold focus:ring-primary"
+                                            className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold focus:ring-primary text-sm"
                                         />
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Primary Qualifications</Label>
+
+                                    <div className="space-y-4">
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Primary Qualifications</Label>
                                             <Input
                                                 value={profile?.qualifications}
                                                 onChange={e => setProfile(p => ({ ...p!, qualifications: e.target.value }))}
-                                                placeholder="MBBS, MD (Cardiology)"
-                                                className="h-12 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold"
+                                                placeholder="e.g. MBBS, MD (Cardiology), CCEBDM"
+                                                className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
                                             />
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Medical Registration ID</Label>
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Medical Registration ID</Label>
                                             <Input
                                                 value={profile?.registration_id}
                                                 onChange={e => setProfile(p => ({ ...p!, registration_id: e.target.value }))}
-                                                placeholder="Reg #12345"
-                                                className="h-12 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold"
+                                                placeholder="e.g. 152590"
+                                                className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
                                             />
                                         </div>
                                     </div>
-                                    <div className="space-y-4">
-                                        <Label className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Select Passport Vector Avatar</Label>
-                                        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-inner max-h-48 overflow-y-auto">
+
+                                    <div className="space-y-2 pt-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Select Passport Vector Avatar</Label>
+                                        <div className="grid grid-cols-4 gap-2.5 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
                                             {AVATAR_OPTIONS.map((opt) => (
                                                 <button
                                                     key={opt.url}
                                                     type="button"
                                                     onClick={() => setProfile(p => ({ ...p!, avatar_url: opt.url }))}
                                                     className={cn(
-                                                        "relative aspect-square rounded-xl overflow-hidden border-4 transition-all hover:scale-105",
-                                                        profile?.avatar_url === opt.url ? "border-blue-600 ring-4 ring-blue-100 dark:ring-blue-900/40" : "border-white dark:border-slate-700"
+                                                        "relative aspect-square rounded-xl overflow-hidden border-2 transition-all hover:scale-105 bg-white dark:bg-slate-800 shadow-xs",
+                                                        profile?.avatar_url === opt.url ? "border-primary ring-2 ring-primary/30 scale-105" : "border-slate-200 dark:border-slate-700 opacity-75 hover:opacity-100"
                                                     )}
+                                                    title={opt.name}
                                                 >
                                                     <img src={opt.url} className="w-full h-full object-cover" alt={opt.name} />
                                                     {profile?.avatar_url === opt.url && (
-                                                        <div className="absolute inset-0 bg-blue-600/10 flex items-center justify-center">
-                                                            <CheckCircle2 className="w-6 h-6 text-blue-600" />
+                                                        <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                                                            <CheckCircle2 className="w-5 h-5 text-primary drop-shadow-sm" />
                                                         </div>
                                                     )}
                                                 </button>
@@ -1176,64 +1253,64 @@ export default function DoctorProfile() {
                                 </div>
                             </Card>
 
-                            {/* Clinic Branding */}
-                            <Card className="border-slate-100 dark:border-slate-800 rounded-[2rem] p-8 space-y-8 bg-white dark:bg-slate-900 shadow-sm transition-all duration-300">
-                                <div className="flex items-center justify-between">
+                            {/* Clinic Branding Card */}
+                            <Card className="border-slate-200/80 dark:border-slate-800/80 rounded-[2rem] p-6 sm:p-8 space-y-6 bg-white/80 dark:bg-slate-900/80 shadow-xs backdrop-blur-sm">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
                                     <div className="flex items-center gap-3">
-                                        <div className="p-3 bg-emerald-50 dark:bg-emerald-900/40 rounded-2xl">
-                                            <Building2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                                        <div className="p-2.5 bg-emerald-50 dark:bg-emerald-900/40 rounded-xl">
+                                            <Building2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                                         </div>
                                         <div>
-                                            <h3 className="text-2xl font-black tracking-tight dark:text-slate-100">Clinic Branding</h3>
-                                            <p className="text-xs font-bold text-slate-400 dark:text-slate-500">Live details displayed across Prescriptions & TV Screen</p>
+                                            <h3 className="text-xl font-black tracking-tight dark:text-slate-100">Clinic Branding</h3>
+                                            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Displayed across Prescriptions & TV Screen</p>
                                         </div>
                                     </div>
                                     {isClinicOwner ? (
-                                        <Badge className="bg-emerald-50 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-[10px] uppercase font-black tracking-widest px-3 py-1 rounded-full">
-                                            Clinic Owner Control
+                                        <Badge className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-[9px] uppercase font-black tracking-wider px-2.5 py-0.5 rounded-full">
+                                            Owner Control
                                         </Badge>
                                     ) : (
-                                        <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 border-none text-[10px] uppercase tracking-widest text-slate-500 gap-1 px-3 py-1 rounded-full">
-                                            <Lock className="w-3 h-3" /> Managed by Clinic Owner (View Only)
+                                        <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 border-none text-[9px] uppercase tracking-wider text-slate-500 gap-1 px-2.5 py-0.5 rounded-full">
+                                            <Lock className="w-3 h-3" /> Managed by Owner
                                         </Badge>
                                     )}
                                 </div>
 
                                 {/* Clinic Photo Upload / Display Section */}
-                                <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center gap-5">
+                                <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center sm:items-start gap-4">
                                     <div className="relative group/clinicphoto shrink-0">
-                                        <div className="w-24 h-24 rounded-[1.75rem] bg-gradient-to-tr from-slate-200 to-slate-100 dark:from-slate-800 dark:to-slate-700 border-2 border-white dark:border-slate-600 shadow-md overflow-hidden flex items-center justify-center">
-                                            {(isClinicOwner ? profile?.clinic_photo : ownerProfile?.clinic_photo) ? (
+                                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex items-center justify-center">
+                                            {(profile?.clinic_photo || ownerProfile?.clinic_photo) ? (
                                                 <img
-                                                    src={isClinicOwner ? profile?.clinic_photo : ownerProfile?.clinic_photo}
+                                                    src={profile?.clinic_photo || ownerProfile?.clinic_photo}
                                                     alt="Clinic"
                                                     className="w-full h-full object-cover"
                                                 />
                                             ) : (
-                                                <Building2 className="w-10 h-10 text-slate-400 dark:text-slate-500" />
+                                                <Building2 className="w-8 h-8 text-slate-400 dark:text-slate-500" />
                                             )}
                                         </div>
 
                                         {isClinicOwner && (
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/clinicphoto:opacity-100 transition-opacity rounded-[1.75rem] flex items-center justify-center gap-2 p-1 backdrop-blur-xs">
+                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/clinicphoto:opacity-100 transition-opacity rounded-2xl flex items-center justify-center gap-1.5 p-1 backdrop-blur-xs">
                                                 <button
                                                     type="button"
                                                     onClick={() => clinicFileInputRef.current?.click()}
                                                     disabled={clinicUploading}
-                                                    className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-xl transition-transform hover:scale-110"
+                                                    className="p-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-transform hover:scale-110"
                                                     title="Upload Clinic Photo"
                                                 >
-                                                    {clinicUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                                                    {clinicUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
                                                 </button>
                                                 {profile?.clinic_photo && (
                                                     <button
                                                         type="button"
                                                         onClick={handleDeleteClinicPhoto}
                                                         disabled={clinicUploading}
-                                                        className="p-2 bg-red-500/40 hover:bg-red-500/60 text-white rounded-xl transition-transform hover:scale-110"
+                                                        className="p-1.5 bg-red-500/50 hover:bg-red-500/70 text-white rounded-lg transition-transform hover:scale-110"
                                                         title="Delete Clinic Photo"
                                                     >
-                                                        <Trash2 className="w-4 h-4" />
+                                                        <Trash2 className="w-3.5 h-3.5" />
                                                     </button>
                                                 )}
                                             </div>
@@ -1248,104 +1325,116 @@ export default function DoctorProfile() {
                                         accept="image/*"
                                     />
 
-                                    <div className="space-y-1 text-center sm:text-left flex-1">
+                                    <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
                                         <div className="flex items-center justify-center sm:justify-start gap-2">
                                             <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">Clinic Display Photo</h4>
-                                            {((isClinicOwner ? profile?.clinic_photo : ownerProfile?.clinic_photo)) && (
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">Active</span>
+                                            {(profile?.clinic_photo || ownerProfile?.clinic_photo) && (
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">Active</span>
                                             )}
                                         </div>
-                                        <p className="text-xs text-slate-400 dark:text-slate-500">
+                                        <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
                                             {isClinicOwner
-                                                ? "Upload high-res clinic exterior/reception photo to feature on Waiting Room TV screen & branding."
+                                                ? "Featured on Waiting Room TV screen & digital branding."
                                                 : "Displayed on the Waiting Room TV screen. Managed by Clinic Owner."}
                                         </p>
                                         {isClinicOwner && (
-                                            <div className="pt-2 flex items-center gap-2 justify-center sm:justify-start">
+                                            <div className="pt-2 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
                                                 <Button
                                                     type="button"
                                                     variant="outline"
                                                     size="sm"
                                                     disabled={clinicUploading}
                                                     onClick={() => clinicFileInputRef.current?.click()}
-                                                    className="rounded-xl h-8 px-3 text-xs font-bold gap-1.5 border-slate-200 dark:border-slate-700"
+                                                    className="rounded-xl h-8 px-3 text-xs font-bold gap-1.5 border-slate-200 dark:border-slate-700 shadow-2xs"
                                                 >
                                                     {clinicUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                                                     {profile?.clinic_photo ? 'Change Photo' : 'Upload Photo'}
                                                 </Button>
                                                 {profile?.clinic_photo && (
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => setImagePreviewUrl(profile?.clinic_photo || null)}
-                                                        className="rounded-xl h-8 px-2.5 text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
-                                                    >
-                                                        <Eye className="w-3.5 h-3.5 mr-1" /> View
-                                                    </Button>
+                                                    <>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => setImagePreviewUrl(profile?.clinic_photo || null)}
+                                                            className="rounded-xl h-8 px-2.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                                        >
+                                                            <Eye className="w-3.5 h-3.5 mr-1" /> View
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            disabled={clinicUploading}
+                                                            onClick={handleDeleteClinicPhoto}
+                                                            className="rounded-xl h-8 px-2.5 text-xs font-bold gap-1 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900/50"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" /> Remove
+                                                        </Button>
+                                                    </>
                                                 )}
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                <div className="space-y-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div className="space-y-2">
-                                            <Label className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Clinic Name</Label>
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Clinic Name</Label>
                                             <Input
                                                 value={(isClinicOwner ? profile?.clinic_name : ownerProfile?.clinic_name) || ''}
                                                 onChange={e => setProfile(p => ({ ...p!, clinic_name: e.target.value }))}
                                                 placeholder="e.g. GV Clinic"
-                                                className="h-12 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold"
+                                                className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
                                                 readOnly={!isClinicOwner}
                                             />
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Contact Number</Label>
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Contact Number</Label>
                                             <Input
                                                 value={(isClinicOwner ? profile?.clinic_phone : ownerProfile?.clinic_phone) || ''}
                                                 onChange={e => setProfile(p => ({ ...p!, clinic_phone: e.target.value }))}
                                                 placeholder="+91 00000 00000"
-                                                className="h-12 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold"
+                                                className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
                                                 readOnly={!isClinicOwner}
                                             />
                                         </div>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Full Address</Label>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Full Address</Label>
                                         <Input
                                             value={(isClinicOwner ? profile?.clinic_address : ownerProfile?.clinic_address) || ''}
                                             onChange={e => setProfile(p => ({ ...p!, clinic_address: e.target.value }))}
                                             placeholder="Complete street address with pincode"
-                                            className="h-12 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold"
+                                            className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
                                             readOnly={!isClinicOwner}
                                         />
                                     </div>
                                 </div>
                             </Card>
 
-                            {/* Digital Signature */}
-                            <Card className="border-slate-100 dark:border-slate-800 rounded-[2rem] p-8 space-y-6 bg-white dark:bg-slate-900 shadow-sm lg:col-span-2">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-3 bg-amber-50 dark:bg-amber-900/40 rounded-2xl">
-                                        <FileSignature className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                            {/* Digital Signature Card */}
+                            <Card className="border-slate-200/80 dark:border-slate-800/80 rounded-[2rem] p-6 sm:p-8 space-y-6 bg-white/80 dark:bg-slate-900/80 shadow-xs backdrop-blur-sm lg:col-span-2">
+                                <div className="flex items-center gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+                                    <div className="p-2.5 bg-amber-50 dark:bg-amber-900/40 rounded-xl">
+                                        <FileSignature className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                                     </div>
                                     <div>
-                                        <h3 className="text-2xl font-black tracking-tight dark:text-slate-100">Digital Signature</h3>
-                                        <p className="text-xs font-bold text-slate-400 dark:text-slate-500">Used for validating digital prescriptions</p>
+                                        <h3 className="text-xl font-black tracking-tight dark:text-slate-100">Digital Signature</h3>
+                                        <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Used for validating digital prescriptions</p>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 items-center">
                                     <SignaturePad
                                         initialSignature={profile?.signature_data}
                                         onSave={(data) => setProfile(p => ({ ...p!, signature_data: data }))}
                                     />
-                                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-3xl p-8 border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center min-h-[150px]">
+                                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-6 border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center min-h-[140px]">
                                         {profile?.signature_data ? (
-                                            <div className="space-y-4 text-center w-full">
+                                            <div className="space-y-3 text-center w-full">
                                                 <div className="relative group/sig mx-auto w-fit">
-                                                    <img src={profile.signature_data} className="max-h-24 mx-auto contrast-125 dark:invert" alt="Preview" />
+                                                    <img src={profile.signature_data} className="max-h-20 mx-auto contrast-125 dark:invert" alt="Preview" />
                                                     <div className="absolute -top-2 -right-2 opacity-0 group-hover/sig:opacity-100 transition-opacity">
                                                         <Button
                                                             variant="destructive"
@@ -1361,7 +1450,7 @@ export default function DoctorProfile() {
                                                         </Button>
                                                     </div>
                                                 </div>
-                                                <div className="flex flex-col items-center gap-1">
+                                                <div className="flex flex-col items-center gap-0.5">
                                                     <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Live Signature Active</p>
                                                     <button
                                                         type="button"
@@ -1373,8 +1462,8 @@ export default function DoctorProfile() {
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div className="text-center space-y-2 opacity-30">
-                                                <FileSignature className="w-12 h-12 mx-auto" />
+                                            <div className="text-center space-y-1.5 opacity-30">
+                                                <FileSignature className="w-10 h-10 mx-auto" />
                                                 <p className="text-xs font-black uppercase tracking-widest">No signature saved</p>
                                             </div>
                                         )}
@@ -1383,13 +1472,13 @@ export default function DoctorProfile() {
                             </Card>
                         </div>
 
-                        <div className="flex justify-end pt-6">
+                        <div className="flex items-center justify-end pt-4">
                             <Button
                                 type="submit"
                                 disabled={saving}
-                                className="bg-blue-600 hover:bg-blue-700 text-white font-black uppercase text-[12px] tracking-widest px-12 h-16 rounded-[2rem] shadow-2xl shadow-blue-200"
+                                className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white font-extrabold text-xs uppercase tracking-wider px-8 sm:px-12 h-12 sm:h-14 rounded-2xl shadow-xl shadow-primary/20 transition-all active:scale-95"
                             >
-                                {saving ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Save className="w-5 h-5 mr-2" />}
+                                {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                 Save Complete Profile
                             </Button>
                         </div>

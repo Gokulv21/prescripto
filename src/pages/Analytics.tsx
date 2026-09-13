@@ -26,14 +26,16 @@ import { ChartContainer, CustomTooltip, MetricCard } from '@/components/Analytic
 
 type TimeRange = 'today' | 'week' | 'month' | 'year';
 
+import type { Clinic } from '@/types/clinic';
+
 export default function Analytics() {
-  const { clinic } = useOutletContext<{ clinic: any }>();
+  const { clinic } = useOutletContext<{ clinic: Clinic }>();
   const [stats, setStats] = useState({
     todayPatients: 0,
     monthPatients: 0,
     totalPatients: 0,
     completionRate: 0,
-    avgConsultTime: '12m' // Mocked for now as we don't track start/end explicitly
+    avgConsultTime: '— min'
   });
   const [timeRange, setTimeRange] = useState<TimeRange>('week');
   const [volumeData, setVolumeData] = useState<any[]>([]);
@@ -48,6 +50,12 @@ export default function Analytics() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedDiagnoses, setSelectedDiagnoses] = useState<string[]>([]);
   const [allDiagnosesSnapshot, setAllDiagnosesSnapshot] = useState<{ name: string, value: number }[]>([]);
+
+  // Dynamic page title
+  useEffect(() => {
+    document.title = `Analytics${clinic?.name ? ` — ${clinic.name}` : ''} | Prescripto`;
+    return () => { document.title = 'Prescripto'; };
+  }, [clinic?.name]);
 
   useEffect(() => {
     if (clinic?.id) {
@@ -99,12 +107,38 @@ export default function Analytics() {
     const completedVisits = statusRes.data?.filter(v => v.status === 'completed').length || 0;
     const completionRate = totalVisits > 0 ? Math.round((completedVisits / totalVisits) * 100) : 0;
 
+    // Calculate avg consult time from completed visits (updated_at - created_at)
+    const { data: completedVisitsData } = await supabase
+      .from('visits')
+      .select('created_at, updated_at')
+      .eq('clinic_id', clinic?.id)
+      .eq('status', 'completed')
+      .gte('created_at', monthStartStr)
+      .limit(100);
+
+    let avgConsultTime = '— min';
+    if (completedVisitsData && completedVisitsData.length > 0) {
+      const validDurations = completedVisitsData
+        .map(v => {
+          const created = new Date(v.created_at).getTime();
+          const updated = new Date(v.updated_at).getTime();
+          const diffMin = (updated - created) / 60000;
+          return diffMin > 1 && diffMin < 120 ? diffMin : null; // Ignore outliers
+        })
+        .filter((d): d is number => d !== null);
+      if (validDurations.length > 0) {
+        const avg = Math.round(validDurations.reduce((a, b) => a + b, 0) / validDurations.length);
+        avgConsultTime = `${avg}m`;
+      }
+    }
+
     setStats(prev => ({
       ...prev,
       todayPatients: todayCount,
       monthPatients: monthCount,
       totalPatients: totalRes.count || 0,
-      completionRate
+      completionRate,
+      avgConsultTime
     }));
 
     setTrends({

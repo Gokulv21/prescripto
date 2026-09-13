@@ -27,13 +27,14 @@ import { useConsultation } from '@/hooks/useConsultation';
 import QueuePanel from '@/components/consultation/QueuePanel';
 import HistoryViewer from '@/components/consultation/HistoryViewer';
 import ConsultationForm from '@/components/consultation/ConsultationForm';
+import type { Clinic } from '@/types/clinic';
 
 export default function DoctorConsultation() {
   const queryClient = useQueryClient();
   const { user, hasRole, profile } = useAuth();
   const { slug } = useParams();
   const navigate = useNavigate();
-  const { clinic } = useOutletContext<{ clinic: any }>();
+  const { clinic } = useOutletContext<{ clinic: Clinic }>();
 
   // 1. Hook Extraction
   const {
@@ -113,6 +114,34 @@ export default function DoctorConsultation() {
       setVitalsCBG(selectedVisit.cbg || '');
     }
   }, [selectedVisit, showVitalsEdit]);
+
+  // Keyboard shortcuts: Ctrl+S = Save, Ctrl+P = Print Preview / Print
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        if (selectedVisit && !saving) savePrescription();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        if (selectedVisit) {
+          if (showPreview) {
+            printPrescription('#consultation-print-preview');
+          } else {
+            setShowPreview(true);
+          }
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedVisit, saving, savePrescription, showPreview]);
+
+  // Dynamic page title
+  useEffect(() => {
+    document.title = `Consultation${clinic?.name ? ` — ${clinic.name}` : ''} | Prescripto`;
+    return () => { document.title = 'Prescripto'; };
+  }, [clinic?.name]);
 
   useEffect(() => {
     const acknowledged = localStorage.getItem('prescripto_version_1_4_acknowledged');

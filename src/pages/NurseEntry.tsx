@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Search, UserPlus, History, CheckCircle, ArrowRight, User, Phone, MapPin, X, AlertCircle, ChevronDown, Loader2 } from 'lucide-react';
 import { sanitizeText, validatePhone, validateNumericRange } from '@/lib/security-sanitize';
+import type { Clinic } from '@/types/clinic';
 
 interface PatientForm {
   title: string;
@@ -51,19 +52,46 @@ export default function NurseEntry() {
   const [ageUnit, setAgeUnit] = useState<'years' | 'months' | 'days'>('years');
   const [tokenNumber, setTokenNumber] = useState<number | null>(null);
   const [assignedDoctorId, setAssignedDoctorId] = useState<string>("general");
-  const { clinic } = useOutletContext<{ clinic: any }>();
+  const { clinic } = useOutletContext<{ clinic: Clinic }>();
   const { profile, user, roles, hasRole } = useAuth();
   const [showSearch, setShowSearch] = useState(false);
   
+  // Dynamic page title
   useEffect(() => {
-    const isSuperAdmin = roles.includes('superadmin') || hasRole('superadmin') || (profile as any)?.is_superadmin;
+    document.title = `Patient Entry${clinic?.name ? ` — ${clinic.name}` : ''} | Prescripto`;
+    return () => { document.title = 'Prescripto'; };
+  }, [clinic?.name]);
+
+  useEffect(() => {
+    const isSuperAdmin = roles.includes('superadmin') || hasRole('superadmin') || profile?.is_superadmin;
     const isOwner = Boolean(clinic?.owner_id && user?.id && clinic.owner_id === user.id);
     
-    if (!isSuperAdmin && !isOwner && profile && (profile as any).clinic_id && clinic?.id && (profile as any).clinic_id !== clinic.id) {
-       console.warn("Clinic ID mismatch:", (profile as any).clinic_id, clinic.id);
+    if (!isSuperAdmin && !isOwner && profile && profile.clinic_id && clinic?.id && profile.clinic_id !== clinic.id) {
        toast.error("Security Warning: Your account is assigned to a different clinic than current view. Entries may not be visible.");
     }
   }, [profile, clinic?.id, clinic?.owner_id, user?.id, roles, hasRole]);
+
+  // Vitals range warnings (non-blocking, just show an indicator)
+  const vitalsWarnings = useMemo(() => {
+    const warnings: Record<string, string> = {};
+    const sbp = parseInt(vitals.blood_pressure.split('/')[0]);
+    const dbp = parseInt(vitals.blood_pressure.split('/')[1]);
+    const spo2 = parseFloat(vitals.spo2);
+    const temp = parseFloat(vitals.temperature);
+    const cbg = parseInt(vitals.cbg);
+    const pulse = parseInt(vitals.pulse_rate);
+    const weight = parseFloat(vitals.weight);
+    if (!isNaN(sbp) && (sbp < 60 || sbp > 220)) warnings.blood_pressure = 'SBP out of range (60–220)';
+    else if (!isNaN(dbp) && (dbp < 30 || dbp > 150)) warnings.blood_pressure = 'DBP out of range (30–150)';
+    if (!isNaN(spo2) && spo2 < 70) warnings.spo2 = 'SpO2 critically low! (<70%)';
+    else if (!isNaN(spo2) && spo2 > 100) warnings.spo2 = 'SpO2 cannot exceed 100%';
+    if (!isNaN(temp) && temp > 107) warnings.temperature = 'Critical fever (>107°F)';
+    else if (!isNaN(temp) && temp < 90) warnings.temperature = 'Temp too low (<90°F)';
+    if (!isNaN(cbg) && cbg > 400) warnings.cbg = 'Very high CBG (>400 mg/dL)';
+    if (!isNaN(pulse) && (pulse < 30 || pulse > 200)) warnings.pulse_rate = 'Pulse out of range (30–200 bpm)';
+    if (!isNaN(weight) && weight > 300) warnings.weight = 'Weight unusually high (>300 kg)';
+    return warnings;
+  }, [vitals]);
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -824,58 +852,67 @@ export default function NurseEntry() {
                   />
                 </div>
                 <div className="space-y-3">
-                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">SpO2 <span className="text-muted-foreground/40">(%)</span></Label>
-                  <Input
-                    ref={spo2Ref}
-                    className="h-14 rounded-2xl text-xl font-bold border-border bg-card focus:ring-primary/10"
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="100"
-                    value={vitals.spo2}
-                    onChange={e => {
-                        const val = parseFloat(e.target.value);
-                        if (val > 100) return;
-                        setVitals(v => ({ ...v, spo2: e.target.value }));
-                    }}
-                    onKeyDown={(e) => handleKeyDown(e, tempRef)}
-                  />
-                </div>
-                <div className="space-y-3">
-                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">Temperature <span className="text-muted-foreground/40">(°F)</span></Label>
-                  <Input
-                    ref={tempRef}
-                    className="h-14 rounded-2xl text-xl font-bold border-border bg-card focus:ring-primary/10"
-                    type="number"
-                    step="0.1"
-                    min="90"
-                    max="110"
-                    value={vitals.temperature}
-                    onChange={e => {
-                        const val = parseFloat(e.target.value);
-                        if (val > 110) return;
-                        setVitals(v => ({ ...v, temperature: e.target.value }));
-                    }}
-                    onKeyDown={(e) => handleKeyDown(e, cbgRef)}
-                  />
-                </div>
-                <div className="space-y-3">
-                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">CBG <span className="text-muted-foreground/40">(mg/dL)</span></Label>
-                  <Input
-                    ref={cbgRef}
-                    className="h-14 rounded-2xl text-xl font-bold border-border bg-card focus:ring-primary/10"
-                    type="number"
-                    min="0"
-                    max="600"
-                    value={vitals.cbg}
-                    onChange={e => {
-                        const val = parseInt(e.target.value);
-                        if (val > 600) return;
-                        setVitals(v => ({ ...v, cbg: e.target.value }));
-                    }}
-                    onKeyDown={(e) => handleKeyDown(e)}
-                  />
-                </div>
+                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">SpO2 <span className="text-muted-foreground/40">(%)</span></Label>
+                   <Input
+                     ref={spo2Ref}
+                     className={`h-14 rounded-2xl text-xl font-bold border-border bg-card focus:ring-primary/10 ${vitalsWarnings.spo2 ? 'border-amber-400 focus-visible:ring-amber-400/30' : ''}`}
+                     type="number"
+                     step="0.1"
+                     min="0"
+                     max="100"
+                     value={vitals.spo2}
+                     onChange={e => {
+                         const val = parseFloat(e.target.value);
+                         if (val > 100) return;
+                         setVitals(v => ({ ...v, spo2: e.target.value }));
+                     }}
+                     onKeyDown={(e) => handleKeyDown(e, tempRef)}
+                   />
+                   {vitalsWarnings.spo2 && (
+                     <p className="text-[10px] font-bold text-amber-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {vitalsWarnings.spo2}</p>
+                   )}
+                 </div>
+                 <div className="space-y-3">
+                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">Temperature <span className="text-muted-foreground/40">(°F)</span></Label>
+                   <Input
+                     ref={tempRef}
+                     className={`h-14 rounded-2xl text-xl font-bold border-border bg-card focus:ring-primary/10 ${vitalsWarnings.temperature ? 'border-amber-400 focus-visible:ring-amber-400/30' : ''}`}
+                     type="number"
+                     step="0.1"
+                     min="90"
+                     max="110"
+                     value={vitals.temperature}
+                     onChange={e => {
+                         const val = parseFloat(e.target.value);
+                         if (val > 110) return;
+                         setVitals(v => ({ ...v, temperature: e.target.value }));
+                     }}
+                     onKeyDown={(e) => handleKeyDown(e, cbgRef)}
+                   />
+                   {vitalsWarnings.temperature && (
+                     <p className="text-[10px] font-bold text-amber-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {vitalsWarnings.temperature}</p>
+                   )}
+                 </div>
+                 <div className="space-y-3">
+                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">CBG <span className="text-muted-foreground/40">(mg/dL)</span></Label>
+                   <Input
+                     ref={cbgRef}
+                     className={`h-14 rounded-2xl text-xl font-bold border-border bg-card focus:ring-primary/10 ${vitalsWarnings.cbg ? 'border-amber-400 focus-visible:ring-amber-400/30' : ''}`}
+                     type="number"
+                     min="0"
+                     max="600"
+                     value={vitals.cbg}
+                     onChange={e => {
+                         const val = parseInt(e.target.value);
+                         if (val > 600) return;
+                         setVitals(v => ({ ...v, cbg: e.target.value }));
+                     }}
+                     onKeyDown={(e) => handleKeyDown(e)}
+                   />
+                   {vitalsWarnings.cbg && (
+                     <p className="text-[10px] font-bold text-amber-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {vitalsWarnings.cbg}</p>
+                   )}
+                 </div>
               </div>
               
               <div className="flex flex-col md:flex-row gap-4 pt-4">

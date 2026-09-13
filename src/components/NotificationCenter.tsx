@@ -105,6 +105,21 @@ export default function NotificationCenter() {
     setRequests(filtered);
   };
 
+  const [readIds, setReadIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('prescripto_read_notifs') || '[]');
+    } catch {
+      return [];
+    }
+  });
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('prescripto_dismissed_notifs') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
   const fetchSystemNotifications = async () => {
     if (!user) return;
     const { data, error } = await supabase
@@ -112,9 +127,24 @@ export default function NotificationCenter() {
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(20);
+      .limit(30);
     
-    if (!error) setSystemNotifications(data || []);
+    if (!error && data) {
+      let currentDismissed: string[] = [];
+      let currentRead: string[] = [];
+      try {
+        currentDismissed = JSON.parse(localStorage.getItem('prescripto_dismissed_notifs') || '[]');
+        currentRead = JSON.parse(localStorage.getItem('prescripto_read_notifs') || '[]');
+      } catch {}
+
+      const filtered = data
+        .filter(n => !currentDismissed.includes(n.id))
+        .map(n => ({
+          ...n,
+          is_read: n.is_read || currentRead.includes(n.id)
+        }));
+      setSystemNotifications(filtered);
+    }
   };
 
   useEffect(() => {
@@ -207,19 +237,64 @@ export default function NotificationCenter() {
     }
   };
 
-  // Permanently delete a single notification from DB
+  // Mark single notification as read
+  const markAsRead = async (id: string) => {
+    const updated = Array.from(new Set([...readIds, id]));
+    setReadIds(updated);
+    try {
+      localStorage.setItem('prescripto_read_notifs', JSON.stringify(updated));
+    } catch {}
+    setSystemNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    try {
+      await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+    } catch {}
+  };
+
+  // Mark all as read
+  const markAllAsRead = async () => {
+    const allIds = systemNotifications.map(n => n.id);
+    const updated = Array.from(new Set([...readIds, ...allIds]));
+    setReadIds(updated);
+    try {
+      localStorage.setItem('prescripto_read_notifs', JSON.stringify(updated));
+    } catch {}
+    setSystemNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    try {
+      await supabase.from('notifications').update({ is_read: true }).eq('user_id', user?.id);
+    } catch {}
+    toast.success('All notifications marked as read');
+  };
+
+  // Permanently dismiss a single notification
   const dismissNotification = async (id: string) => {
-    setSystemNotifications(prev => prev.filter(n => n.id !== id)); // optimistic
-    await supabase.from('notifications').delete().eq('id', id);
+    const updated = Array.from(new Set([...dismissedIds, id]));
+    setDismissedIds(updated);
+    try {
+      localStorage.setItem('prescripto_dismissed_notifs', JSON.stringify(updated));
+    } catch {}
+    setSystemNotifications(prev => prev.filter(n => n.id !== id));
+    try {
+      await supabase.from('notifications').delete().eq('id', id);
+    } catch {}
   };
 
   // Permanently delete ALL notifications for this user
   const deleteAllNotifications = async () => {
-    setSystemNotifications([]); // optimistic
-    await supabase.from('notifications').delete().eq('user_id', user?.id);
+    const allIds = systemNotifications.map(n => n.id);
+    const updated = Array.from(new Set([...dismissedIds, ...allIds]));
+    setDismissedIds(updated);
+    try {
+      localStorage.setItem('prescripto_dismissed_notifs', JSON.stringify(updated));
+    } catch {}
+    setSystemNotifications([]);
+    try {
+      await supabase.from('notifications').delete().eq('user_id', user?.id);
+    } catch {}
+    toast.success('All notifications cleared');
   };
 
-  const totalCount = requests.length + systemNotifications.length;
+  const unreadSystemNotifs = systemNotifications.filter(n => !n.is_read && !readIds.includes(n.id));
+  const totalCount = requests.length + unreadSystemNotifs.length;
 
   if (!user) return null;
 
@@ -240,6 +315,16 @@ export default function NotificationCenter() {
             <span className="text-sm font-black uppercase tracking-widest text-slate-500">Notifications</span>
             <div className="flex items-center gap-2">
               {totalCount > 0 && <Badge variant="outline" className="bg-primary/5 text-primary border-primary/10 text-[10px]">{totalCount} new</Badge>}
+              {unreadSystemNotifs.length > 0 && (
+                <button
+                  onClick={markAllAsRead}
+                  className="text-[9px] font-black text-blue-600 hover:text-blue-700 uppercase tracking-wider flex items-center gap-0.5 transition-colors"
+                  title="Mark all as read"
+                >
+                  <Check className="w-2.5 h-2.5" />
+                  Read all
+                </button>
+              )}
               {systemNotifications.length > 0 && (
                 <button
                   onClick={deleteAllNotifications}
@@ -259,10 +344,13 @@ export default function NotificationCenter() {
                 {systemNotifications.map(notif => (
                   <div 
                     key={notif.id} 
+                    onClick={() => {
+                      if (!notif.is_read) markAsRead(notif.id);
+                    }}
                     className={cn(
-                      "p-3 rounded-xl transition-all border border-transparent mb-1 relative group",
+                      "p-3 rounded-xl transition-all border border-transparent mb-1 relative group cursor-pointer",
                       notif.is_read 
-                        ? "opacity-60" 
+                        ? "opacity-50 hover:opacity-80 bg-slate-50/50 dark:bg-slate-900/30" 
                         : notif.title === 'CALLING PATIENT'
                           ? "bg-red-500/10 dark:bg-red-500/10 border-red-500/30 animate-pulse"
                           : "bg-blue-500/5 dark:bg-blue-400/5 border-blue-500/10"
@@ -271,14 +359,31 @@ export default function NotificationCenter() {
                     {/* Unread indicator bar */}
                     {!notif.is_read && <div className="absolute left-1 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-600 rounded-full" />}
 
-                    {/* Dismiss ✕ button — always visible on hover, always clickable */}
-                    <button
-                      onClick={() => dismissNotification(notif.id)}
-                      className="absolute top-2 right-2 w-5 h-5 rounded-full bg-slate-200/70 dark:bg-slate-700/70 hover:bg-red-500 hover:text-white text-slate-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
-                      title="Delete notification"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
+                    {/* Action buttons on top right: Mark read & Dismiss */}
+                    <div className="absolute top-2 right-2 flex items-center gap-1">
+                      {!notif.is_read && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markAsRead(notif.id);
+                          }}
+                          className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/50 hover:bg-blue-600 hover:text-white text-blue-600 flex items-center justify-center transition-all shadow-xs"
+                          title="Mark as read"
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dismissNotification(notif.id);
+                        }}
+                        className="w-5 h-5 rounded-full bg-slate-200/70 dark:bg-slate-700/70 hover:bg-red-500 hover:text-white text-slate-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+                        title="Delete notification"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
 
                     <div className="flex flex-col gap-1 pr-5">
                       <p className={cn(

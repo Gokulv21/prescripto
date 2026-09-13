@@ -3,7 +3,7 @@ import { useNavigate, useParams, useOutletContext, Link } from 'react-router-dom
 import { cn } from '@/lib/utils';
 import {
   ClipboardPlus, Stethoscope, Printer, Users, Activity,
-  ArrowUpRight, UserPlus, CheckCircle2, Tv, Sparkles, Clock
+  ArrowUpRight, UserPlus, CheckCircle2, Tv, Sparkles, Clock, CalendarX
 } from 'lucide-react';
 import { useEffect } from 'react';
 import { startOfDay, endOfDay } from 'date-fns';
@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import type { Clinic } from '@/types/clinic';
 
 // Mini circular arc gauge matching Skynex sub-cards
 function MiniArcGauge({ percent, color }: { percent: number; color: string }) {
@@ -50,16 +51,22 @@ function MiniArcGauge({ percent, color }: { percent: number; color: string }) {
 export default function Dashboard() {
   const { user, profile, roles, hasRole } = useAuth();
   const { slug } = useParams();
-  const { clinic } = useOutletContext<{ clinic: any }>();
+  const { clinic } = useOutletContext<{ clinic: Clinic }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // Dynamic page title
   useEffect(() => {
-    const isSuperAdmin = roles.includes('superadmin') || hasRole('superadmin') || (profile as any)?.is_superadmin;
+    document.title = `Dashboard${clinic?.name ? ` — ${clinic.name}` : ''} | Prescripto`;
+    return () => { document.title = 'Prescripto'; };
+  }, [clinic?.name]);
+
+  useEffect(() => {
+    const isSuperAdmin = roles.includes('superadmin') || hasRole('superadmin') || profile?.is_superadmin;
     const isOwner = Boolean(clinic?.owner_id && user?.id && clinic.owner_id === user.id);
-    
+
     // Superadmins and clinic owners have full multi-clinic authority
-    if (!isSuperAdmin && !isOwner && profile && (profile as any).clinic_id && clinic?.id && (profile as any).clinic_id !== clinic.id) {
+    if (!isSuperAdmin && !isOwner && profile && profile.clinic_id && clinic?.id && profile.clinic_id !== clinic.id) {
       toast.error("Account Mismatch: You are viewing " + clinic.name + " but your account is assigned to another clinic.");
     }
   }, [profile, clinic?.id, clinic?.name, clinic?.owner_id, user?.id, roles, hasRole]);
@@ -147,7 +154,7 @@ export default function Dashboard() {
 
   const completionPercent = todayVisits > 0
     ? Math.round((completedVisits / todayVisits) * 100)
-    : (stats.total > 0 ? 82 : 0);
+    : 0;
 
   const progressRatio = todayVisits > 0
     ? (completedVisits / todayVisits)
@@ -209,7 +216,30 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* Big Stat & Status Row */}
+        {/* Big Stat & Status Row — or Empty State when no visits today */}
+        {todayVisits === 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center py-6 gap-3 text-center"
+          >
+            <div className="w-16 h-16 rounded-3xl bg-primary/10 flex items-center justify-center">
+              <CalendarX className="w-8 h-8 text-primary/60" />
+            </div>
+            <div>
+              <p className="font-black text-slate-900 dark:text-white text-base">No visits yet today</p>
+              <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-1 font-medium">Register the first patient to start the clinic flow</p>
+            </div>
+            <button
+              onClick={() => navigate('../nurse')}
+              className="flex items-center gap-2 px-5 py-2 rounded-2xl bg-primary text-white font-bold text-xs shadow-md shadow-primary/30 hover:scale-105 active:scale-95 transition-all mt-1"
+            >
+              <UserPlus className="w-4 h-4" />
+              Register First Patient
+            </button>
+          </motion.div>
+        ) : (
+          <>
         <div className="flex items-end justify-between pt-1">
           <div>
             <div className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white tracking-tight leading-none">
@@ -305,6 +335,8 @@ export default function Dashboard() {
           <UserPlus className="w-4 h-4" />
           <span>New Patient</span>
         </button>
+          </>
+        )}
       </motion.div>
 
       {/* ── Compact Core Operations ── */}

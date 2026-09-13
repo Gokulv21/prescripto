@@ -61,13 +61,10 @@ function ClinicWrapper() {
     staleTime: 0, // Always fetch fresh clinic status to ensure immediate blocking
     queryFn: async () => {
       if (!slug) return null;
-      console.log("[ClinicWrapper] Fetching clinic for slug:", slug);
       const { data, error } = await supabase.from('clinics').select('*').eq('slug', slug).single();
       if (error) {
-        console.error("[ClinicWrapper] Fetch error:", error);
         throw error;
       }
-      console.log("[ClinicWrapper] Clinic found:", data);
       return data;
     }
   });
@@ -83,8 +80,7 @@ function ClinicWrapper() {
         schema: 'public',
         table: 'clinics',
         filter: `slug=eq.${slug}`
-      }, (payload) => {
-        console.log("[ClinicWrapper] Clinic status updated via Realtime:", payload.new);
+      }, () => {
         refetch();
       })
       .subscribe();
@@ -104,7 +100,6 @@ function ClinicWrapper() {
   }
 
   if (error || !clinic) {
-    console.error("[ClinicWrapper] Access Denied or Clinic Not Found:", { slug, error, user: user?.id, roles });
     return (
       <div className="flex flex-col justify-center items-center h-screen space-y-4 p-6 text-center bg-slate-50 dark:bg-slate-950 font-jakarta-sans">
         <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center">
@@ -165,8 +160,6 @@ function ClinicWrapper() {
       </div>
     );
   }
-
-  (window as any).__ACTIVE_CLINIC_ID = clinic.id;
 
   return (
     <AppLayout>

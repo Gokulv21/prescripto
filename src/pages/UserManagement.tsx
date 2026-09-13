@@ -6,21 +6,29 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { UserPlus, Loader2, Shield, RefreshCw, Trash2, Users, Crown, Stethoscope, ClipboardList, CheckCircle2 } from 'lucide-react';
+import { UserPlus, Loader2, Shield, RefreshCw, Trash2, Users, Crown, Stethoscope, ClipboardList, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import type { AppRole } from '@/lib/auth';
 import { registerClient } from '@/lib/supabase-auth-admin';
 import { useOutletContext } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import type { Clinic } from '@/types/clinic';
 
 export default function UserManagement() {
-  const { clinic } = useOutletContext<{ clinic: any }>();
+  const { clinic } = useOutletContext<{ clinic: Clinic }>();
   const [users, setUsers] = useState<any[]>([]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<string>('staff');
   const [creating, setCreating] = useState(false);
+
+  // Dynamic page title
+  useEffect(() => {
+    document.title = `Team Management${clinic?.name ? ` — ${clinic.name}` : ''} | Prescripto`;
+    return () => { document.title = 'Prescripto'; };
+  }, [clinic?.name]);
 
   const fetchUsers = async () => {
     try {
@@ -206,13 +214,24 @@ export default function UserManagement() {
             {/* Password */}
             <div className="space-y-1.5">
               <Label className="text-[11px] font-extrabold uppercase tracking-widest text-muted-foreground">Initial Password</Label>
-              <Input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Min 6 characters"
-                className="h-11 rounded-xl border-blue-200/60 dark:border-blue-800/40 bg-white/80 dark:bg-slate-900/60 focus:ring-2 focus:ring-blue-500/30 font-semibold placeholder:font-normal placeholder:text-muted-foreground/50"
-              />
+              <div className="relative">
+                <Input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="Min 6 characters"
+                  className="h-11 rounded-xl border-blue-200/60 dark:border-blue-800/40 bg-white/80 dark:bg-slate-900/60 focus:ring-2 focus:ring-blue-500/30 font-semibold placeholder:font-normal placeholder:text-muted-foreground/50 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  tabIndex={-1}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             {/* Role */}

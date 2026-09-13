@@ -629,7 +629,8 @@ export default function ConsultationForm({
             onClick={onOpenPreview}
           >
             <Eye className="w-4 h-4 mr-2" />
-            Preview
+            <span>Preview</span>
+            <kbd className="hidden sm:inline-block ml-2 px-1.5 py-0.5 text-[10px] font-mono font-bold bg-muted text-muted-foreground rounded border border-border">Ctrl+P</kbd>
           </Button>
           <Button 
             onClick={savePrescription} 
@@ -653,6 +654,7 @@ export default function ConsultationForm({
               <>
                 <Save className="w-4 h-4" />
                 <span>Save & Complete</span>
+                <kbd className="hidden sm:inline-block ml-2 px-1.5 py-0.5 text-[10px] font-mono font-bold bg-blue-700/60 text-blue-100 rounded border border-blue-400/30">Ctrl+S</kbd>
               </>
             )}
           </Button>

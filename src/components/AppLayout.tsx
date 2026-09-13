@@ -110,14 +110,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       >
         <div
           className={cn(
-            "border-b border-slate-200/50 dark:border-slate-800/50 flex transition-all duration-300 overflow-hidden relative px-4 py-4",
-            isSidebarExpanded ? "h-[88px] flex-row items-center justify-between" : "h-[110px] flex-col items-center justify-center gap-3"
+            "border-b border-slate-200/50 dark:border-slate-800/50 flex items-center transition-all duration-300 overflow-hidden relative px-4 py-4 h-[80px]",
+            isSidebarExpanded ? "justify-start gap-3.5" : "justify-center"
           )}
         >
-          <motion.div
-            animate={{ x: 0 }}
-            className="flex items-center gap-3.5 shrink-0"
-          >
+          <div className="flex items-center gap-3.5 shrink-0">
             <div className="w-10 h-10 rounded-2xl bg-white dark:bg-slate-900 shadow-md flex items-center justify-center border border-slate-200/60 dark:border-slate-800 overflow-hidden">
               <img src={logo} className="w-7 h-7 object-contain" alt="Logo" />
             </div>
@@ -134,15 +131,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 </motion.div>
               )}
             </AnimatePresence>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className={cn(!isSidebarExpanded && "mt-1")}
-          >
-            <NotificationCenter />
-          </motion.div>
+          </div>
         </div>
 
         {/* Sidebar Nav - Scrollable section */}
@@ -237,43 +226,74 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
       {/* ── Main Viewport (Clean & Compact) ── */}
       <main ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden relative h-screen">
-        {/* ── Mobile Top Header (Profile Swapped to Top!) ── */}
-        <header className="flex md:hidden items-center justify-between px-4 py-3 bg-white/75 dark:bg-slate-950/75 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 sticky top-0 z-40">
+        {/* ── Top Header (Google-style Profile on Top Right) ── */}
+        <header className="flex items-center justify-between px-4 sm:px-6 md:px-8 py-2.5 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 sticky top-0 z-40">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-white dark:bg-slate-900 shadow-xs border border-slate-200/60 dark:border-slate-800 flex items-center justify-center overflow-hidden">
+            <div className="md:hidden w-8 h-8 rounded-xl bg-white dark:bg-slate-900 shadow-xs border border-slate-200/60 dark:border-slate-800 flex items-center justify-center overflow-hidden">
               <img src={logo} className="w-6 h-6 object-contain" alt="Logo" />
             </div>
-            <span className="font-black text-base tracking-tight text-slate-900 dark:text-white">PreScripto</span>
+            <span className="md:hidden font-black text-base tracking-tight text-slate-900 dark:text-white">PreScripto</span>
+            
+            <div className="hidden md:flex items-center gap-2">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                PreScripto
+              </span>
+              <span className="text-slate-300 dark:text-slate-700 font-bold">•</span>
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                Clinical Suite
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             <NotificationCenter />
             
-            {/* Profile Avatar / Settings Button (Swapped from Bottom Nav) */}
+            {/* Google-style Profile Avatar / Settings Button */}
             <button
               onClick={() => navigate(getFullPath('/profile'))}
               className={cn(
-                "relative w-9 h-9 rounded-full bg-white dark:bg-slate-900 border flex items-center justify-center shadow-xs active:scale-90 transition-all overflow-hidden group",
+                "relative flex items-center gap-2 p-1 sm:pr-3 rounded-full bg-white dark:bg-slate-900 border transition-all active:scale-95 group shadow-xs",
                 location.pathname.endsWith('/profile')
                   ? "ring-2 ring-primary border-primary"
-                  : "border-slate-200/80 dark:border-slate-800"
+                  : "border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
               )}
-              title="Doctor Profile & Settings"
+              title={profile?.full_name ? `${profile.full_name} — Doctor Profile & Settings` : "Doctor Profile & Settings"}
             >
-              {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-tr from-primary/20 to-purple-500/20 text-primary flex items-center justify-center font-black text-xs">
-                  {profile?.full_name?.charAt(0)?.toUpperCase() || <User className="w-4 h-4" />}
-                </div>
-              )}
-              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900 shadow-xs" />
+              <div className="relative w-8 h-8 sm:w-8.5 sm:h-8.5 rounded-full overflow-hidden shrink-0 border border-slate-200/80 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center shadow-xs">
+                <img 
+                  src={(() => {
+                    const url = profile?.avatar_url;
+                    if (!url || typeof url !== 'string' || url.trim() === '') return '/prescripto/avatars/doctor_male_2.png';
+                    const clean = url.trim();
+                    if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('data:')) return clean;
+                    if (clean.startsWith('/prescripto/')) return clean;
+                    if (clean.startsWith('/avatars/')) return `/prescripto${clean}`;
+                    return `/prescripto/${clean.replace(/^\//, '')}`;
+                  })()} 
+                  alt={profile?.full_name || "Profile"} 
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = '/prescripto/avatars/doctor_male_2.png';
+                  }}
+                />
+                <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900 shadow-xs z-20" />
+              </div>
+
+              <div className="hidden sm:flex flex-col text-left leading-none pr-0.5">
+                <span className="text-xs font-extrabold text-slate-900 dark:text-white truncate max-w-[130px]">
+                  {profile?.full_name || 'My Profile'}
+                </span>
+                <span className="text-[9px] font-bold text-primary uppercase tracking-wider mt-0.5">
+                  {roles.includes('owner') ? 'Clinic Owner' : roles.includes('doctor') ? 'Doctor' : roles[0] || 'Staff'}
+                </span>
+              </div>
             </button>
           </div>
         </header>
 
         {/* Page Content Container */}
-        <div className="w-full max-w-5xl mx-auto p-4 sm:p-6 md:p-8 pb-28 md:pb-12 min-h-full">
+        <div className="w-full max-w-5xl mx-auto p-3.5 sm:p-6 md:p-8 pb-36 md:pb-16 min-h-full">
           {children}
         </div>
       </main>
