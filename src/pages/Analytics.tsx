@@ -8,13 +8,13 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-  AreaChart, Area, PieChart, Pie, Cell, ReferenceLine, Label, LineChart, Line, Legend, ComposedChart
+  AreaChart, Area, PieChart, Pie, Cell, ReferenceLine, ReferenceArea, Label, LineChart, Line, Legend, ComposedChart
 } from 'recharts';
 import {
   Users, CalendarDays, Activity, Pill, Filter, Lightbulb, Sparkles, TrendingUp, X,
   Clock, CheckCircle2, AlertCircle, Calendar, ArrowUpRight, ArrowDownRight,
   Stethoscope, UserRound, LayoutDashboard, Database, ChevronLeft, ChevronRight,
-  CalendarRange, Check, Layers, BarChart2, ZoomIn, ZoomOut, RotateCcw, UserCheck
+  CalendarRange, Check, Layers, BarChart2, ZoomIn, ZoomOut, RotateCcw, UserCheck, SlidersHorizontal
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, getPatientCurrentAge } from '@/lib/utils';
@@ -39,6 +39,11 @@ const HOUR_TICKS_24 = [
   '00:00', '02:00', '04:00', '06:00', '08:00', '10:00',
   '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '24:00'
 ];
+
+const HOUR_OPTIONS = Array.from({ length: 25 }, (_, i) => ({
+  value: i,
+  label: `${i.toString().padStart(2, '0')}:00`
+}));
 
 interface SmartInsightItem {
   id: string;
@@ -121,11 +126,27 @@ export default function Analytics() {
   }, [volumeData, zoomLevel]);
   const [trends, setTrends] = useState({ today: '', month: '', completion: '' });
   const [diagnosisData, setDiagnosisData] = useState<any[]>([]);
-  const [seasonalityData, setSeasonalityData] = useState<any[]>([]);
+  const [seasonalityRxList, setSeasonalityRxList] = useState<any[]>([]);
+  const [allSeasonalityDiagnoses, setAllSeasonalityDiagnoses] = useState<{ name: string; count: number }[]>([]);
+  const [selectedSeasonalityDiagnoses, setSelectedSeasonalityDiagnoses] = useState<string[]>([]);
   const [demographics, setDemographics] = useState<{ sex: any[], age: any[] }>({ sex: [], age: [] });
   const [protocolData, setProtocolData] = useState<any[]>([]);
   const [retentionData, setRetentionData] = useState<any[]>([]);
   const [peakHoursData, setPeakHoursData] = useState<any[]>([]);
+  const [appointmentLoadRange, setAppointmentLoadRange] = useState<'all' | 'today' | '7d' | '30d'>('today');
+  const [appointmentLoadsTotal, setAppointmentLoadsTotal] = useState<number>(0);
+  const [customStartHour, setCustomStartHour] = useState<number>(10);
+  const [customEndHour, setCustomEndHour] = useState<number>(14);
+  const [loadPeriodStats, setLoadPeriodStats] = useState({
+    morning: { count: 0, avgPerHour: '0.0', avgPerDay: '0.0', percent: 0 },
+    afternoon: { count: 0, avgPerHour: '0.0', avgPerDay: '0.0', percent: 0 },
+    evening: { count: 0, avgPerHour: '0.0', avgPerDay: '0.0', percent: 0 },
+    night: { count: 0, avgPerHour: '0.0', avgPerDay: '0.0', percent: 0 },
+    activeHoursAvg: '0.0',
+    dailyAvg: '0.0',
+    peakPeriodName: 'Afternoon (12:00 - 17:00)',
+    peakPeriodCount: 0
+  });
   const [loading, setLoading] = useState(true);
   
   // Smart Insights state
@@ -153,11 +174,18 @@ export default function Analytics() {
     }
   }, [clinic?.id, flowTimeRange, flowScale, customStartDate, customEndDate]);
 
+  useEffect(() => {
+    if (clinic?.id) {
+      fetchAppointmentLoads(appointmentLoadRange);
+    }
+  }, [clinic?.id, appointmentLoadRange]);
+
   const fetchAllData = async () => {
     setLoading(true);
     await Promise.all([
       fetchGeneralStats(),
       fetchVolumeData(),
+      fetchAppointmentLoads(appointmentLoadRange),
       fetchSeasonalityData(),
       fetchDemographics(),
       fetchProtocolAnalytics(),
@@ -384,6 +412,140 @@ export default function Analytics() {
     setRetentionData(sorted.slice(-7));
   };
 
+  const fetchAppointmentLoads = async (range: 'all' | 'today' | '7d' | '30d' = appointmentLoadRange) => {
+    if (!clinic?.id) return;
+    const now = new Date();
+    let query = supabase.from('visits').select('created_at').eq('clinic_id', clinic.id);
+
+    if (range === 'today') {
+      const todayStart = startOfDay(now).toISOString();
+      const todayEnd = endOfDay(now).toISOString();
+      query = query.gte('created_at', todayStart).lte('created_at', todayEnd);
+    } else if (range === '7d') {
+      const sevenDaysAgo = startOfDay(subDays(now, 7)).toISOString();
+      query = query.gte('created_at', sevenDaysAgo);
+    } else if (range === '30d') {
+      const thirtyDaysAgo = startOfDay(subDays(now, 30)).toISOString();
+      query = query.gte('created_at', thirtyDaysAgo);
+    }
+
+    let allVisits: { created_at: string }[] = [];
+    let offset = 0;
+    const PAGE_SIZE = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await query
+        .order('created_at', { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (error) {
+        console.error('[Analytics] Fetch appointment loads error:', error);
+        break;
+      }
+      if (data && data.length > 0) {
+        allVisits.push(...data);
+        if (data.length < PAGE_SIZE) hasMore = false;
+        else offset += PAGE_SIZE;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    setAppointmentLoadsTotal(allVisits.length);
+
+    // Peak Hours calculation across all 24 hours: 00:00 to 24:00 of a day
+    const hourBins: Record<number, number> = {};
+    for (let i = 0; i < 24; i++) hourBins[i] = 0;
+    allVisits.forEach(v => {
+      const hour = new Date(v.created_at).getHours();
+      if (hour >= 0 && hour < 24) {
+        hourBins[hour]++;
+      }
+    });
+
+    const hoursData = [];
+    for (let h = 0; h < 24; h++) {
+      const hourStr = `${h.toString().padStart(2, '0')}:00`;
+      hoursData.push({
+        hour: hourStr,
+        patients: hourBins[h] || 0,
+        _hour: h
+      });
+    }
+    // 24:00 boundary tick closing out the full 24-hr day
+    hoursData.push({
+      hour: '24:00',
+      patients: 0,
+      _hour: 24
+    });
+
+    setPeakHoursData(hoursData);
+
+    // Calculate period statistics & averages (Morning, Afternoon, Evening, Night)
+    let morningCount = 0, afternoonCount = 0, eveningCount = 0, nightCount = 0;
+    for (let h = 0; h < 24; h++) {
+      const c = hourBins[h] || 0;
+      if (h >= 6 && h < 12) morningCount += c;
+      else if (h >= 12 && h < 17) afternoonCount += c;
+      else if (h >= 17 && h < 21) eveningCount += c;
+      else nightCount += c;
+    }
+
+    const totalPts = allVisits.length;
+    let daysCount = 1;
+    if (range === '7d') daysCount = 7;
+    else if (range === '30d') daysCount = 30;
+    else if (range === 'all') {
+      if (allVisits.length > 0) {
+        const earliest = new Date(allVisits[allVisits.length - 1].created_at);
+        daysCount = Math.max(1, Math.round((now.getTime() - earliest.getTime()) / (1000 * 60 * 60 * 24)));
+      }
+    }
+
+    const activeHours = Object.values(hourBins).filter(c => c > 0).length || 1;
+    const activeHoursAvg = totalPts > 0 ? (totalPts / (range === 'today' ? activeHours : (daysCount * 12))).toFixed(1) : '0.0';
+    const dailyAvg = (totalPts / daysCount).toFixed(1);
+
+    const periods = [
+      { name: 'Morning (06:00 - 12:00)', count: morningCount },
+      { name: 'Afternoon (12:00 - 17:00)', count: afternoonCount },
+      { name: 'Evening (17:00 - 21:00)', count: eveningCount },
+      { name: 'Night (21:00 - 06:00)', count: nightCount }
+    ].sort((a, b) => b.count - a.count);
+
+    setLoadPeriodStats({
+      morning: {
+        count: morningCount,
+        avgPerHour: (morningCount / (daysCount * 6)).toFixed(1),
+        avgPerDay: (morningCount / daysCount).toFixed(1),
+        percent: totalPts > 0 ? Math.round((morningCount / totalPts) * 100) : 0
+      },
+      afternoon: {
+        count: afternoonCount,
+        avgPerHour: (afternoonCount / (daysCount * 5)).toFixed(1),
+        avgPerDay: (afternoonCount / daysCount).toFixed(1),
+        percent: totalPts > 0 ? Math.round((afternoonCount / totalPts) * 100) : 0
+      },
+      evening: {
+        count: eveningCount,
+        avgPerHour: (eveningCount / (daysCount * 4)).toFixed(1),
+        avgPerDay: (eveningCount / daysCount).toFixed(1),
+        percent: totalPts > 0 ? Math.round((eveningCount / totalPts) * 100) : 0
+      },
+      night: {
+        count: nightCount,
+        avgPerHour: (nightCount / (daysCount * 9)).toFixed(1),
+        avgPerDay: (nightCount / daysCount).toFixed(1),
+        percent: totalPts > 0 ? Math.round((nightCount / totalPts) * 100) : 0
+      },
+      activeHoursAvg,
+      dailyAvg,
+      peakPeriodName: periods[0]?.name || 'Afternoon (12:00 - 17:00)',
+      peakPeriodCount: periods[0]?.count || 0
+    });
+  };
+
 
 
   const fetchVolumeData = async () => {
@@ -465,34 +627,6 @@ export default function Analytics() {
       return d >= todayStart && d <= todayEnd;
     });
     const todayLiveCount = todayVisits.length;
-
-    // Peak Hours calculation (across all 24 hours: 00:00 to 24:00 of a day)
-    const hourBins: Record<number, number> = {};
-    for (let i = 0; i < 24; i++) hourBins[i] = 0;
-    allVisits.forEach(v => {
-      const hour = new Date(v.created_at).getHours();
-      if (hour >= 0 && hour < 24) {
-        hourBins[hour]++;
-      }
-    });
-
-    const hoursData = [];
-    for (let h = 0; h < 24; h++) {
-      const hourStr = `${h.toString().padStart(2, '0')}:00`;
-      hoursData.push({
-        hour: hourStr,
-        patients: hourBins[h] || 0,
-        _hour: h
-      });
-    }
-    // 24:00 boundary tick closing out the full 24-hr day
-    hoursData.push({
-      hour: '24:00',
-      patients: hourBins[0] || 0,
-      _hour: 24
-    });
-
-    setPeakHoursData(hoursData);
 
     let resultData: any[] = [];
     let completedDaysTotal = 0;
@@ -652,6 +786,7 @@ export default function Analytics() {
   };
 
   const fetchSeasonalityData = async () => {
+    if (!clinic?.id) return;
     const sixMonthsAgo = startOfMonth(subMonths(new Date(), 5));
     let rxData: { diagnosis: string | null; created_at: string }[] = [];
     let offset = 0;
@@ -662,7 +797,7 @@ export default function Analytics() {
       const { data, error } = await supabase
         .from('prescriptions')
         .select('diagnosis, created_at')
-        .eq('clinic_id', clinic?.id)
+        .eq('clinic_id', clinic.id)
         .not('diagnosis', 'is', null)
         .gte('created_at', sixMonthsAgo.toISOString())
         .order('created_at', { ascending: true })
@@ -681,35 +816,106 @@ export default function Analytics() {
       }
     }
 
-    if (rxData.length === 0) return;
+    setSeasonalityRxList(rxData);
 
-    // Automatically detect top 5 diagnoses instead of hardcoding
+    // Automatically detect all diagnoses with counts across the 6 months
     const topDetectCounts: Record<string, number> = {};
     rxData.forEach(rx => {
       const terms = rx.diagnosis?.split(/[,/\\|]+/).map(t => t.trim().toUpperCase()).filter(t => t.length > 2) || [];
       terms.forEach(t => topDetectCounts[t] = (topDetectCounts[t] || 0) + 1);
     });
-    const topDiagnoses = Object.entries(topDetectCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0]);
+    const sortedDiagnoses = Object.entries(topDetectCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+
+    setAllSeasonalityDiagnoses(sortedDiagnoses);
+  };
+
+  const seasonalityData = useMemo(() => {
+    if (seasonalityRxList.length === 0) return [];
+
+    const activeDiagnoses = selectedSeasonalityDiagnoses.length > 0
+      ? selectedSeasonalityDiagnoses
+      : allSeasonalityDiagnoses.slice(0, 5).map(d => d.name);
+
+    if (activeDiagnoses.length === 0) return [];
 
     const months = Array.from({ length: 6 }, (_, i) => format(subMonths(new Date(), 5 - i), 'MMM'));
     const trendData = months.map(m => {
       const entry: any = { month: m };
-      topDiagnoses.forEach(d => entry[d] = 0);
+      activeDiagnoses.forEach(d => { entry[d] = 0; });
       return entry;
     });
 
-    rxData.forEach(rx => {
+    seasonalityRxList.forEach(rx => {
       const monthStr = format(new Date(rx.created_at), 'MMM');
       const entry = trendData.find(t => t.month === monthStr);
       if (entry) {
-        topDiagnoses.forEach(d => {
+        activeDiagnoses.forEach(d => {
           if (rx.diagnosis?.toUpperCase().includes(d.toUpperCase())) entry[d]++;
         });
       }
     });
 
-    setSeasonalityData(trendData);
+    return trendData;
+  }, [seasonalityRxList, selectedSeasonalityDiagnoses, allSeasonalityDiagnoses]);
+
+  const toggleSeasonalityDiagnosis = (name: string) => {
+    setSelectedSeasonalityDiagnoses(prev =>
+      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+    );
   };
+
+  const customWindowStats = useMemo(() => {
+    let count = 0;
+    let duration = 0;
+
+    const hourMap: Record<number, number> = {};
+    peakHoursData.forEach(p => {
+      if (p._hour !== undefined && p._hour < 24) {
+        hourMap[p._hour] = p.patients || 0;
+      }
+    });
+
+    if (customStartHour === customEndHour) {
+      duration = 1;
+      count = hourMap[customStartHour] || 0;
+    } else if (customStartHour < customEndHour) {
+      duration = customEndHour - customStartHour;
+      for (let h = customStartHour; h < customEndHour; h++) {
+        count += (hourMap[h] || 0);
+      }
+    } else {
+      // Overnight window (e.g. 21:00 to 06:00)
+      duration = (24 - customStartHour) + customEndHour;
+      for (let h = 0; h < 24; h++) {
+        if (h >= customStartHour || h < customEndHour) {
+          count += (hourMap[h] || 0);
+        }
+      }
+    }
+
+    let daysCount = 1;
+    if (appointmentLoadRange === '7d') daysCount = 7;
+    else if (appointmentLoadRange === '30d') daysCount = 30;
+    else if (appointmentLoadRange === 'all') {
+      daysCount = Math.max(1, Math.round(appointmentLoadsTotal / 25));
+    }
+
+    const avgPerHour = duration > 0 ? (count / (duration * daysCount)).toFixed(1) : '0.0';
+    const avgPerDay = (count / daysCount).toFixed(1);
+    const percent = appointmentLoadsTotal > 0 ? Math.round((count / appointmentLoadsTotal) * 100) : 0;
+
+    return {
+      count,
+      duration,
+      avgPerHour,
+      avgPerDay,
+      percent,
+      startLabel: `${customStartHour.toString().padStart(2, '0')}:00`,
+      endLabel: `${customEndHour.toString().padStart(2, '0')}:00`
+    };
+  }, [peakHoursData, customStartHour, customEndHour, appointmentLoadRange, appointmentLoadsTotal]);
 
   const filteredDiagnosisData = useMemo(() => {
     if (selectedDiagnoses.length === 0) return diagnosisData;
@@ -1516,12 +1722,269 @@ export default function Analytics() {
           </ChartContainer>
         </div>
 
-        {/* Row 3: Appointment Loads (24-Hour Time-based distribution - Standalone) */}
+        {/* Row 3: Appointment Loads (Time-based distribution - Standalone) */}
         <div className="w-full">
           <ChartContainer
-            title="Appointment Loads (24-Hour Clinic)"
-            description="Hourly Patient Arrival Volume (00:00 to 24:00)"
+            title="Appointment Loads"
+            description="Hourly Patient Arrival Distribution (00:00 to 24:00)"
             icon={<Clock className="w-5 h-5" />}
+            extra={
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                  {[
+                    { id: 'today', label: 'Today' },
+                    { id: '7d', label: '7 Days' },
+                    { id: '30d', label: '30 Days' },
+                    { id: 'all', label: 'All Time' }
+                  ].map(r => (
+                    <button
+                      key={r.id}
+                      onClick={() => setAppointmentLoadRange(r.id as any)}
+                      className={cn(
+                        "px-2.5 py-1 text-[11px] font-bold rounded-md transition-all",
+                        appointmentLoadRange === r.id
+                          ? "bg-amber-500 text-white shadow-xs"
+                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                      )}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-[11px] font-black px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  {appointmentLoadRange === 'today' ? `Today: ${appointmentLoadsTotal.toLocaleString()} Patients` : `Total: ${appointmentLoadsTotal.toLocaleString()} Patients`}
+                </span>
+                <span className="text-[11px] font-black px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                  {appointmentLoadRange === 'today' 
+                    ? `Pace: ~${loadPeriodStats.activeHoursAvg} pts / active hr` 
+                    : `Daily Avg: ~${loadPeriodStats.dailyAvg} pts / day`}
+                </span>
+              </div>
+            }
+            topSlot={
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/20 mb-5">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                    <SlidersHorizontal className="w-4 h-4 text-amber-500" />
+                    <span>Inspect Time Window:</span>
+                  </div>
+
+                  {/* From Hour */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-muted-foreground">From</span>
+                    <Select value={String(customStartHour)} onValueChange={v => setCustomStartHour(parseInt(v))}>
+                      <SelectTrigger className="h-8 w-24 text-xs font-bold rounded-lg border-border bg-card">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-56">
+                        {HOUR_OPTIONS.map(opt => (
+                          <SelectItem key={opt.value} value={String(opt.value)} className="text-xs font-bold">
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* To Hour */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-muted-foreground">To</span>
+                    <Select value={String(customEndHour)} onValueChange={v => setCustomEndHour(parseInt(v))}>
+                      <SelectTrigger className="h-8 w-24 text-xs font-bold rounded-lg border-border bg-card">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-56">
+                        {HOUR_OPTIONS.map(opt => (
+                          <SelectItem key={opt.value} value={String(opt.value)} className="text-xs font-bold">
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Quick Presets */}
+                  <div className="hidden sm:flex items-center gap-1 pl-2 border-l border-border/50">
+                    {[
+                      { label: 'OPD Rush (10-14)', start: 10, end: 14 },
+                      { label: 'Evening Peak (17-21)', start: 17, end: 21 },
+                      { label: 'Full Shift (08-20)', start: 8, end: 20 },
+                    ].map(preset => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => { setCustomStartHour(preset.start); setCustomEndHour(preset.end); }}
+                        className={cn(
+                          "text-[10px] font-bold px-2 py-1 rounded-md transition-all",
+                          customStartHour === preset.start && customEndHour === preset.end
+                            ? "bg-amber-500 text-white shadow-xs"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Computed Average for Selected Window */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card border border-border shadow-xs text-xs font-bold">
+                    <span className="text-muted-foreground">In Window ({customWindowStats.duration} hrs):</span>
+                    <span className="font-black text-foreground">{customWindowStats.count} patients ({customWindowStats.percent}%)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 text-white shadow-sm text-xs font-bold">
+                    <span>Window Average:</span>
+                    <span className="font-black text-sm">~{customWindowStats.avgPerHour} pts / hr</span>
+                  </div>
+                  {appointmentLoadRange !== 'today' && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 text-white shadow-sm text-xs font-bold">
+                      <span>Daily Avg:</span>
+                      <span className="font-black text-sm">~{customWindowStats.avgPerDay} pts / day</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            }
+            footer={
+              <div className="space-y-3 mt-4 pt-4 border-t border-border/40">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">
+                      Time Period Flow & Averages
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      {appointmentLoadRange === 'today' ? 'Hourly Pace' : 'Daily Pace'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-bold text-muted-foreground">
+                    Peak Period: <span className="font-black text-amber-600 dark:text-amber-400">{loadPeriodStats.peakPeriodName}</span> ({loadPeriodStats.peakPeriodCount} pts)
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  {/* Morning Card */}
+                  <div className={cn(
+                    "p-3 rounded-2xl border transition-all relative overflow-hidden",
+                    loadPeriodStats.peakPeriodName.includes('Morning') 
+                      ? "bg-amber-500/10 border-amber-500/30 ring-1 ring-amber-500/20" 
+                      : "bg-slate-50 dark:bg-slate-900/50 border-border/40"
+                  )}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm">🌅</span>
+                        <span className="text-xs font-bold text-foreground">Morning</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-muted-foreground">06:00 - 12:00</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 mt-2">
+                      <span className="text-xl font-black text-foreground">{loadPeriodStats.morning.count}</span>
+                      <span className="text-[11px] font-bold text-muted-foreground">patients</span>
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground ml-auto">
+                        {loadPeriodStats.morning.percent}%
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground font-medium mt-1">
+                      {appointmentLoadRange === 'today' ? (
+                        <span>Avg: <strong className="text-foreground font-black">{loadPeriodStats.morning.avgPerHour}</strong> pts/hr</span>
+                      ) : (
+                        <span>Avg: <strong className="text-foreground font-black">{loadPeriodStats.morning.avgPerDay}</strong> pts/day</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Afternoon Card */}
+                  <div className={cn(
+                    "p-3 rounded-2xl border transition-all relative overflow-hidden",
+                    loadPeriodStats.peakPeriodName.includes('Afternoon') 
+                      ? "bg-amber-500/10 border-amber-500/30 ring-1 ring-amber-500/20" 
+                      : "bg-slate-50 dark:bg-slate-900/50 border-border/40"
+                  )}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm">☀️</span>
+                        <span className="text-xs font-bold text-foreground">Afternoon</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-muted-foreground">12:00 - 17:00</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 mt-2">
+                      <span className="text-xl font-black text-foreground">{loadPeriodStats.afternoon.count}</span>
+                      <span className="text-[11px] font-bold text-muted-foreground">patients</span>
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground ml-auto">
+                        {loadPeriodStats.afternoon.percent}%
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground font-medium mt-1">
+                      {appointmentLoadRange === 'today' ? (
+                        <span>Avg: <strong className="text-foreground font-black">{loadPeriodStats.afternoon.avgPerHour}</strong> pts/hr</span>
+                      ) : (
+                        <span>Avg: <strong className="text-foreground font-black">{loadPeriodStats.afternoon.avgPerDay}</strong> pts/day</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Evening Card */}
+                  <div className={cn(
+                    "p-3 rounded-2xl border transition-all relative overflow-hidden",
+                    loadPeriodStats.peakPeriodName.includes('Evening') 
+                      ? "bg-amber-500/10 border-amber-500/30 ring-1 ring-amber-500/20" 
+                      : "bg-slate-50 dark:bg-slate-900/50 border-border/40"
+                  )}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm">🌇</span>
+                        <span className="text-xs font-bold text-foreground">Evening</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-muted-foreground">17:00 - 21:00</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 mt-2">
+                      <span className="text-xl font-black text-foreground">{loadPeriodStats.evening.count}</span>
+                      <span className="text-[11px] font-bold text-muted-foreground">patients</span>
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground ml-auto">
+                        {loadPeriodStats.evening.percent}%
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground font-medium mt-1">
+                      {appointmentLoadRange === 'today' ? (
+                        <span>Avg: <strong className="text-foreground font-black">{loadPeriodStats.evening.avgPerHour}</strong> pts/hr</span>
+                      ) : (
+                        <span>Avg: <strong className="text-foreground font-black">{loadPeriodStats.evening.avgPerDay}</strong> pts/day</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Night Card */}
+                  <div className={cn(
+                    "p-3 rounded-2xl border transition-all relative overflow-hidden",
+                    loadPeriodStats.peakPeriodName.includes('Night') 
+                      ? "bg-amber-500/10 border-amber-500/30 ring-1 ring-amber-500/20" 
+                      : "bg-slate-50 dark:bg-slate-900/50 border-border/40"
+                  )}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm">🌙</span>
+                        <span className="text-xs font-bold text-foreground">Night</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-muted-foreground">21:00 - 06:00</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 mt-2">
+                      <span className="text-xl font-black text-foreground">{loadPeriodStats.night.count}</span>
+                      <span className="text-[11px] font-bold text-muted-foreground">patients</span>
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground ml-auto">
+                        {loadPeriodStats.night.percent}%
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground font-medium mt-1">
+                      {appointmentLoadRange === 'today' ? (
+                        <span>Avg: <strong className="text-foreground font-black">{loadPeriodStats.night.avgPerHour}</strong> pts/hr</span>
+                      ) : (
+                        <span>Avg: <strong className="text-foreground font-black">{loadPeriodStats.night.avgPerDay}</strong> pts/day</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            }
           >
             <AreaChart data={peakHoursData} margin={{ top: 20, right: 30, left: -10, bottom: 0 }}>
               <defs>
@@ -1544,6 +2007,55 @@ export default function Analytics() {
                 tickFormatter={(val) => `${val}`}
               />
               <RechartsTooltip content={<CustomTooltip />} />
+              {/* Highlight the user-selected time window on the chart */}
+              {customStartHour < customEndHour ? (
+                <ReferenceArea 
+                  x1={customWindowStats.startLabel} 
+                  x2={customWindowStats.endLabel} 
+                  stroke="#f59e0b" 
+                  strokeOpacity={0.5} 
+                  strokeDasharray="3 3" 
+                  fill="#f59e0b" 
+                  fillOpacity={0.12} 
+                />
+              ) : customStartHour > customEndHour ? (
+                <>
+                  <ReferenceArea 
+                    x1={customWindowStats.startLabel} 
+                    x2="24:00" 
+                    stroke="#f59e0b" 
+                    strokeOpacity={0.5} 
+                    strokeDasharray="3 3" 
+                    fill="#f59e0b" 
+                    fillOpacity={0.12} 
+                  />
+                  <ReferenceArea 
+                    x1="00:00" 
+                    x2={customWindowStats.endLabel} 
+                    stroke="#f59e0b" 
+                    strokeOpacity={0.5} 
+                    strokeDasharray="3 3" 
+                    fill="#f59e0b" 
+                    fillOpacity={0.12} 
+                  />
+                </>
+              ) : null}
+              {parseFloat(loadPeriodStats.activeHoursAvg) > 0 && (
+                <ReferenceLine 
+                  y={parseFloat(loadPeriodStats.activeHoursAvg)} 
+                  stroke="#f59e0b" 
+                  strokeDasharray="4 4" 
+                  strokeWidth={1.5}
+                  strokeOpacity={0.6}
+                  label={{ 
+                    value: `Avg (${loadPeriodStats.activeHoursAvg}/hr)`, 
+                    fill: '#f59e0b', 
+                    fontSize: 10, 
+                    fontWeight: 800, 
+                    position: 'insideTopRight' 
+                  }} 
+                />
+              )}
               <Area
                 type="monotone"
                 dataKey="patients"
@@ -1617,8 +2129,47 @@ export default function Analytics() {
         <div className="w-full">
           <ChartContainer
             title="Clinical Seasonality"
-            description="6-Month Trend Analysis of Core Diagnoses"
+            description={selectedSeasonalityDiagnoses.length > 0 ? "Custom Diagnosis Comparison (6-Month Trend)" : "6-Month Trend Analysis of Core Diagnoses"}
             icon={<Activity className="w-5 h-5" />}
+            extra={
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 relative">
+                    <Filter className="w-4 h-4 text-muted-foreground" />
+                    {selectedSeasonalityDiagnoses.length > 0 && (
+                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-primary-foreground rounded-full text-[9px] font-black flex items-center justify-center">
+                        {selectedSeasonalityDiagnoses.length}
+                      </span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-3 rounded-2xl shadow-2xl" align="end">
+                  <div className="flex items-center justify-between mb-2 pb-2 border-b">
+                    <h4 className="text-xs font-black uppercase tracking-widest">Filter Diagnosis</h4>
+                    {selectedSeasonalityDiagnoses.length > 0 && (
+                      <button onClick={() => setSelectedSeasonalityDiagnoses([])} className="text-[10px] font-black text-primary hover:underline uppercase">Reset</button>
+                    )}
+                  </div>
+                  <ScrollArea className="h-[250px] pr-3">
+                    <div className="space-y-2.5">
+                      {allSeasonalityDiagnoses.map((d) => (
+                        <div key={d.name} className="flex items-center space-x-2 group">
+                          <Checkbox
+                            id={`seasonality-diag-${d.name}`}
+                            checked={selectedSeasonalityDiagnoses.includes(d.name)}
+                            onCheckedChange={() => toggleSeasonalityDiagnosis(d.name)}
+                          />
+                          <label htmlFor={`seasonality-diag-${d.name}`} className="text-xs font-bold leading-none cursor-pointer group-hover:text-primary transition-colors flex-1 flex justify-between">
+                            <span className="truncate pr-2">{d.name}</span>
+                            <span className="text-muted-foreground tabular-nums">{d.count}</span>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </PopoverContent>
+              </Popover>
+            }
           >
             <AreaChart data={seasonalityData} margin={{ top: 20, right: 30, left: -20, bottom: 0 }}>
               <defs>

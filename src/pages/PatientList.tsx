@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
@@ -60,6 +60,62 @@ export default function PatientList() {
   const [addVisitVitals, setAddVisitVitals] = useState<VitalsForm>(initialVitals);
   const [addVisitDoctorId, setAddVisitDoctorId] = useState<string>('general');
   const [submittingVisit, setSubmittingVisit] = useState(false);
+
+  // Vitals input refs for Enter key navigation
+  const weightRef = useRef<HTMLInputElement>(null);
+  const bpRef = useRef<HTMLInputElement>(null);
+  const pulseRef = useRef<HTMLInputElement>(null);
+  const spo2Ref = useRef<HTMLInputElement>(null);
+  const tempRef = useRef<HTMLInputElement>(null);
+  const cbgRef = useRef<HTMLInputElement>(null);
+
+  // Edit form input refs
+  const editNameRef = useRef<HTMLInputElement>(null);
+  const editAgeRef = useRef<HTMLInputElement>(null);
+  const editPhoneRef = useRef<HTMLInputElement>(null);
+  const editAddressRef = useRef<HTMLInputElement>(null);
+
+  const handleVitalsKeyDown = (e: React.KeyboardEvent, nextRef?: React.RefObject<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (nextRef && nextRef.current) {
+        nextRef.current.focus();
+      } else if (!nextRef) {
+        handleAddVisit();
+      }
+    }
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent, nextRef?: React.RefObject<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (nextRef && nextRef.current) {
+        nextRef.current.focus();
+      } else if (!nextRef) {
+        saveEdit();
+      }
+    }
+  };
+
+  // Auto-focus first field when Add Visit modal opens
+  useEffect(() => {
+    if (addVisitOpen) {
+      const timer = setTimeout(() => {
+        weightRef.current?.focus();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [addVisitOpen]);
+
+  // Auto-focus first field when Edit mode is activated
+  useEffect(() => {
+    if (editing) {
+      const timer = setTimeout(() => {
+        editNameRef.current?.focus();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [editing]);
 
   // Doctors in clinic for visit assignment
   const { data: doctors } = useQuery({
@@ -429,7 +485,13 @@ export default function PatientList() {
                   </div>
                   <div className="col-span-3">
                     <Label className="text-muted-foreground">Name</Label>
-                    <Input className="border-border bg-card focus:ring-primary/10" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
+                    <Input 
+                      ref={editNameRef}
+                      className="border-border bg-card focus:ring-primary/10" 
+                      value={editForm.name} 
+                      onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} 
+                      onKeyDown={e => handleEditKeyDown(e, editAgeRef)}
+                    />
                   </div>
                 </div>
                 <div className="col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -437,6 +499,7 @@ export default function PatientList() {
                     <Label>Age</Label>
                     <div className="flex gap-2">
                       <Input 
+                        ref={editAgeRef}
                         type="number" 
                         step="0.1"
                         value={editForm.age} 
@@ -445,6 +508,7 @@ export default function PatientList() {
                           if (val > 1000) return;
                           setEditForm(f => ({ ...f, age: e.target.value }));
                         }} 
+                        onKeyDown={e => handleEditKeyDown(e, editPhoneRef)}
                         className="flex-1"
                       />
                       <Select value={editForm.ageUnit} onValueChange={v => setEditForm(f => ({ ...f, ageUnit: v }))}>
@@ -471,18 +535,26 @@ export default function PatientList() {
                   <div>
                     <Label className="text-muted-foreground">Phone</Label>
                     <Input 
+                      ref={editPhoneRef}
                       className="border-border bg-card focus:ring-primary/10"
                       value={editForm.phone} 
                       onChange={e => {
                         const val = e.target.value.replace(/\D/g, '').slice(0, 10);
                         setEditForm(f => ({ ...f, phone: val }));
                       }} 
+                      onKeyDown={e => handleEditKeyDown(e, editAddressRef)}
                     />
                   </div>
                 </div>
                 <div className="col-span-2">
                   <Label className="text-muted-foreground">Address</Label>
-                  <Input className="border-border bg-card focus:ring-primary/10" value={editForm.address} onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))} />
+                  <Input 
+                    ref={editAddressRef}
+                    className="border-border bg-card focus:ring-primary/10" 
+                    value={editForm.address} 
+                    onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))} 
+                    onKeyDown={e => handleEditKeyDown(e)}
+                  />
                 </div>
               </div>
               <Button onClick={saveEdit}>Save Changes</Button>
@@ -598,61 +670,73 @@ export default function PatientList() {
                 <div>
                   <Label className="text-[11px] text-muted-foreground">Weight (kg)</Label>
                   <Input 
+                    ref={weightRef}
                     type="number"
                     step="0.1"
                     placeholder="e.g. 65"
                     value={addVisitVitals.weight}
                     onChange={e => setAddVisitVitals(v => ({ ...v, weight: e.target.value }))}
+                    onKeyDown={e => handleVitalsKeyDown(e, bpRef)}
                     className="h-9 text-sm"
                   />
                 </div>
                 <div>
                   <Label className="text-[11px] text-muted-foreground">BP (mmHg)</Label>
                   <Input 
+                    ref={bpRef}
                     placeholder="120/80"
                     value={addVisitVitals.blood_pressure}
                     onChange={e => setAddVisitVitals(v => ({ ...v, blood_pressure: e.target.value }))}
+                    onKeyDown={e => handleVitalsKeyDown(e, pulseRef)}
                     className="h-9 text-sm"
                   />
                 </div>
                 <div>
                   <Label className="text-[11px] text-muted-foreground">Pulse (bpm)</Label>
                   <Input 
+                    ref={pulseRef}
                     type="number"
                     placeholder="e.g. 72"
                     value={addVisitVitals.pulse_rate}
                     onChange={e => setAddVisitVitals(v => ({ ...v, pulse_rate: e.target.value }))}
+                    onKeyDown={e => handleVitalsKeyDown(e, spo2Ref)}
                     className="h-9 text-sm"
                   />
                 </div>
                 <div>
                   <Label className="text-[11px] text-muted-foreground">SpO2 (%)</Label>
                   <Input 
+                    ref={spo2Ref}
                     type="number"
                     placeholder="e.g. 98"
                     value={addVisitVitals.spo2}
                     onChange={e => setAddVisitVitals(v => ({ ...v, spo2: e.target.value }))}
+                    onKeyDown={e => handleVitalsKeyDown(e, tempRef)}
                     className="h-9 text-sm"
                   />
                 </div>
                 <div>
                   <Label className="text-[11px] text-muted-foreground">Temp (°F)</Label>
                   <Input 
+                    ref={tempRef}
                     type="number"
                     step="0.1"
                     placeholder="98.6"
                     value={addVisitVitals.temperature}
                     onChange={e => setAddVisitVitals(v => ({ ...v, temperature: e.target.value }))}
+                    onKeyDown={e => handleVitalsKeyDown(e, cbgRef)}
                     className="h-9 text-sm"
                   />
                 </div>
                 <div>
                   <Label className="text-[11px] text-muted-foreground">CBG (mg/dL)</Label>
                   <Input 
+                    ref={cbgRef}
                     type="number"
                     placeholder="e.g. 110"
                     value={addVisitVitals.cbg}
                     onChange={e => setAddVisitVitals(v => ({ ...v, cbg: e.target.value }))}
+                    onKeyDown={e => handleVitalsKeyDown(e)}
                     className="h-9 text-sm"
                   />
                 </div>

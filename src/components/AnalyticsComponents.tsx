@@ -13,9 +13,10 @@ interface ChartContainerProps {
   extra?: ReactNode;
   height?: number | string;
   footer?: ReactNode;
+  topSlot?: ReactNode;
 }
 
-export const ChartContainer = ({ title, description, children, className, icon, extra, height = 300, footer }: ChartContainerProps) => (
+export const ChartContainer = ({ title, description, children, className, icon, extra, height = 300, footer, topSlot }: ChartContainerProps) => (
   <Card className={cn("border-none shadow-sm bg-card overflow-hidden group hover:shadow-md transition-all duration-300 rounded-[2rem]", className)}>
     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-border/50">
       <div className="flex items-center gap-3">
@@ -32,6 +33,7 @@ export const ChartContainer = ({ title, description, children, className, icon, 
       {extra}
     </CardHeader>
     <CardContent className="pt-6">
+      {topSlot}
       <div className="w-full" style={{ height: typeof height === 'number' ? `${height}px` : height }}>
         <ResponsiveContainer width="100%" height="100%">
           {children as any}
