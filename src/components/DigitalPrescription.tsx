@@ -4,12 +4,24 @@ import { Button } from '@/components/ui/button';
 import { 
     Maximize2, Minimize2, Trash2, Save, Undo, Redo, X, 
     Eraser, PenTool, Circle, Plus, ChevronLeft, ChevronRight, 
-    Tablet, Settings2, AlertTriangle, Scissors, Copy, ClipboardPaste, BookOpen, GripVertical 
+    Tablet, Settings2, AlertTriangle, Scissors, Copy, ClipboardPaste, BookOpen, GripVertical, Check
 } from 'lucide-react';
 import PrescriptionTemplate from './PrescriptionTemplate';
 import { getStroke } from 'perfect-freehand';
 import { polygonContains } from 'd3-polygon';
 import { useGesture } from '@use-gesture/react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +33,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+
+export interface HandwrittenSnippet {
+    id?: string;
+    name: string;
+    paths: any[];
+    created_at?: string;
+    clinic_id?: string | null;
+    doctor_id?: string | null;
+}
 
 interface DigitalPrescriptionProps {
     patient: any;
@@ -106,7 +127,7 @@ export default function DigitalPrescription({ patient, visit, initialPaths = [],
     const [scaleFactor, setScaleFactor] = useState(1);
     const [resizeStartPos, setResizeStartPos] = useState({ x: 0, y: 0 });
     const resizeBoundsRef = useRef({ minX: 0, minY: 0, maxX: 0, maxY: 0 });
-    const [savedProtocols, setSavedProtocols] = useState<{name: string, paths: any[]}[]>(() => {
+    const [savedProtocols, setSavedProtocols] = useState<HandwrittenSnippet[]>(() => {
         try {
             return JSON.parse(localStorage.getItem('handwritten_protocols') || '[]');
         } catch {
@@ -117,6 +138,70 @@ export default function DigitalPrescription({ patient, visit, initialPaths = [],
     const dropdownRef = React.useRef<HTMLDivElement>(null);
     const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
     const actionsMenuRef = React.useRef<HTMLDivElement>(null);
+
+    // Save Snippet Dialog State
+    const [isSaveSnippetModalOpen, setIsSaveSnippetModalOpen] = useState(false);
+    const [snippetNameInput, setSnippetNameInput] = useState('');
+    const [snippetSaveTarget, setSnippetSaveTarget] = useState<'selection' | 'current_page'>('current_page');
+    const [isSavingSnippet, setIsSavingSnippet] = useState(false);
+
+    const clinicId = visit?.clinic_id;
+    const doctorId = visit?.assigned_doctor_id;
+
+    // Load & sync snippets from Supabase and merge with localStorage
+    useEffect(() => {
+        let isSubscribed = true;
+        async function fetchSupabaseSnippets() {
+            try {
+                let query = supabase.from('handwritten_protocols').select('*').order('created_at', { ascending: false });
+                if (clinicId) {
+                    query = query.or(`clinic_id.eq.${clinicId},clinic_id.is.null`);
+                }
+                const { data, error } = await query;
+                if (!error && data && isSubscribed) {
+                    const local: HandwrittenSnippet[] = (() => {
+                        try {
+                            return JSON.parse(localStorage.getItem('handwritten_protocols') || '[]');
+                        } catch {
+                            return [];
+                        }
+                    })();
+
+                    const combinedMap = new Map<string, HandwrittenSnippet>();
+                    data.forEach((row: any) => {
+                        const key = row.id || row.name;
+                        combinedMap.set(key, {
+                            id: row.id,
+                            name: row.name,
+                            paths: row.raw_paths || [],
+                            clinic_id: row.clinic_id,
+                            doctor_id: row.doctor_id,
+                            created_at: row.created_at
+                        });
+                    });
+
+                    local.forEach((item) => {
+                        const key = item.id || item.name;
+                        if (!combinedMap.has(key)) {
+                            combinedMap.set(key, item);
+                        }
+                    });
+
+                    const merged = Array.from(combinedMap.values());
+                    setSavedProtocols(merged);
+                    try {
+                        localStorage.setItem('handwritten_protocols', JSON.stringify(merged));
+                    } catch (e) {
+                        console.warn('LocalStorage quota warning', e);
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not sync snippets from cloud:', err);
+            }
+        }
+        fetchSupabaseSnippets();
+        return () => { isSubscribed = false; };
+    }, [clinicId]);
 
     React.useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -771,19 +856,109 @@ export default function DigitalPrescription({ patient, visit, initialPaths = [],
         isDirtyRef.current = true;
     };
 
-    const copySelection = () => {
-        if (selectedPathIndices.length === 0) return;
-        const selectedPaths = selectedPathIndices.map(idx => pages[currentPageIndex][idx]);
-        
-        const name = prompt("Name this handwritten protocol:");
-        if (name) {
-            const newProtocol = { name, paths: selectedPaths };
-            const updated = [...savedProtocols, newProtocol];
+    const triggerSaveSnippetModal = (target: 'selection' | 'current_page') => {
+        const paths = target === 'selection' 
+            ? selectedPathIndices.map(idx => pages[currentPageIndex]?.[idx]).filter(Boolean)
+            : (pages[currentPageIndex] || []);
+
+        if (!paths || paths.length === 0) {
+            toast.error('No handwriting found to save as a snippet.');
+            return;
+        }
+
+        setSnippetSaveTarget(target);
+        setSnippetNameInput('');
+        setIsSaveSnippetModalOpen(true);
+    };
+
+    const confirmSaveSnippet = async () => {
+        const name = snippetNameInput.trim();
+        if (!name) {
+            toast.error('Please enter a snippet name');
+            return;
+        }
+
+        const pathsToSave = snippetSaveTarget === 'selection'
+            ? selectedPathIndices.map(idx => pages[currentPageIndex]?.[idx]).filter(Boolean)
+            : (pages[currentPageIndex] || []);
+
+        if (!pathsToSave || pathsToSave.length === 0) {
+            toast.error('No handwriting found to save in snippet');
+            return;
+        }
+
+        setIsSavingSnippet(true);
+        try {
+            // Deep clone paths so future canvas modifications don't mutate saved snippets
+            const clonedPaths = JSON.parse(JSON.stringify(pathsToSave));
+
+            const newSnippet: HandwrittenSnippet = {
+                id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined,
+                name,
+                paths: clonedPaths,
+                clinic_id: clinicId || null,
+                doctor_id: doctorId || null,
+                created_at: new Date().toISOString()
+            };
+
+            const updated = [newSnippet, ...savedProtocols.filter(p => p.name.toLowerCase() !== name.toLowerCase())];
             setSavedProtocols(updated);
+            try {
+                localStorage.setItem('handwritten_protocols', JSON.stringify(updated));
+            } catch (e) {
+                console.warn('LocalStorage quota exceeded', e);
+            }
+
+            toast.success(`Snippet "${name}" saved!`);
+            setIsSaveSnippetModalOpen(false);
+            setSnippetNameInput('');
+
+            if (toolMode === 'select') {
+                setToolMode('pen');
+                setSelectedPathIndices([]);
+            }
+
+            // Cloud sync to Supabase table handwritten_protocols
+            const { data, error } = await supabase.from('handwritten_protocols').insert({
+                name: newSnippet.name,
+                clinic_id: newSnippet.clinic_id,
+                doctor_id: newSnippet.doctor_id,
+                raw_paths: newSnippet.paths
+            }).select().maybeSingle();
+
+            if (!error && data?.id) {
+                newSnippet.id = data.id;
+                const withId = updated.map(p => p.name === name ? { ...p, id: data.id } : p);
+                setSavedProtocols(withId);
+                try {
+                    localStorage.setItem('handwritten_protocols', JSON.stringify(withId));
+                } catch {}
+            }
+        } catch (err) {
+            console.error('Error saving snippet:', err);
+            toast.error('Could not save to cloud, but saved locally on this device.');
+        } finally {
+            setIsSavingSnippet(false);
+        }
+    };
+
+    const handleDeleteSnippet = async (index: number, snippet: HandwrittenSnippet) => {
+        const updated = savedProtocols.filter((_, idx) => idx !== index);
+        setSavedProtocols(updated);
+        try {
             localStorage.setItem('handwritten_protocols', JSON.stringify(updated));
-            setToolMode('pen');
-            setSelectedPathIndices([]);
-            isDirtyRef.current = true;
+        } catch {}
+
+        toast.success(`Snippet "${snippet.name}" deleted`);
+
+        try {
+            if (snippet.id) {
+                await supabase.from('handwritten_protocols').delete().eq('id', snippet.id);
+            } else {
+                await supabase.from('handwritten_protocols').delete().eq('name', snippet.name);
+            }
+        } catch (err) {
+            console.warn('Could not delete snippet from cloud:', err);
         }
     };
 
@@ -923,25 +1098,34 @@ export default function DigitalPrescription({ patient, visit, initialPaths = [],
         isDirtyRef.current = true;
     };
 
-    const pasteProtocol = (protocolPaths = []) => {
+    const pasteProtocol = (protocolPaths: any[] = []) => {
+        if (!protocolPaths || protocolPaths.length === 0) return;
+
+        // Deep clone to ensure immutability of the saved snippet
+        const clonedPaths = protocolPaths.map((path: any) => ({
+            ...path,
+            points: path.points.map((p: any) => ({ ...p }))
+        }));
+
         const updatedPages = [...pages];
         const startIdx = (updatedPages[currentPageIndex] || []).length;
-        updatedPages[currentPageIndex] = [...(updatedPages[currentPageIndex] || []), ...protocolPaths];
+        updatedPages[currentPageIndex] = [...(updatedPages[currentPageIndex] || []), ...clonedPaths];
         setPages(updatedPages);
-        
-        const newSelected = protocolPaths.map((_, i) => startIdx + i);
+
+        const newSelected = clonedPaths.map((_, i) => startIdx + i);
         setSelectedPathIndices(newSelected);
         setToolMode('select');
-        
+
         const newHistory = history.slice(0, historyStep + 1);
         newHistory.push(updatedPages);
         setHistory(newHistory);
         setHistoryStep(newHistory.length - 1);
-        
+
         redrawStatic(updatedPages[currentPageIndex]);
         isDirtyRef.current = true;
-        
+
         if (onPathsChange) onPathsChange(updatedPages);
+        toast.info('Snippet pasted. You can drag or scale it.');
     };
     
     const unselect = () => {
@@ -1154,7 +1338,13 @@ export default function DigitalPrescription({ patient, visit, initialPaths = [],
                                   <div className="w-[1px] h-4 bg-border mx-1" />
                                   
                                   {/* Save Snippet */}
-                                  <Button variant="ghost" size="sm" onClick={copySelection} className="h-8 text-pink-600 font-bold bg-pink-50 hover:bg-pink-100 rounded-md" title="Save snippet">
+                                  <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      onClick={() => triggerSaveSnippetModal('selection')} 
+                                      className="h-8 text-pink-600 font-bold bg-pink-50 hover:bg-pink-100 rounded-md" 
+                                      title="Save selection as snippet"
+                                  >
                                       <Copy className="w-4 h-4 mr-1" /> Save
                                   </Button>
 
@@ -1250,36 +1440,81 @@ export default function DigitalPrescription({ patient, visit, initialPaths = [],
                         {/* Saved Protocols Dropdown */}
                         <div className="border-l border-border pl-2 flex items-center">
                            <div className="relative" ref={dropdownRef}>
-                               <Button variant="ghost" size="sm" onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="h-8 text-blue-600 bg-blue-50 hover:bg-blue-100 font-bold rounded-md">
-                                  <BookOpen className="w-4 h-4 mr-1" /> Snippets
+                               <Button 
+                                   variant="ghost" 
+                                   size="sm" 
+                                   onClick={() => setIsDropdownOpen(!isDropdownOpen)} 
+                                   className="h-8 text-blue-600 bg-blue-50 hover:bg-blue-100 font-bold rounded-md flex items-center gap-1.5"
+                               >
+                                  <BookOpen className="w-4 h-4" /> Snippets
+                                  {savedProtocols.length > 0 && (
+                                      <span className="text-[10px] bg-blue-600 text-white rounded-full px-1.5 py-0.2 leading-tight">
+                                          {savedProtocols.length}
+                                      </span>
+                                  )}
                                 </Button>
                                 {isDropdownOpen && (
-                                    <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-border rounded-xl shadow-xl p-2 z-[100]">
-                                       {savedProtocols.length === 0 ? (
-                                           <p className="text-xs text-muted-foreground p-2">No snippets saved. Use lasso to select and save.</p>
-                                       ) : (
-                                           savedProtocols.map((p, i) => (
-                                               <div key={i} className="flex items-center justify-between hover:bg-slate-50 rounded-lg pr-1">
-                                                   <button onClick={() => { pasteProtocol(p.paths); setIsDropdownOpen(false); }} className="flex-1 text-left px-3 py-2 text-sm font-bold text-slate-700">
-                                                       {p.name}
-                                                   </button>
-                                                   <Button 
-                                                       variant="ghost" 
-                                                       size="icon" 
-                                                       className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                       onClick={() => {
-                                                           if (confirm('Delete this snippet?')) {
-                                                               const updated = savedProtocols.filter((_, idx) => idx !== i);
-                                                               setSavedProtocols(updated);
-                                                               localStorage.setItem('handwritten_protocols', JSON.stringify(updated));
-                                                           }
-                                                       }}
-                                                   >
-                                                       <Trash2 className="w-3.5 h-3.5" />
-                                                   </Button>
-                                               </div>
-                                           ))
-                                       )}
+                                    <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-slate-900 border border-border rounded-xl shadow-2xl p-2 z-[100] max-h-80 overflow-y-auto">
+                                        {/* Action to save current page or selection */}
+                                        <div className="pb-2 border-b border-border space-y-1">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-full text-xs font-bold text-blue-600 dark:text-blue-400 justify-start hover:bg-blue-50 dark:hover:bg-blue-950/40 h-8 gap-1.5"
+                                                onClick={() => {
+                                                    setIsDropdownOpen(false);
+                                                    triggerSaveSnippetModal(
+                                                        toolMode === 'select' && selectedPathIndices.length > 0 ? 'selection' : 'current_page'
+                                                    );
+                                                }}
+                                            >
+                                                <Plus className="w-3.5 h-3.5" />
+                                                {toolMode === 'select' && selectedPathIndices.length > 0 
+                                                    ? 'Save Selected as Snippet' 
+                                                    : 'Save Current Writing as Snippet'}
+                                            </Button>
+                                        </div>
+
+                                        <div className="pt-1.5 space-y-1">
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground px-2 py-0.5">
+                                                Snippet Library ({savedProtocols.length})
+                                            </p>
+                                            {savedProtocols.length === 0 ? (
+                                                <p className="text-xs text-muted-foreground p-3 text-center">
+                                                    No snippets saved yet.<br />
+                                                    Click <strong className="text-blue-600">Save Current Writing</strong> above or use Lasso to create one.
+                                                </p>
+                                            ) : (
+                                                savedProtocols.map((p, i) => (
+                                                    <div key={p.id || i} className="flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg pr-1 group">
+                                                        <button 
+                                                            onClick={() => { pasteProtocol(p.paths); setIsDropdownOpen(false); }} 
+                                                            className="flex-1 text-left px-2.5 py-2 text-xs font-bold text-foreground truncate"
+                                                            title={`Insert "${p.name}" (${p.paths?.length || 0} strokes)`}
+                                                        >
+                                                            <span className="block truncate">{p.name}</span>
+                                                            <span className="text-[9px] font-normal text-muted-foreground">
+                                                                {p.paths?.length || 0} stroke(s)
+                                                            </span>
+                                                        </button>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 opacity-70 group-hover:opacity-100"
+                                                            title="Delete snippet"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (confirm(`Delete snippet "${p.name}"?`)) {
+                                                                    handleDeleteSnippet(i, p);
+                                                                }
+                                                            }}
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                            </div>
@@ -1506,6 +1741,67 @@ export default function DigitalPrescription({ patient, visit, initialPaths = [],
                     <Plus className="w-4 h-4" /> Add Page
                 </Button>
             </div>
+            {/* Save Snippet Dialog */}
+            <Dialog open={isSaveSnippetModalOpen} onOpenChange={setIsSaveSnippetModalOpen}>
+                <DialogContent className="max-w-md bg-background border border-border shadow-2xl rounded-2xl z-[1001]">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-black flex items-center gap-2 text-foreground">
+                            <BookOpen className="w-5 h-5 text-blue-600" />
+                            Save Handwritten Snippet
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-muted-foreground">
+                            Save clinical notes or prescription handwriting as a reusable snippet template.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                Snippet Name
+                            </Label>
+                            <Input 
+                                autoFocus
+                                placeholder="e.g., Paracetamol Protocol, Fever Advice, Post-Op Care"
+                                value={snippetNameInput}
+                                onChange={(e) => setSnippetNameInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        confirmSaveSnippet();
+                                    }
+                                }}
+                                className="font-bold text-sm h-11 rounded-xl"
+                            />
+                        </div>
+
+                        <div className="p-3 bg-muted/50 rounded-xl border border-border flex items-center justify-between text-xs font-bold text-muted-foreground">
+                            <span>Handwriting Source:</span>
+                            <span className="text-blue-600 dark:text-blue-400 font-extrabold">
+                                {snippetSaveTarget === 'selection' 
+                                    ? `${selectedPathIndices.length} stroke(s) selected` 
+                                    : `${pages[currentPageIndex]?.length || 0} stroke(s) on current page`}
+                            </span>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button 
+                            variant="ghost" 
+                            onClick={() => setIsSaveSnippetModalOpen(false)}
+                            className="rounded-xl font-bold"
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            onClick={confirmSaveSnippet}
+                            disabled={isSavingSnippet || !snippetNameInput.trim()}
+                            className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold gap-2 px-5"
+                        >
+                            {isSavingSnippet ? 'Saving...' : 'Save Snippet'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>,
         document.body
     );
