@@ -14,7 +14,7 @@ import {
   Users, CalendarDays, Activity, Pill, Filter, Lightbulb, Sparkles, TrendingUp, X,
   Clock, CheckCircle2, AlertCircle, Calendar, ArrowUpRight, ArrowDownRight,
   Stethoscope, UserRound, LayoutDashboard, Database, ChevronLeft, ChevronRight,
-  CalendarRange, Check, Layers, BarChart2, ZoomIn, ZoomOut, RotateCcw, UserCheck, SlidersHorizontal
+  CalendarRange, Check, Layers, BarChart2, ZoomIn, ZoomOut, RotateCcw, UserCheck, SlidersHorizontal, ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, getPatientCurrentAge } from '@/lib/utils';
@@ -137,6 +137,7 @@ export default function Analytics() {
   const [appointmentLoadsTotal, setAppointmentLoadsTotal] = useState<number>(0);
   const [customStartHour, setCustomStartHour] = useState<number>(10);
   const [customEndHour, setCustomEndHour] = useState<number>(14);
+  const [isInspectOpen, setIsInspectOpen] = useState(false);
   const [loadPeriodStats, setLoadPeriodStats] = useState({
     morning: { count: 0, avgPerHour: '0.0', avgPerDay: '0.0', percent: 0 },
     afternoon: { count: 0, avgPerHour: '0.0', avgPerDay: '0.0', percent: 0 },
@@ -1730,6 +1731,22 @@ export default function Analytics() {
             icon={<Clock className="w-5 h-5" />}
             extra={
               <div className="flex items-center gap-2 flex-wrap justify-end">
+                <Button
+                  type="button"
+                  variant={isInspectOpen ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setIsInspectOpen(!isInspectOpen)}
+                  className={cn(
+                    "h-8 text-xs font-bold gap-1.5 transition-all shadow-xs",
+                    isInspectOpen 
+                      ? "bg-amber-500 hover:bg-amber-600 text-white border-amber-600 shadow-amber-500/20" 
+                      : "border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:text-foreground hover:bg-amber-500/10 hover:border-amber-500/30"
+                  )}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>Inspect Window</span>
+                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", isInspectOpen && "rotate-180")} />
+                </Button>
                 <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
                   {[
                     { id: 'today', label: 'Today' },
@@ -1762,89 +1779,101 @@ export default function Analytics() {
               </div>
             }
             topSlot={
-              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/20 mb-5">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
-                    <SlidersHorizontal className="w-4 h-4 text-amber-500" />
-                    <span>Inspect Time Window:</span>
-                  </div>
+              <AnimatePresence>
+                {isInspectOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, height: "auto", scale: 1 }}
+                    exit={{ opacity: 0, height: 0, scale: 0.98 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/20 mb-5">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                          <SlidersHorizontal className="w-4 h-4 text-amber-500" />
+                          <span>Inspect Time Window:</span>
+                        </div>
 
-                  {/* From Hour */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-muted-foreground">From</span>
-                    <Select value={String(customStartHour)} onValueChange={v => setCustomStartHour(parseInt(v))}>
-                      <SelectTrigger className="h-8 w-24 text-xs font-bold rounded-lg border-border bg-card">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-56">
-                        {HOUR_OPTIONS.map(opt => (
-                          <SelectItem key={opt.value} value={String(opt.value)} className="text-xs font-bold">
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                        {/* From Hour */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-bold text-muted-foreground">From</span>
+                          <Select value={String(customStartHour)} onValueChange={v => setCustomStartHour(parseInt(v))}>
+                            <SelectTrigger className="h-8 w-24 text-xs font-bold rounded-lg border-border bg-card">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-56">
+                              {HOUR_OPTIONS.map(opt => (
+                                <SelectItem key={opt.value} value={String(opt.value)} className="text-xs font-bold">
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                  {/* To Hour */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-muted-foreground">To</span>
-                    <Select value={String(customEndHour)} onValueChange={v => setCustomEndHour(parseInt(v))}>
-                      <SelectTrigger className="h-8 w-24 text-xs font-bold rounded-lg border-border bg-card">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-56">
-                        {HOUR_OPTIONS.map(opt => (
-                          <SelectItem key={opt.value} value={String(opt.value)} className="text-xs font-bold">
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                        {/* To Hour */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-bold text-muted-foreground">To</span>
+                          <Select value={String(customEndHour)} onValueChange={v => setCustomEndHour(parseInt(v))}>
+                            <SelectTrigger className="h-8 w-24 text-xs font-bold rounded-lg border-border bg-card">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-56">
+                              {HOUR_OPTIONS.map(opt => (
+                                <SelectItem key={opt.value} value={String(opt.value)} className="text-xs font-bold">
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                  {/* Quick Presets */}
-                  <div className="hidden sm:flex items-center gap-1 pl-2 border-l border-border/50">
-                    {[
-                      { label: 'OPD Rush (10-14)', start: 10, end: 14 },
-                      { label: 'Evening Peak (17-21)', start: 17, end: 21 },
-                      { label: 'Full Shift (08-20)', start: 8, end: 20 },
-                    ].map(preset => (
-                      <button
-                        key={preset.label}
-                        type="button"
-                        onClick={() => { setCustomStartHour(preset.start); setCustomEndHour(preset.end); }}
-                        className={cn(
-                          "text-[10px] font-bold px-2 py-1 rounded-md transition-all",
-                          customStartHour === preset.start && customEndHour === preset.end
-                            ? "bg-amber-500 text-white shadow-xs"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        {/* Quick Presets */}
+                        <div className="hidden sm:flex items-center gap-1 pl-2 border-l border-border/50">
+                          {[
+                            { label: 'OPD Rush (10-14)', start: 10, end: 14 },
+                            { label: 'Evening Peak (17-21)', start: 17, end: 21 },
+                            { label: 'Full Shift (08-20)', start: 8, end: 20 },
+                          ].map(preset => (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => { setCustomStartHour(preset.start); setCustomEndHour(preset.end); }}
+                              className={cn(
+                                "text-[10px] font-bold px-2 py-1 rounded-md transition-all",
+                                customStartHour === preset.start && customEndHour === preset.end
+                                  ? "bg-amber-500 text-white shadow-xs"
+                                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                              )}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Computed Average for Selected Window */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card border border-border shadow-xs text-xs font-bold">
+                          <span className="text-muted-foreground">In Window ({customWindowStats.duration} hrs):</span>
+                          <span className="font-black text-foreground">{customWindowStats.count} patients ({customWindowStats.percent}%)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 text-white shadow-sm text-xs font-bold">
+                          <span>Window Average:</span>
+                          <span className="font-black text-sm">~{customWindowStats.avgPerHour} pts / hr</span>
+                        </div>
+                        {appointmentLoadRange !== 'today' && (
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 text-white shadow-sm text-xs font-bold">
+                            <span>Daily Avg:</span>
+                            <span className="font-black text-sm">~{customWindowStats.avgPerDay} pts / day</span>
+                          </div>
                         )}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Computed Average for Selected Window */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card border border-border shadow-xs text-xs font-bold">
-                    <span className="text-muted-foreground">In Window ({customWindowStats.duration} hrs):</span>
-                    <span className="font-black text-foreground">{customWindowStats.count} patients ({customWindowStats.percent}%)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 text-white shadow-sm text-xs font-bold">
-                    <span>Window Average:</span>
-                    <span className="font-black text-sm">~{customWindowStats.avgPerHour} pts / hr</span>
-                  </div>
-                  {appointmentLoadRange !== 'today' && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 text-white shadow-sm text-xs font-bold">
-                      <span>Daily Avg:</span>
-                      <span className="font-black text-sm">~{customWindowStats.avgPerDay} pts / day</span>
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             }
             footer={
               <div className="space-y-3 mt-4 pt-4 border-t border-border/40">
@@ -2007,30 +2036,11 @@ export default function Analytics() {
                 tickFormatter={(val) => `${val}`}
               />
               <RechartsTooltip content={<CustomTooltip />} />
-              {/* Highlight the user-selected time window on the chart */}
-              {customStartHour < customEndHour ? (
-                <ReferenceArea 
-                  x1={customWindowStats.startLabel} 
-                  x2={customWindowStats.endLabel} 
-                  stroke="#f59e0b" 
-                  strokeOpacity={0.5} 
-                  strokeDasharray="3 3" 
-                  fill="#f59e0b" 
-                  fillOpacity={0.12} 
-                />
-              ) : customStartHour > customEndHour ? (
-                <>
+              {/* Highlight the user-selected time window on the chart ONLY when inspect dropdown is open */}
+              {isInspectOpen && (
+                customStartHour < customEndHour ? (
                   <ReferenceArea 
                     x1={customWindowStats.startLabel} 
-                    x2="24:00" 
-                    stroke="#f59e0b" 
-                    strokeOpacity={0.5} 
-                    strokeDasharray="3 3" 
-                    fill="#f59e0b" 
-                    fillOpacity={0.12} 
-                  />
-                  <ReferenceArea 
-                    x1="00:00" 
                     x2={customWindowStats.endLabel} 
                     stroke="#f59e0b" 
                     strokeOpacity={0.5} 
@@ -2038,8 +2048,29 @@ export default function Analytics() {
                     fill="#f59e0b" 
                     fillOpacity={0.12} 
                   />
-                </>
-              ) : null}
+                ) : customStartHour > customEndHour ? (
+                  <>
+                    <ReferenceArea 
+                      x1={customWindowStats.startLabel} 
+                      x2="24:00" 
+                      stroke="#f59e0b" 
+                      strokeOpacity={0.5} 
+                      strokeDasharray="3 3" 
+                      fill="#f59e0b" 
+                      fillOpacity={0.12} 
+                    />
+                    <ReferenceArea 
+                      x1="00:00" 
+                      x2={customWindowStats.endLabel} 
+                      stroke="#f59e0b" 
+                      strokeOpacity={0.5} 
+                      strokeDasharray="3 3" 
+                      fill="#f59e0b" 
+                      fillOpacity={0.12} 
+                    />
+                  </>
+                ) : null
+              )}
               {parseFloat(loadPeriodStats.activeHoursAvg) > 0 && (
                 <ReferenceLine 
                   y={parseFloat(loadPeriodStats.activeHoursAvg)} 
