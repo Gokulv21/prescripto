@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext, useParams } from 'react-router-dom';
-import { startOfDay, endOfDay, isWithinInterval, startOfHour, endOfHour, setHours, format, subDays, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { 
+  startOfDay, endOfDay, isWithinInterval, startOfHour, endOfHour, 
+  setHours, format, subDays, subMonths, startOfMonth, endOfMonth,
+  differenceInDays, startOfWeek, endOfWeek, isSameDay
+} from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -9,22 +13,41 @@ import {
 import {
   Users, CalendarDays, Activity, Pill, Filter, Lightbulb, Sparkles, TrendingUp, X,
   Clock, CheckCircle2, AlertCircle, Calendar, ArrowUpRight, ArrowDownRight,
-  Stethoscope, UserRound, LayoutDashboard, Database
+  Stethoscope, UserRound, LayoutDashboard, Database, ChevronLeft, ChevronRight,
+  CalendarRange, Check, Layers, BarChart2, ZoomIn, ZoomOut, RotateCcw, UserCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, getPatientCurrentAge } from '@/lib/utils';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import PageBanner from '@/components/PageBanner';
 import analyticsBanner from '@/assets/analytics.jpg';
 import Lottie from "lottie-react";
 import analyticsAnimation from "@/assets/animations/analytics.json";
 import { ChartContainer, CustomTooltip, MetricCard } from '@/components/AnalyticsComponents';
 
-type TimeRange = 'today' | 'week' | 'month' | 'year';
+type FlowTimeRange = 'today' | '7d' | '30d' | '90d' | '1y' | 'custom';
+type FlowScale = 'daily' | 'weekly' | 'monthly';
+
+const HOUR_TICKS_24 = [
+  '00:00', '02:00', '04:00', '06:00', '08:00', '10:00',
+  '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '24:00'
+];
+
+interface SmartInsightItem {
+  id: string;
+  category: 'Clinical Focus' | 'Queue Dynamics' | 'Peak Capacity' | 'Prescription Audit' | 'Demographics';
+  title: string;
+  description: string;
+  recommendation: string;
+  badgeColor: string;
+}
 
 import type { Clinic } from '@/types/clinic';
 
@@ -37,16 +60,77 @@ export default function Analytics() {
     completionRate: 0,
     avgConsultTime: '— min'
   });
-  const [timeRange, setTimeRange] = useState<TimeRange>('week');
+  
+  // Patient Flow Dynamics State
+  const [flowTimeRange, setFlowTimeRange] = useState<FlowTimeRange>('7d');
+  const [flowScale, setFlowScale] = useState<FlowScale>('daily');
+  const [zoomLevel, setZoomLevel] = useState<number>(1); // 1 = 100%, 2 = 60%, 3 = 35%
+  const [customStartDate, setCustomStartDate] = useState<string>(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
+  const [customEndDate, setCustomEndDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [customPopoverOpen, setCustomPopoverOpen] = useState(false);
+  const [flowMetrics, setFlowMetrics] = useState({
+    todayLiveCount: 0,
+    completedPeriodAvg: 0,
+    completedDaysCount: 7,
+    periodTotal: 0,
+    periodPeak: { count: 0, label: '—' },
+    periodLow: { count: 0, label: '—' },
+    rangeDescription: 'Past 7 Completed Days'
+  });
+
   const [volumeData, setVolumeData] = useState<any[]>([]);
+
+  const handleZoomIn = () => {
+    if (zoomLevel < 3) {
+      setZoomLevel(prev => prev + 1);
+      if (flowScale === 'monthly') setFlowScale('weekly');
+      else if (flowScale === 'weekly') setFlowScale('daily');
+    } else {
+      if (flowScale === 'monthly') {
+        setFlowScale('weekly');
+        setZoomLevel(1);
+      } else if (flowScale === 'weekly') {
+        setFlowScale('daily');
+        setZoomLevel(1);
+      }
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (zoomLevel > 1) {
+      setZoomLevel(prev => prev - 1);
+    } else {
+      if (flowScale === 'daily') setFlowScale('weekly');
+      else if (flowScale === 'weekly') setFlowScale('monthly');
+    }
+  };
+
+  const handleResetZoom = () => {
+    setZoomLevel(1);
+    if (flowTimeRange === '7d' || flowTimeRange === '30d') setFlowScale('daily');
+    else if (flowTimeRange === '90d') setFlowScale('weekly');
+    else if (flowTimeRange === '1y') setFlowScale('monthly');
+  };
+
+  const displayedVolumeData = useMemo(() => {
+    if (!volumeData || volumeData.length === 0) return [];
+    if (zoomLevel === 1) return volumeData;
+    const factor = zoomLevel === 2 ? 0.6 : 0.35;
+    const count = Math.max(5, Math.round(volumeData.length * factor));
+    return volumeData.slice(volumeData.length - count);
+  }, [volumeData, zoomLevel]);
   const [trends, setTrends] = useState({ today: '', month: '', completion: '' });
   const [diagnosisData, setDiagnosisData] = useState<any[]>([]);
   const [seasonalityData, setSeasonalityData] = useState<any[]>([]);
   const [demographics, setDemographics] = useState<{ sex: any[], age: any[] }>({ sex: [], age: [] });
   const [protocolData, setProtocolData] = useState<any[]>([]);
+  const [retentionData, setRetentionData] = useState<any[]>([]);
   const [peakHoursData, setPeakHoursData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [smartInsight, setSmartInsight] = useState<string | null>(null);
+  
+  // Smart Insights state
+  const [smartInsightsList, setSmartInsightsList] = useState<SmartInsightItem[]>([]);
+  const [activeInsightIndex, setActiveInsightIndex] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedDiagnoses, setSelectedDiagnoses] = useState<string[]>([]);
   const [allDiagnosesSnapshot, setAllDiagnosesSnapshot] = useState<{ name: string, value: number }[]>([]);
@@ -61,7 +145,13 @@ export default function Analytics() {
     if (clinic?.id) {
       fetchAllData();
     }
-  }, [clinic?.id, timeRange]);
+  }, [clinic?.id]);
+
+  useEffect(() => {
+    if (clinic?.id) {
+      fetchVolumeData();
+    }
+  }, [clinic?.id, flowTimeRange, flowScale, customStartDate, customEndDate]);
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -70,7 +160,8 @@ export default function Analytics() {
       fetchVolumeData(),
       fetchSeasonalityData(),
       fetchDemographics(),
-      fetchProtocolAnalytics()
+      fetchProtocolAnalytics(),
+      fetchRetentionData()
     ]);
     setLoading(false);
   };
@@ -229,133 +320,373 @@ export default function Analytics() {
     setProtocolData(Object.entries(medCounts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8));
   };
 
-
-
-  const fetchVolumeData = async () => {
-    let daysCount = 7;
-    let formatType: 'day' | 'month' = 'day';
-
-    if (timeRange === 'today') daysCount = 1;
-    else if (timeRange === 'week') daysCount = 7;
-    else if (timeRange === 'month') daysCount = 30;
-    else if (timeRange === 'year') {
-      daysCount = 12;
-      formatType = 'month';
-    }
-
-    const now = new Date();
-    let startDate: Date;
-
-    if (formatType === 'day') {
-      startDate = startOfDay(subDays(now, daysCount - 1));
-    } else {
-      startDate = startOfDay(startOfMonth(subMonths(now, 11)));
-    }
-
-    let allVisits: any[] = [];
-    let hasMore = true;
+  const fetchRetentionData = async () => {
+    let allVisits: { patient_id: string; created_at: string }[] = [];
     let offset = 0;
     const PAGE_SIZE = 1000;
+    let hasMore = true;
 
     while (hasMore) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('visits')
-        .select('created_at')
+        .select('patient_id, created_at')
         .eq('clinic_id', clinic?.id)
-        .gte('created_at', startDate.toISOString())
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: true })
         .range(offset, offset + PAGE_SIZE - 1);
 
+      if (error) {
+        console.error('[Analytics] Error fetching retention visits:', error);
+        break;
+      }
       if (data && data.length > 0) {
         allVisits.push(...data);
-        if (data.length < PAGE_SIZE) {
-          hasMore = false;
-        } else {
-          offset += PAGE_SIZE;
-        }
+        if (data.length < PAGE_SIZE) hasMore = false;
+        else offset += PAGE_SIZE;
       } else {
         hasMore = false;
       }
     }
 
-    // Compute Peak Hours for the selected time range
-    const hourBins: Record<number, number> = {};
-    for (let i = 8; i <= 22; i++) hourBins[i] = 0;
+    if (allVisits.length === 0) return;
 
-    let validVisitsCount = 0;
+    // Track first visit date for each patient to determine New vs Returning
+    const patientFirstVisit = new Map<string, string>();
     allVisits.forEach(v => {
-      const hour = new Date(v.created_at).getHours();
-      if (hour >= 8 && hour <= 22) {
-        hourBins[hour]++;
-        validVisitsCount++;
+      if (!patientFirstVisit.has(v.patient_id)) {
+        patientFirstVisit.set(v.patient_id, v.created_at);
       }
     });
 
-    setPeakHoursData(Object.entries(hourBins).map(([hour, count]) => ({
-      hour: format(setHours(startOfDay(now), parseInt(hour)), 'ha'),
-      percentage: validVisitsCount > 0 ? Math.round((count / validVisitsCount) * 100) : 0,
-      _hour: parseInt(hour)
-    })));
-
-    const resultData: any[] = [];
-    const bins: Record<string, any> = {};
-
-    if (timeRange === 'today') {
-      for (let h = 0; h < 24; h++) {
-        const d = setHours(startOfDay(now), h);
-        const name = format(d, 'ha');
-        bins[name] = { count: 0, _order: h };
+    const monthlyStats = new Map<string, { month: string; monthLabel: string; newPatients: number; returningPatients: number; total: number; retentionRate: number }>();
+    allVisits.forEach(v => {
+      const d = new Date(v.created_at);
+      const key = format(d, 'yyyy-MM');
+      const monthLabel = format(d, 'MMM yyyy');
+      if (!monthlyStats.has(key)) {
+        monthlyStats.set(key, { month: key, monthLabel, newPatients: 0, returningPatients: 0, total: 0, retentionRate: 0 });
       }
-      allVisits.forEach(v => {
-        const d = new Date(v.created_at);
-        const name = format(d, 'ha');
-        if (bins[name]) bins[name].count++;
+      const stat = monthlyStats.get(key)!;
+      const isFirst = patientFirstVisit.get(v.patient_id) === v.created_at;
+      if (isFirst) {
+        stat.newPatients++;
+      } else {
+        stat.returningPatients++;
+      }
+      stat.total++;
+    });
+
+    // Calculate retention percentage for each month and take the active months
+    const sorted = Array.from(monthlyStats.values()).map(m => ({
+      ...m,
+      retentionRate: m.total > 0 ? Math.round((m.returningPatients / m.total) * 100) : 0
+    }));
+
+    setRetentionData(sorted.slice(-7));
+  };
+
+
+
+  const fetchVolumeData = async () => {
+    const now = new Date();
+    const todayStart = startOfDay(now);
+    const todayEnd = endOfDay(now);
+
+    let queryStartDate: Date;
+    let queryEndDate: Date = endOfDay(now);
+    let autoScale: FlowScale = 'daily';
+    let rangeDesc = '';
+
+    if (flowTimeRange === 'today') {
+      queryStartDate = todayStart;
+      autoScale = 'daily';
+      rangeDesc = "Today's Hourly Flow";
+    } else if (flowTimeRange === '7d') {
+      queryStartDate = startOfDay(subDays(now, 7));
+      autoScale = 'daily';
+      rangeDesc = 'Past 7 Completed Days';
+    } else if (flowTimeRange === '30d') {
+      queryStartDate = startOfDay(subDays(now, 30));
+      autoScale = 'daily';
+      rangeDesc = 'Past 30 Days';
+    } else if (flowTimeRange === '90d') {
+      queryStartDate = startOfDay(subDays(now, 90));
+      autoScale = 'weekly';
+      rangeDesc = 'Past 90 Days';
+    } else if (flowTimeRange === '1y') {
+      queryStartDate = startOfDay(startOfMonth(subMonths(now, 11)));
+      autoScale = 'monthly';
+      rangeDesc = 'Past 12 Months';
+    } else {
+      const parsedStart = customStartDate ? new Date(customStartDate) : subDays(now, 30);
+      const parsedEnd = customEndDate ? new Date(customEndDate) : now;
+      queryStartDate = startOfDay(parsedStart);
+      queryEndDate = endOfDay(parsedEnd);
+      
+      const diffDays = Math.max(1, Math.round((queryEndDate.getTime() - queryStartDate.getTime()) / (1000 * 60 * 60 * 24)));
+      if (diffDays <= 35) autoScale = 'daily';
+      else if (diffDays <= 180) autoScale = 'weekly';
+      else autoScale = 'monthly';
+      rangeDesc = `${format(queryStartDate, 'MMM d, yyyy')} - ${format(queryEndDate, 'MMM d, yyyy')}`;
+    }
+
+    const effectiveScale = flowScale || autoScale;
+
+    let allVisits: { created_at: string }[] = [];
+    let hasMore = true;
+    let offset = 0;
+    const PAGE_SIZE = 1000;
+
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('visits')
+        .select('created_at')
+        .eq('clinic_id', clinic?.id)
+        .gte('created_at', queryStartDate.toISOString())
+        .lte('created_at', queryEndDate.toISOString())
+        .order('created_at', { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (error) {
+        console.error('[Analytics] Fetch volume error:', error);
+        break;
+      }
+      if (data && data.length > 0) {
+        allVisits.push(...data);
+        if (data.length < PAGE_SIZE) hasMore = false;
+        else offset += PAGE_SIZE;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    // Separate today's visits from completed historical days
+    const todayVisits = allVisits.filter(v => {
+      const d = new Date(v.created_at);
+      return d >= todayStart && d <= todayEnd;
+    });
+    const todayLiveCount = todayVisits.length;
+
+    // Peak Hours calculation (across all 24 hours: 00:00 to 24:00 of a day)
+    const hourBins: Record<number, number> = {};
+    for (let i = 0; i < 24; i++) hourBins[i] = 0;
+    allVisits.forEach(v => {
+      const hour = new Date(v.created_at).getHours();
+      if (hour >= 0 && hour < 24) {
+        hourBins[hour]++;
+      }
+    });
+
+    const hoursData = [];
+    for (let h = 0; h < 24; h++) {
+      const hourStr = `${h.toString().padStart(2, '0')}:00`;
+      hoursData.push({
+        hour: hourStr,
+        patients: hourBins[h] || 0,
+        _hour: h
       });
-      Object.keys(bins).forEach(key => resultData.push({ name: key, patients: bins[key].count }));
-    } else if (formatType === 'day') {
-      for (let i = daysCount - 1; i >= 0; i--) {
-        const d = subDays(now, i);
-        const name = format(d, i < 7 ? 'EEE, MMM d' : 'MMM d');
-        const key = format(d, 'yyyy-MM-dd');
-        bins[key] = { name, count: 0 };
+    }
+    // 24:00 boundary tick closing out the full 24-hr day
+    hoursData.push({
+      hour: '24:00',
+      patients: hourBins[0] || 0,
+      _hour: 24
+    });
+
+    setPeakHoursData(hoursData);
+
+    let resultData: any[] = [];
+    let completedDaysTotal = 0;
+    let completedDaysCount = 0;
+    let peakCount = 0;
+    let peakLabel = '—';
+    let lowCount = Infinity;
+    let lowLabel = '—';
+
+    if (flowTimeRange === 'today') {
+      const hourlyBins: Record<number, number> = {};
+      for (let h = 0; h < 24; h++) hourlyBins[h] = 0;
+      allVisits.forEach(v => {
+        const h = new Date(v.created_at).getHours();
+        if (hourlyBins[h] !== undefined) hourlyBins[h]++;
+      });
+      Object.entries(hourlyBins).forEach(([hourStr, count]) => {
+        const h = parseInt(hourStr);
+        const name = format(setHours(todayStart, h), 'ha');
+        resultData.push({ name, patients: count, fullDate: `${name} today` });
+        if (count > peakCount) { peakCount = count; peakLabel = `${count} (${name})`; }
+        if (count < lowCount && count > 0) { lowCount = count; lowLabel = `${count} (${name})`; }
+      });
+      completedDaysTotal = todayLiveCount;
+      completedDaysCount = 1;
+    } else if (effectiveScale === 'daily') {
+      const isWeekPreset = flowTimeRange === '7d';
+      const dayMap = new Map<string, { name: string; fullDate: string; patients: number; isToday: boolean }>();
+
+      if (isWeekPreset) {
+        // Exactly the 7 COMPLETED days: subDays(now, 7) to subDays(now, 1)
+        for (let i = 7; i >= 1; i--) {
+          const d = subDays(now, i);
+          const key = format(d, 'yyyy-MM-dd');
+          const name = format(d, 'EEE, MMM d');
+          const fullDate = format(d, 'EEEE, MMMM d, yyyy');
+          dayMap.set(key, { name, fullDate, patients: 0, isToday: false });
+        }
+      } else {
+        let curr = new Date(queryStartDate);
+        while (curr <= queryEndDate) {
+          const key = format(curr, 'yyyy-MM-dd');
+          const isToday = key === format(now, 'yyyy-MM-dd');
+          const name = format(curr, 'MMM d');
+          const fullDate = format(curr, 'EEEE, MMMM d, yyyy');
+          dayMap.set(key, { name, fullDate, patients: 0, isToday });
+          curr = new Date(curr.getTime() + 86400000);
+        }
       }
+
       allVisits.forEach(v => {
         const key = format(new Date(v.created_at), 'yyyy-MM-dd');
-        if (bins[key]) bins[key].count++;
+        if (dayMap.has(key)) {
+          dayMap.get(key)!.patients++;
+        }
       });
-      Object.keys(bins).forEach(key => resultData.push({ name: bins[key].name, patients: bins[key].count }));
-    } else {
-      for (let i = 11; i >= 0; i--) {
-        const d = subMonths(now, i);
-        const name = format(d, 'MMM yyyy');
-        const key = format(d, 'yyyy-MM');
-        bins[key] = { name, count: 0 };
+
+      dayMap.forEach((entry) => {
+        resultData.push(entry);
+        if (!entry.isToday) {
+          completedDaysTotal += entry.patients;
+          completedDaysCount++;
+          if (entry.patients > peakCount) {
+            peakCount = entry.patients;
+            peakLabel = `${entry.patients} (${entry.name})`;
+          }
+          if (entry.patients < lowCount) {
+            lowCount = entry.patients;
+            lowLabel = `${entry.patients} (${entry.name})`;
+          }
+        }
+      });
+    } else if (effectiveScale === 'weekly') {
+      const weekMap = new Map<string, { name: string; fullDate: string; patients: number }>();
+      let curr = startOfWeek(queryStartDate, { weekStartsOn: 1 });
+      const lastWeek = endOfWeek(queryEndDate, { weekStartsOn: 1 });
+
+      while (curr <= lastWeek) {
+        const wEnd = endOfWeek(curr, { weekStartsOn: 1 });
+        const key = format(curr, 'yyyy-MM-dd');
+        const name = `${format(curr, 'MMM d')} - ${format(wEnd, 'MMM d')}`;
+        const fullDate = `Week of ${format(curr, 'MMMM d')} to ${format(wEnd, 'MMMM d, yyyy')}`;
+        weekMap.set(key, { name, fullDate, patients: 0 });
+        curr = new Date(curr.getTime() + 7 * 86400000);
       }
+
+      allVisits.forEach(v => {
+        const d = new Date(v.created_at);
+        const wStart = format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+        if (weekMap.has(wStart)) {
+          weekMap.get(wStart)!.patients++;
+        }
+      });
+
+      weekMap.forEach(entry => {
+        resultData.push(entry);
+        completedDaysTotal += entry.patients;
+        completedDaysCount += 7;
+        if (entry.patients > peakCount) {
+          peakCount = entry.patients;
+          peakLabel = `${entry.patients} (${entry.name})`;
+        }
+        if (entry.patients < lowCount) {
+          lowCount = entry.patients;
+          lowLabel = `${entry.patients} (${entry.name})`;
+        }
+      });
+    } else {
+      // Monthly
+      const monthMap = new Map<string, { name: string; fullDate: string; patients: number; daysCount: number }>();
+      let curr = startOfMonth(queryStartDate);
+      const endMonth = endOfMonth(queryEndDate);
+
+      while (curr <= endMonth) {
+        const key = format(curr, 'yyyy-MM');
+        const name = format(curr, 'MMM yyyy');
+        const fullDate = format(curr, 'MMMM yyyy');
+        const daysInCurrentMonth = new Date(curr.getFullYear(), curr.getMonth() + 1, 0).getDate();
+        monthMap.set(key, { name, fullDate, patients: 0, daysCount: daysInCurrentMonth });
+        curr = startOfMonth(new Date(curr.getFullYear(), curr.getMonth() + 1, 1));
+      }
+
       allVisits.forEach(v => {
         const key = format(new Date(v.created_at), 'yyyy-MM');
-        if (bins[key]) bins[key].count++;
+        if (monthMap.has(key)) {
+          monthMap.get(key)!.patients++;
+        }
       });
-      Object.keys(bins).forEach(key => resultData.push({ name: bins[key].name, patients: bins[key].count }));
+
+      monthMap.forEach(entry => {
+        resultData.push(entry);
+        completedDaysTotal += entry.patients;
+        completedDaysCount += entry.daysCount;
+        if (entry.patients > peakCount) {
+          peakCount = entry.patients;
+          peakLabel = `${entry.patients} (${entry.name})`;
+        }
+        if (entry.patients < lowCount) {
+          lowCount = entry.patients;
+          lowLabel = `${entry.patients} (${entry.name})`;
+        }
+      });
     }
+
+    const completedPeriodAvg = completedDaysCount > 0 ? Math.round(completedDaysTotal / completedDaysCount) : 0;
+
     setVolumeData(resultData);
+    setFlowMetrics({
+      todayLiveCount,
+      completedPeriodAvg,
+      completedDaysCount,
+      periodTotal: completedDaysTotal,
+      periodPeak: { count: peakCount, label: peakLabel === '—' ? '—' : peakLabel },
+      periodLow: { count: lowCount === Infinity ? 0 : lowCount, label: lowLabel === '—' ? '—' : lowLabel },
+      rangeDescription: rangeDesc
+    });
   };
 
   const fetchSeasonalityData = async () => {
-    const sixMonthsAgo = subMonths(new Date(), 6);
-    const { data: rxData } = await supabase
-      .from('prescriptions')
-      .select('diagnosis, created_at')
-      .eq('clinic_id', clinic?.id)
-      .not('diagnosis', 'is', null)
-      .gte('created_at', sixMonthsAgo.toISOString())
-      .order('created_at', { ascending: true });
+    const sixMonthsAgo = startOfMonth(subMonths(new Date(), 5));
+    let rxData: { diagnosis: string | null; created_at: string }[] = [];
+    let offset = 0;
+    const PAGE_SIZE = 1000;
+    let hasMore = true;
 
-    if (!rxData) return;
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('prescriptions')
+        .select('diagnosis, created_at')
+        .eq('clinic_id', clinic?.id)
+        .not('diagnosis', 'is', null)
+        .gte('created_at', sixMonthsAgo.toISOString())
+        .order('created_at', { ascending: true })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (error) {
+        console.error('[Analytics] Error fetching seasonality:', error);
+        break;
+      }
+      if (data && data.length > 0) {
+        rxData.push(...data);
+        if (data.length < PAGE_SIZE) hasMore = false;
+        else offset += PAGE_SIZE;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    if (rxData.length === 0) return;
 
     // Automatically detect top 5 diagnoses instead of hardcoding
     const topDetectCounts: Record<string, number> = {};
     rxData.forEach(rx => {
-      const terms = rx.diagnosis?.split(/[,/\\|]+/).map(t => t.trim()).filter(t => t.length > 2) || [];
+      const terms = rx.diagnosis?.split(/[,/\\|]+/).map(t => t.trim().toUpperCase()).filter(t => t.length > 2) || [];
       terms.forEach(t => topDetectCounts[t] = (topDetectCounts[t] || 0) + 1);
     });
     const topDiagnoses = Object.entries(topDetectCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0]);
@@ -372,7 +703,7 @@ export default function Analytics() {
       const entry = trendData.find(t => t.month === monthStr);
       if (entry) {
         topDiagnoses.forEach(d => {
-          if (rx.diagnosis?.toLowerCase().includes(d.toLowerCase())) entry[d]++;
+          if (rx.diagnosis?.toUpperCase().includes(d.toUpperCase())) entry[d]++;
         });
       }
     });
@@ -394,16 +725,83 @@ export default function Analytics() {
   const generateInsight = () => {
     setIsAnalyzing(true);
     setTimeout(() => {
-      const topDiag = diagnosisData[0]?.name || "general conditions";
-      const peakHour = [...peakHoursData].sort((a, b) => b.patients - a.patients)[0];
-      const periodText = timeRange === 'today' ? 'Daily' : timeRange === 'month' ? 'Monthly' : timeRange === 'year' ? 'Yearly' : 'Weekly';
+      const insights: SmartInsightItem[] = [];
 
-      let insight = `Trend Alert: ${topDiag} represents your highest patient volume. ${periodText} peak typically occurs around ${peakHour?.hour || 'peak hours'}.`;
-      if (stats.completionRate < 70) insight += " Note: Appointment completion rate is below optimal (70%). Consider reviewing waiting times.";
+      // 1. Clinical Focus / Top Diagnoses
+      const topDiag = diagnosisData[0]?.name || "General Medical Consults";
+      const topCount = diagnosisData[0]?.value || 0;
+      const secondDiag = diagnosisData[1]?.name || null;
+      insights.push({
+        id: 'clinical-focus',
+        category: 'Clinical Focus',
+        title: `${topDiag} Accounts for Highest Clinical Demand`,
+        description: `${topDiag} represents ${topCount} clinical encounters in this period${secondDiag ? `, closely followed by ${secondDiag}` : ''}. Clinical staffing should align with this caseload pattern.`,
+        recommendation: `Ensure clinical protocols, diagnostic test kits, and frontline medications for ${topDiag} are kept fully stocked and accessible.`,
+        badgeColor: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/50'
+      });
 
-      setSmartInsight(insight);
+      // 2. Queue Dynamics & Consult Duration
+      const compRate = stats.completionRate;
+      insights.push({
+        id: 'queue-dynamics',
+        category: 'Queue Dynamics',
+        title: compRate >= 80 ? 'High Patient Case Closure Rate' : 'Queue Bottleneck & Throughput Lag',
+        description: `Current appointment completion rate stands at ${compRate}%. Average consultation handling duration is paced around ${stats.avgConsultTime}.`,
+        recommendation: compRate >= 80 
+          ? 'Queue progression is well-balanced. Maintain current nurse-doctor triage handover intervals.'
+          : 'Appointment completion is below the 80% benchmark. Review waiting room triage handoffs and peak buffer scheduling.',
+        badgeColor: compRate >= 80 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/50'
+      });
+
+      // 3. Peak Capacity & Rush Hours
+      const sortedPeak = [...peakHoursData].sort((a, b) => b.patients - a.patients);
+      const topHour = sortedPeak[0];
+      const peakPatientCount = topHour?.patients || 0;
+      insights.push({
+        id: 'peak-capacity',
+        category: 'Peak Capacity',
+        title: topHour ? `Peak Demand Inflow: ${topHour.hour}` : 'Evenly Distributed Traffic',
+        description: topHour 
+          ? `Highest patient inflow concentrates at ${topHour.hour} with ${peakPatientCount} logged arrivals. Surge pressure is highest during this window.`
+          : 'Patient arrivals are evenly distributed across clinic operating hours without extreme spikes.',
+        recommendation: topHour 
+          ? `Stage front-desk staff 15 minutes prior to ${topHour.hour} to avoid registration queues and token bottlenecks.`
+          : 'Maintain steady intake schedules and consider expanding evening follow-up slots.',
+        badgeColor: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-900/50'
+      });
+
+      // 4. Prescription & Formulary Audit
+      const topMed = protocolData[0]?.name || "Core Antibiotics & Analgesics";
+      const topMedCount = protocolData[0]?.value || 0;
+      insights.push({
+        id: 'prescription-audit',
+        category: 'Prescription Audit',
+        title: `Primary Formulary Utilization: ${topMed}`,
+        description: `${topMed} is your most frequently prescribed medication with ${topMedCount} dispenses.`,
+        recommendation: `Audit pharmacy safety stock levels for ${topMed} to prevent stockouts during surge periods.`,
+        badgeColor: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/50'
+      });
+
+      // 5. Demographics & Cohort Analysis
+      const sortedAge = [...demographics.age].sort((a, b) => b.value - a.value);
+      const topAgeGroup = sortedAge[0];
+      insights.push({
+        id: 'demographics',
+        category: 'Demographics',
+        title: topAgeGroup ? `Key Demographic: ${topAgeGroup.name}` : 'Balanced Demographic Distribution',
+        description: topAgeGroup 
+          ? `The largest demographic cohort visiting your clinic is ${topAgeGroup.name} (${topAgeGroup.value} registered patients).`
+          : 'Patient age cohorts are balanced across pediatric, adult, and senior demographics.',
+        recommendation: topAgeGroup 
+          ? `Tailor preventive screening packages and digital health reminders specifically for the ${topAgeGroup.name} cohort.`
+          : 'Maintain comprehensive clinical health programs across all life stages.',
+        badgeColor: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-900/50'
+      });
+
+      setSmartInsightsList(insights);
+      setActiveInsightIndex(0);
       setIsAnalyzing(false);
-    }, 1500);
+    }, 1000);
   };
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#f97316'];
@@ -426,42 +824,98 @@ export default function Analytics() {
         {/* Header & Smart Insights */}
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6">
           <AnimatePresence mode="wait">
-            {smartInsight ? (
+            {smartInsightsList.length > 0 ? (
               <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                key={smartInsightsList[activeInsightIndex]?.id || activeInsightIndex}
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                className="flex-1 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-primary/20 p-5 rounded-[2.5rem] flex items-center gap-5 shadow-2xl relative group"
+                exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                transition={{ duration: 0.25 }}
+                className="flex-1 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-primary/20 p-5 rounded-[2.5rem] shadow-xl relative group"
               >
-                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 border border-primary/5">
-                  <Sparkles className="w-7 h-7 text-primary animate-pulse" />
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 border border-primary/10">
+                      <Sparkles className="w-6 h-6 text-primary animate-pulse" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={cn("text-[10px] uppercase tracking-wider font-black px-2.5 py-0.5 rounded-full border", smartInsightsList[activeInsightIndex]?.badgeColor)}>
+                          {smartInsightsList[activeInsightIndex]?.category}
+                        </span>
+                        <span className="text-[11px] font-bold text-muted-foreground">
+                          Insight {activeInsightIndex + 1} of {smartInsightsList.length}
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-extrabold text-foreground tracking-tight">
+                        {smartInsightsList[activeInsightIndex]?.title}
+                      </h4>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
+                      disabled={activeInsightIndex === 0}
+                      onClick={() => setActiveInsightIndex(prev => Math.max(0, prev - 1))}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="text-xs font-black text-muted-foreground w-8 text-center">
+                      {activeInsightIndex + 1}/{smartInsightsList.length}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
+                      disabled={activeInsightIndex === smartInsightsList.length - 1}
+                      onClick={() => setActiveInsightIndex(prev => Math.min(smartInsightsList.length - 1, prev + 1))}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-full hover:bg-rose-50 hover:text-rose-500 ml-1"
+                      onClick={() => setSmartInsightsList([])}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex-1 pr-6">
-                  <p className="text-[10px] uppercase tracking-[0.2em] font-black text-primary/60 mb-1">AI Intelligence Insight</p>
-                  <p className="text-sm font-extrabold text-foreground leading-[1.6]">{smartInsight}</p>
+
+                <p className="text-xs text-muted-foreground font-medium mt-3 leading-relaxed">
+                  {smartInsightsList[activeInsightIndex]?.description}
+                </p>
+
+                <div className="mt-3 flex items-start gap-2.5 p-3 rounded-2xl bg-primary/5 border border-primary/10 text-xs">
+                  <Lightbulb className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  <div className="text-foreground/90 font-semibold leading-snug">
+                    <span className="font-extrabold text-primary">Recommendation: </span>
+                    {smartInsightsList[activeInsightIndex]?.recommendation}
+                  </div>
                 </div>
-                <button
-                  onClick={() => setSmartInsight(null)}
-                  className="absolute top-4 right-4 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-90"
-                >
-                  <X className="w-4 h-4 text-muted-foreground" />
-                </button>
               </motion.div>
             ) : (
               <div className="flex-1 flex items-center gap-4 bg-white dark:bg-slate-900 px-6 py-4 rounded-[2.5rem] border border-border shadow-sm">
                 <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl">
                   <LayoutDashboard className="w-6 h-6 text-slate-400" />
                 </div>
-                <p className="text-sm font-bold text-muted-foreground">Welcome to your clinical dashboard. Run intelligence check for deep insights.</p>
+                <div>
+                  <p className="text-sm font-bold text-foreground">Clinical Intelligence Engine</p>
+                  <p className="text-xs text-muted-foreground">Run intelligence check to generate 5 deep clinical, queue, peak hour, and demographic insights.</p>
+                </div>
               </div>
             )}
           </AnimatePresence>
 
-          <div className="flex items-center gap-4 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md p-2 rounded-[2rem] border border-border shadow-soft h-fit">
+          <div className="flex items-center gap-3 shrink-0">
             <Button
               className={cn(
                 "rounded-[1.5rem] text-[11px] h-12 px-6 font-black uppercase tracking-widest gap-2 bg-primary text-white hover:bg-primary/90 transition-all shadow-lg active:scale-95",
-                isAnalyzing && "opacity-50 cursor-not-allowed"
+                isAnalyzing && "opacity-60 cursor-not-allowed"
               )}
               onClick={generateInsight}
               disabled={isAnalyzing}
@@ -473,23 +927,8 @@ export default function Analytics() {
               ) : (
                 <Sparkles className="w-4 h-4" />
               )}
-              {isAnalyzing ? "Deep Analysis..." : "Run Intelligence Check"}
+              {isAnalyzing ? "Analyzing Clinic Data..." : "Run Intelligence Check"}
             </Button>
-            <div className="h-8 w-[1px] bg-border/50 mx-1 hidden md:block" />
-            <Select value={timeRange} onValueChange={(v: TimeRange) => setTimeRange(v)}>
-              <SelectTrigger className="w-[140px] h-12 bg-transparent border-none font-black text-[11px] uppercase tracking-widest rounded-[1.5rem] hover:bg-slate-100 dark:hover:bg-slate-800 transition-all px-4">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-3.5 h-3.5 text-primary" />
-                  <SelectValue placeholder="Period" />
-                </div>
-              </SelectTrigger>
-              <SelectContent className="rounded-2xl border-border/50 shadow-2xl">
-                <SelectItem value="today" className="font-bold text-xs">Today</SelectItem>
-                <SelectItem value="week" className="font-bold text-xs">Past Week</SelectItem>
-                <SelectItem value="month" className="font-bold text-xs">Past Month</SelectItem>
-                <SelectItem value="year" className="font-bold text-xs">Past Year</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
@@ -529,72 +968,440 @@ export default function Analytics() {
           />
         </div>
 
-        {/* Main Charts Section */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        {/* Main Patient Flow Dynamics - Full Width Hero Feature Card */}
+        <Card className="w-full border-none shadow-sm bg-card overflow-hidden group hover:shadow-md transition-all duration-300 rounded-[2rem] p-6 lg:p-8 flex flex-col justify-between">
+          {/* Header with Title & Filter Controls */}
+          <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 pb-5 border-b border-border/50">
+            {/* Left Side: Title & Badges */}
+            <div className="flex items-center gap-3.5">
+              <div className="p-3 bg-primary/10 rounded-2xl text-primary shrink-0 group-hover:scale-105 transition-transform">
+                <TrendingUp className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-lg font-extrabold tracking-tight text-foreground">Patient Flow Dynamics</h3>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900/50">
+                    {flowScale} View
+                  </span>
+                  {zoomLevel > 1 && (
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/50 flex items-center gap-1">
+                      <ZoomIn className="w-3 h-3" />
+                      {zoomLevel === 2 ? 'Zoom 1.8x' : 'Zoom 3.3x'}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                  {flowMetrics.rangeDescription} • <span className="text-emerald-600 dark:text-emerald-400 font-bold">Today isolated to live panel</span>
+                </p>
+              </div>
+            </div>
 
-          {/* Patient Traffic - Large Area/Bar Mixed */}
-          <div className="xl:col-span-2">
-            <ChartContainer
-              title="Patient Flow Dynamics"
-              description={`Patient Volume · ${timeRange.toUpperCase()}`}
-              icon={<TrendingUp className="w-5 h-5" />}
-              className="h-full"
-            >
-              <ComposedChart data={volumeData} margin={{ top: 20, right: 20, bottom: 20, left: -20 }}>
+            {/* Right Side: Zoom Controls + Scale Switcher + Timeframe Buttons + Custom Date Range */}
+            <div className="flex flex-wrap items-center gap-2.5 self-stretch xl:self-auto justify-between xl:justify-end">
+              {/* Stock-style Zoom Controls (Groww/Zerodha style) */}
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-border/60">
+                <button
+                  type="button"
+                  onClick={handleZoomOut}
+                  className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-white dark:hover:bg-slate-900 rounded-lg transition-all"
+                  title="Zoom Out (Broader scale: D → W → M)"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[10px] font-black px-2 text-muted-foreground select-none">
+                  {zoomLevel === 1 ? '1x' : zoomLevel === 2 ? '2x' : '3x'}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleZoomIn}
+                  className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-white dark:hover:bg-slate-900 rounded-lg transition-all"
+                  title="Zoom In (Finer scale: M → W → D)"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                {zoomLevel > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleResetZoom}
+                    className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-white dark:hover:bg-slate-900 rounded-lg transition-all ml-0.5 border-l border-border/40 pl-1.5"
+                    title="Reset Zoom"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="h-6 w-[1px] bg-border/60 hidden sm:block mx-0.5" />
+
+              {/* Stock-style Scale Switcher [ D ] [ W ] [ M ] */}
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-border/60">
+                <button
+                  type="button"
+                  onClick={() => { setFlowScale('daily'); setZoomLevel(1); }}
+                  className={cn(
+                    "px-3 py-1 text-[11px] font-black rounded-lg transition-all",
+                    flowScale === 'daily'
+                      ? "bg-white dark:bg-slate-900 text-primary shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Daily Scale"
+                >
+                  D
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setFlowScale('weekly'); setZoomLevel(1); }}
+                  className={cn(
+                    "px-3 py-1 text-[11px] font-black rounded-lg transition-all",
+                    flowScale === 'weekly'
+                      ? "bg-white dark:bg-slate-900 text-primary shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Weekly Scale"
+                >
+                  W
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setFlowScale('monthly'); setZoomLevel(1); }}
+                  className={cn(
+                    "px-3 py-1 text-[11px] font-black rounded-lg transition-all",
+                    flowScale === 'monthly'
+                      ? "bg-white dark:bg-slate-900 text-primary shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Monthly Scale"
+                >
+                  M
+                </button>
+              </div>
+
+              <div className="h-6 w-[1px] bg-border/60 hidden sm:block mx-0.5" />
+
+              {/* Preset Timeframe Buttons */}
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-border/60">
+                {(['7d', '30d', '90d', '1y'] as FlowTimeRange[]).map((range) => {
+                  const label = range === '7d' ? '7D' : range === '30d' ? '30D' : range === '90d' ? '90D' : '1Y';
+                  return (
+                    <button
+                      key={range}
+                      type="button"
+                      onClick={() => {
+                        setFlowTimeRange(range);
+                        setZoomLevel(1);
+                        if (range === '7d' || range === '30d') setFlowScale('daily');
+                        else if (range === '90d') setFlowScale('weekly');
+                        else if (range === '1y') setFlowScale('monthly');
+                      }}
+                      className={cn(
+                        "px-3 py-1 text-[11px] font-black uppercase rounded-lg transition-all",
+                        flowTimeRange === range
+                          ? "bg-white dark:bg-slate-900 text-primary shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Custom Date Range Popover */}
+              <Popover open={customPopoverOpen} onOpenChange={setCustomPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={flowTimeRange === 'custom' ? 'default' : 'outline'}
+                    size="sm"
+                    className={cn(
+                      "h-8 rounded-xl text-xs font-extrabold gap-1.5 px-3 border-border/60 shadow-none",
+                      flowTimeRange === 'custom' && "bg-primary text-white"
+                    )}
+                  >
+                    <CalendarRange className="w-3.5 h-3.5" />
+                    <span>{flowTimeRange === 'custom' ? 'Custom Range' : 'Custom'}</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-84 p-4 rounded-2xl shadow-2xl border-border/70" align="end">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-border/50">
+                      <span className="text-xs font-black uppercase tracking-wider text-foreground">Custom Date Range</span>
+                      <span className="text-[10px] text-muted-foreground font-semibold">Auto-scales D / W / M</span>
+                    </div>
+
+                    {/* Quick Presets */}
+                    <div>
+                      <p className="text-[10px] font-black uppercase text-muted-foreground tracking-wider mb-2">Quick Presets</p>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { label: 'Last 14D', days: 14, scale: 'daily' as FlowScale },
+                          { label: 'Last 60D', days: 60, scale: 'weekly' as FlowScale },
+                          { label: 'Last 6M', days: 180, scale: 'weekly' as FlowScale },
+                          { label: 'Last 1Y', days: 365, scale: 'monthly' as FlowScale },
+                          { label: 'Last 2Y', days: 730, scale: 'monthly' as FlowScale },
+                          { label: 'Last 3Y', days: 1095, scale: 'monthly' as FlowScale },
+                        ].map(preset => (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => {
+                              const end = new Date();
+                              const start = subDays(end, preset.days);
+                              setCustomStartDate(format(start, 'yyyy-MM-dd'));
+                              setCustomEndDate(format(end, 'yyyy-MM-dd'));
+                              setFlowScale(preset.scale);
+                              setFlowTimeRange('custom');
+                              setZoomLevel(1);
+                              setCustomPopoverOpen(false);
+                            }}
+                            className="px-2 py-1.5 text-[11px] font-bold rounded-lg border border-border/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-center transition-all"
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Manual Start / End inputs */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">From</label>
+                        <Input
+                          type="date"
+                          value={customStartDate}
+                          onChange={(e) => setCustomStartDate(e.target.value)}
+                          className="h-8 text-xs font-bold rounded-xl"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">To</label>
+                        <Input
+                          type="date"
+                          value={customEndDate}
+                          onChange={(e) => setCustomEndDate(e.target.value)}
+                          className="h-8 text-xs font-bold rounded-xl"
+                        />
+                      </div>
+                    </div>
+
+                    <Button
+                      className="w-full h-8 text-xs font-extrabold rounded-xl bg-primary text-white"
+                      onClick={() => {
+                        if (customStartDate && customEndDate) {
+                          const d1 = new Date(customStartDate);
+                          const d2 = new Date(customEndDate);
+                          const diffDays = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
+                          if (diffDays <= 35) setFlowScale('daily');
+                          else if (diffDays <= 180) setFlowScale('weekly');
+                          else setFlowScale('monthly');
+                          setFlowTimeRange('custom');
+                          setZoomLevel(1);
+                          setCustomPopoverOpen(false);
+                        }
+                      }}
+                    >
+                      Apply Date Range
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          {/* Main Content: Full-Width Sharp Stock Line Chart */}
+          <div className="w-full h-[360px] pt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={displayedVolumeData} margin={{ top: 15, right: 25, bottom: 20, left: -15 }}>
                 <defs>
-                  <linearGradient id="flowGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                  <linearGradient id="sharpFlowGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.18} />
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0.0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.3} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.35} />
                 <XAxis
                   dataKey="name"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10, fontWeight: 800 }}
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 700 }}
                   dy={10}
                 />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10, fontWeight: 800 }} />
-                <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--primary))', opacity: 0.1 }} />
-                <Area type="monotone" dataKey="patients" fill="url(#flowGradient)" stroke="none" />
-                <Bar dataKey="patients" barSize={32} radius={[10, 10, 0, 0]}>
-                  {volumeData.map((entry, i) => {
-                    const prev = volumeData[i - 1];
-                    let color = 'hsl(var(--primary))';
-                    if (prev) {
-                      if (entry.patients > prev.patients) color = '#10b981';
-                      else if (entry.patients < prev.patients) color = '#ef4444';
-                    }
-                    return <Cell key={i} fill={color} fillOpacity={0.8} />;
-                  })}
-                </Bar>
-                <Line type="monotone" dataKey="patients" stroke="hsl(var(--primary))" strokeWidth={4} dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} />
-                {volumeData.length > 0 && (
-                  <ReferenceLine 
-                    y={volumeData.reduce((acc, curr) => acc + curr.patients, 0) / volumeData.length} 
-                    stroke="currentColor" 
-                    strokeDasharray="3 3" 
-                    strokeOpacity={0.5} 
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 700 }}
+                />
+                <RechartsTooltip content={<CustomTooltip />} cursor={{ stroke: '#2563eb', strokeWidth: 1, strokeDasharray: '3 3' }} />
+
+                {/* Subtle Gradient Area Underneath Sharp Line */}
+                <Area
+                  type="linear"
+                  dataKey="patients"
+                  fill="url(#sharpFlowGradient)"
+                  stroke="none"
+                  isAnimationActive={true}
+                />
+
+                {/* Main Sharp-Edged Patient Flow Line (Groww / Zerodha Linear Style) */}
+                <Line
+                  type="linear"
+                  dataKey="patients"
+                  stroke="#2563eb"
+                  strokeWidth={2.75}
+                  strokeLinejoin="miter"
+                  strokeLinecap="square"
+                  dot={{
+                    r: displayedVolumeData.length > 25 ? 2.5 : 4.5,
+                    fill: '#ffffff',
+                    stroke: '#2563eb',
+                    strokeWidth: 2
+                  }}
+                  activeDot={{
+                    r: 6.5,
+                    fill: '#2563eb',
+                    stroke: '#ffffff',
+                    strokeWidth: 3
+                  }}
+                  isAnimationActive={true}
+                />
+
+                {/* Distinct High-Contrast Amber Dashed Reference Line for Average */}
+                {displayedVolumeData.length > 0 && flowMetrics.completedPeriodAvg > 0 && (
+                  <ReferenceLine
+                    y={flowMetrics.completedPeriodAvg}
+                    stroke="#f59e0b"
+                    strokeDasharray="6 4"
+                    strokeWidth={2}
+                    strokeOpacity={0.9}
                   >
-                    <Label 
-                      value={`Avg: ${Math.round(volumeData.reduce((acc, curr) => acc + curr.patients, 0) / volumeData.length)}`} 
-                      position="top" 
-                      fill="currentColor" 
-                      fontSize={12} 
-                      fontWeight="bold" 
-                      opacity={0.7}
+                    <Label
+                      value={`Avg: ${flowMetrics.completedPeriodAvg} ${flowScale === 'daily' ? 'pts/day' : flowScale === 'weekly' ? 'pts/wk' : 'pts/mo'}`}
+                      position="insideTopRight"
+                      fill="#d97706"
+                      fontSize={11}
+                      fontWeight={900}
+                      offset={12}
                     />
                   </ReferenceLine>
                 )}
               </ComposedChart>
-            </ChartContainer>
+            </ResponsiveContainer>
           </div>
 
+          {/* Spacious Horizontal Stats Row Directly Underneath the Chart ("keela theliva") */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-6 mt-2 border-t border-border/50">
+            {/* 1. Today Live Panel (Emerald Green) */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/25 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] uppercase font-black tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  </span>
+                  Live Today
+                </span>
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                  Ongoing
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2 my-1">
+                <span className="text-3xl font-black text-foreground tracking-tight">
+                  {flowMetrics.todayLiveCount}
+                </span>
+                <span className="text-xs font-bold text-muted-foreground">patients today</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Tracked live. Excluded from historical average so ongoing hours do not drag down completed stats.
+              </p>
+            </div>
+
+            {/* 2. Completed Historical Average (Amber Gold Accent Matching Dashed Line) */}
+            <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-950/20 border border-amber-300/70 dark:border-amber-900/60 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] uppercase font-black tracking-wider text-amber-700 dark:text-amber-400">
+                  {flowScale === 'daily' ? 'Completed Daily Avg' : flowScale === 'weekly' ? 'Weekly Flow Avg' : 'Monthly Flow Avg'}
+                </span>
+                <span className="h-2 w-8 border-b-2 border-dashed border-amber-500 inline-block" />
+              </div>
+              <div className="flex items-baseline gap-2 my-1">
+                <span className="text-3xl font-black text-amber-700 dark:text-amber-400 tracking-tight">
+                  {flowMetrics.completedPeriodAvg}
+                </span>
+                <span className="text-xs font-bold text-amber-600/80 dark:text-amber-400/80">
+                  {flowScale === 'daily' ? 'patients / day' : flowScale === 'weekly' ? 'patients / wk' : 'patients / mo'}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Matches orange dashed line across {flowMetrics.completedDaysCount} completed {flowScale === 'daily' ? 'days' : 'periods'}.
+              </p>
+            </div>
+
+            {/* 3. Period Peak & Low */}
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-border/70 shadow-2xs flex flex-col justify-between">
+              <div className="text-[11px] uppercase font-black tracking-wider text-muted-foreground mb-1.5">
+                Period High & Low
+              </div>
+              <div className="grid grid-cols-2 gap-2.5 my-1">
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <ArrowUpRight className="w-3.5 h-3.5" /> Peak
+                  </div>
+                  <div className="font-black text-foreground text-base mt-0.5">{flowMetrics.periodPeak.count} pts</div>
+                  <div className="text-[10px] text-muted-foreground truncate">{flowMetrics.periodPeak.label}</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                  <div className="text-[10px] font-black uppercase text-rose-500 flex items-center gap-1">
+                    <ArrowDownRight className="w-3.5 h-3.5" /> Low
+                  </div>
+                  <div className="font-black text-foreground text-base mt-0.5">{flowMetrics.periodLow.count} pts</div>
+                  <div className="text-[10px] text-muted-foreground truncate">{flowMetrics.periodLow.label}</div>
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Highest and lowest patient volume in selected range.
+              </p>
+            </div>
+
+            {/* 4. Total Volume in Period */}
+            <div className="p-4 rounded-2xl bg-primary/5 dark:bg-primary/10 border border-primary/15 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] uppercase font-black tracking-wider text-primary">
+                  Completed Period Total
+                </span>
+                <Activity className="w-4 h-4 text-primary" />
+              </div>
+              <div className="flex items-baseline gap-2 my-1">
+                <span className="text-3xl font-black text-foreground tracking-tight">
+                  {flowMetrics.periodTotal}
+                </span>
+                <span className="text-xs font-bold text-muted-foreground">total visits</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Cumulative completed patient encounters across {flowMetrics.rangeDescription}.
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Row 1: Diagnosis Mix (Left) & Patient Diversity (Right) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <ChartContainer
             title="Diagnosis Mix"
             description={selectedDiagnoses.length > 0 ? "Selected Clinical Reasons" : "Top 6 Clinical Reasons"}
             icon={<Stethoscope className="w-5 h-5" />}
+            height={220}
+            footer={
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-4 pt-4 border-t border-border/40">
+                {filteredDiagnosisData.map((d, i) => (
+                  <div key={d.name} className="flex flex-col gap-0.5 overflow-hidden p-2 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-border/40">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                      <span className="text-[10px] font-black uppercase text-muted-foreground truncate tracking-tight" title={d.name}>{d.name}</span>
+                    </div>
+                    <span className="text-base font-black pl-3.5 leading-none text-foreground">{d.value}</span>
+                  </div>
+                ))}
+              </div>
+            }
             extra={
               <Popover>
                 <PopoverTrigger asChild>
@@ -635,9 +1442,9 @@ export default function Analytics() {
                 data={filteredDiagnosisData}
                 cx="50%"
                 cy="50%"
-                innerRadius={65}
-                outerRadius={90}
-                paddingAngle={8}
+                innerRadius={55}
+                outerRadius={80}
+                paddingAngle={6}
                 dataKey="value"
                 animationDuration={1500}
                 animationEasing="ease-out"
@@ -646,66 +1453,27 @@ export default function Analytics() {
               </Pie>
               <RechartsTooltip content={<CustomTooltip />} />
             </PieChart>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3 mt-6">
-              {filteredDiagnosisData.map((d, i) => (
-                <div key={d.name} className="flex flex-col gap-1 overflow-hidden">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                    <span className="text-[10px] font-black uppercase text-muted-foreground truncate tracking-tighter" title={d.name}>{d.name}</span>
-                  </div>
-                  <span className="text-lg font-black pl-4 leading-none">{d.value}</span>
-                </div>
-              ))}
-            </div>
           </ChartContainer>
 
-          {/* Demographics Row */}
-          <ChartContainer
-            title="Patient Demographics"
-            description="Age-based categorization"
-            icon={<Users className="w-5 h-5" />}
-          >
-            <BarChart data={demographics.age} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.1} />
-              <XAxis type="number" hide />
-              <YAxis
-                type="category"
-                dataKey="name"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: 'hsl(var(--foreground))', fontSize: 10, fontWeight: 800 }}
-                width={120}
-              />
-              <RechartsTooltip content={<CustomTooltip />} />
-              <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 8, 8, 0]} barSize={20} />
-            </BarChart>
-          </ChartContainer>
-
-          {/* Operational: Peak Hours */}
-          <ChartContainer
-            title="Appointment Loads"
-            description="Time-based percentage distribution"
-            icon={<Clock className="w-5 h-5" />}
-          >
-            <AreaChart data={peakHoursData} margin={{ top: 20, right: 30, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="peakGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700 }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700 }} tickFormatter={(val) => `${val}%`} />
-              <RechartsTooltip content={<CustomTooltip />} />
-              <Area type="stepAfter" dataKey="percentage" stroke="#f59e0b" fill="url(#peakGradient)" strokeWidth={3} />
-            </AreaChart>
-          </ChartContainer>
-
-          {/* Operational: Sex Ratio */}
+          {/* Operational: Sex Ratio (Patient Diversity) */}
           <ChartContainer
             title="Patient Diversity"
             description="Sex Ratio Breakdown"
             icon={<UserRound className="w-5 h-5" />}
+            height={220}
+            footer={
+              <div className="grid grid-cols-3 gap-2.5 mt-4 pt-4 border-t border-border/40">
+                {demographics.sex.map((s, i) => (
+                  <div key={s.name} className="flex flex-col gap-0.5 overflow-hidden p-2 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-border/40">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: i === 0 ? '#3b82f6' : i === 1 ? '#ec4899' : '#10b981' }} />
+                      <span className="text-[10px] font-black uppercase text-muted-foreground truncate tracking-tight">{s.name}</span>
+                    </div>
+                    <span className="text-base font-black pl-3.5 leading-none text-foreground">{s.value}</span>
+                  </div>
+                ))}
+              </div>
+            }
           >
             <PieChart>
               <Pie
@@ -713,80 +1481,172 @@ export default function Analytics() {
                 cx="50%"
                 cy="50%"
                 stroke="none"
-                innerRadius={50}
-                outerRadius={85}
+                innerRadius={55}
+                outerRadius={80}
                 dataKey="value"
               >
                 {demographics.sex.map((_, i) => <Cell key={i} fill={i === 0 ? '#3b82f6' : i === 1 ? '#ec4899' : '#10b981'} />)}
               </Pie>
               <RechartsTooltip content={<CustomTooltip />} />
-              <Legend iconType="circle" />
             </PieChart>
           </ChartContainer>
+        </div>
 
-          {/* Medicine/Protocol Analytics - Full Width */}
-          <div className="xl:col-span-3">
-            <ChartContainer
-              title="Pharmacotherapy Insights"
-              description="Most Frequently Prescribed Medications / Protocols"
-              icon={<Pill className="w-5 h-5" />}
-            >
-              <BarChart data={protocolData} margin={{ top: 20, right: 30, bottom: 40, left: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.2} />
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 9, fontWeight: 900, fill: 'hsl(var(--muted-foreground))' }}
-                  angle={-45}
-                  textAnchor="end"
-                  interval={0}
-                />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800 }} />
-                <RechartsTooltip content={<CustomTooltip />} />
-                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[12, 12, 0, 0]} barSize={40}>
-                  {protocolData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Bar>
-              </BarChart>
-            </ChartContainer>
-          </div>
+        {/* Row 2: Patient Demographics (Age-based categorization - Standalone) */}
+        <div className="w-full">
+          <ChartContainer
+            title="Patient Demographics"
+            description="Age-based clinical cohort distribution"
+            icon={<Users className="w-5 h-5" />}
+          >
+            <BarChart data={demographics.age} layout="vertical" margin={{ top: 10, right: 30, left: 50, bottom: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.15} />
+              <XAxis type="number" hide />
+              <YAxis
+                type="category"
+                dataKey="name"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: 'hsl(var(--foreground))', fontSize: 11, fontWeight: 800 }}
+                width={140}
+              />
+              <RechartsTooltip content={<CustomTooltip />} />
+              <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 8, 8, 0]} barSize={26} />
+            </BarChart>
+          </ChartContainer>
+        </div>
 
-          {/* Disease Seasonality Chart */}
-          <div className="xl:col-span-3">
-            <ChartContainer
-              title="Clinical Seasonality"
-              description="6-Month Trend Analysis of Core Diagnoses"
-              icon={<Activity className="w-5 h-5" />}
-            >
-              <AreaChart data={seasonalityData} margin={{ top: 20, right: 30, left: -20, bottom: 0 }}>
-                <defs>
-                  {seasonalityData[0] && Object.keys(seasonalityData[0]).filter(k => k !== 'month').map((key, i) => (
-                    <linearGradient key={key} id={`fade${i}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={COLORS[i % COLORS.length]} stopOpacity={0.2} />
-                      <stop offset="95%" stopColor={COLORS[i % COLORS.length]} stopOpacity={0} />
-                    </linearGradient>
-                  ))}
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.2} />
-                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 900 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10, fontWeight: 800 }} />
-                <RechartsTooltip content={<CustomTooltip />} />
-                <Legend />
+        {/* Row 3: Appointment Loads (24-Hour Time-based distribution - Standalone) */}
+        <div className="w-full">
+          <ChartContainer
+            title="Appointment Loads (24-Hour Clinic)"
+            description="Hourly Patient Arrival Volume (00:00 to 24:00)"
+            icon={<Clock className="w-5 h-5" />}
+          >
+            <AreaChart data={peakHoursData} margin={{ top: 20, right: 30, left: -10, bottom: 0 }}>
+              <defs>
+                <linearGradient id="peakGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis
+                dataKey="hour"
+                ticks={HOUR_TICKS_24}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fontWeight: 700 }}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fontWeight: 700 }}
+                tickFormatter={(val) => `${val}`}
+              />
+              <RechartsTooltip content={<CustomTooltip />} />
+              <Area
+                type="monotone"
+                dataKey="patients"
+                name="Patients"
+                stroke="#f59e0b"
+                fill="url(#peakGradient)"
+                strokeWidth={3}
+              />
+            </AreaChart>
+          </ChartContainer>
+        </div>
+
+        {/* Row 4: Patient Acquisition & Retention Dynamics (New vs Returning) - Full Width */}
+        <div className="w-full">
+          <ChartContainer
+            title="Patient Retention & Acquisition"
+            description="First-Time Registrations vs Returning Follow-Up Encounters"
+            icon={<UserCheck className="w-5 h-5" />}
+            extra={
+              retentionData.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-muted-foreground hidden sm:inline">Latest Retention Rate:</span>
+                  <span className="text-xs font-black px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    {retentionData[retentionData.length - 1]?.retentionRate}% Returning
+                  </span>
+                </div>
+              )
+            }
+          >
+            <BarChart data={retentionData} margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.15} />
+              <XAxis
+                dataKey="monthLabel"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 11, fontWeight: 800, fill: 'hsl(var(--foreground))' }}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fontWeight: 700 }}
+              />
+              <RechartsTooltip content={<CustomTooltip />} />
+              <Legend
+                verticalAlign="top"
+                align="right"
+                wrapperStyle={{ paddingBottom: '16px' }}
+                iconType="circle"
+              />
+              <Bar
+                name="New Patients"
+                dataKey="newPatients"
+                fill="#3b82f6"
+                stackId="flow"
+                radius={[0, 0, 4, 4]}
+                barSize={42}
+              />
+              <Bar
+                name="Returning Patients"
+                dataKey="returningPatients"
+                fill="#10b981"
+                stackId="flow"
+                radius={[8, 8, 0, 0]}
+                barSize={42}
+              />
+            </BarChart>
+          </ChartContainer>
+        </div>
+
+        {/* Row 5: Disease Seasonality Chart - Full Width */}
+        <div className="w-full">
+          <ChartContainer
+            title="Clinical Seasonality"
+            description="6-Month Trend Analysis of Core Diagnoses"
+            icon={<Activity className="w-5 h-5" />}
+          >
+            <AreaChart data={seasonalityData} margin={{ top: 20, right: 30, left: -20, bottom: 0 }}>
+              <defs>
                 {seasonalityData[0] && Object.keys(seasonalityData[0]).filter(k => k !== 'month').map((key, i) => (
-                  <Area
-                    key={key}
-                    type="monotone"
-                    dataKey={key}
-                    stroke={COLORS[i % COLORS.length]}
-                    fill={`url(#fade${i})`}
-                    strokeWidth={4}
-                    animationDuration={2000}
-                  />
+                  <linearGradient key={key} id={`fade${i}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={COLORS[i % COLORS.length]} stopOpacity={0.2} />
+                    <stop offset="95%" stopColor={COLORS[i % COLORS.length]} stopOpacity={0} />
+                  </linearGradient>
                 ))}
-              </AreaChart>
-            </ChartContainer>
-          </div>
-
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.2} />
+              <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 900 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10, fontWeight: 800 }} />
+              <RechartsTooltip content={<CustomTooltip />} />
+              <Legend />
+              {seasonalityData[0] && Object.keys(seasonalityData[0]).filter(k => k !== 'month').map((key, i) => (
+                <Area
+                  key={key}
+                  type="monotone"
+                  dataKey={key}
+                  stroke={COLORS[i % COLORS.length]}
+                  fill={`url(#fade${i})`}
+                  strokeWidth={4}
+                  animationDuration={2000}
+                />
+              ))}
+            </AreaChart>
+          </ChartContainer>
         </div>
       </div>
     </div>

@@ -24,11 +24,11 @@ const navItems: NavItem[] = [
   { label: 'Patient Entry', path: '/nurse', icon: <ClipboardPlus className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
   { label: 'Consultation', path: '/consultation', icon: <Stethoscope className="w-5 h-5" />, roles: ['doctor', 'superadmin', 'owner'] },
   { label: 'Print Queue', path: '/print', icon: <Printer className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
-  { label: 'TV Display', path: '/display', icon: <Tv className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
   { label: 'Patients', path: '/patients', icon: <Users className="w-5 h-5" />, roles: ['doctor', 'staff', 'superadmin', 'owner'] },
   { label: 'Analytics', path: '/analytics', icon: <BarChart3 className="w-5 h-5" />, roles: ['doctor', 'superadmin', 'owner'] },
   { label: 'Profile', path: '/profile', icon: <User className="w-5 h-5" />, roles: ['doctor', 'superadmin', 'owner'] },
   { label: 'User Mgmt', path: '/users', icon: <Users className="w-5 h-5" />, roles: ['superadmin', 'owner'] },
+  { label: 'TV Display', path: '/display', icon: <Tv className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
   { label: 'About', path: '/about', icon: <Info className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
   { label: 'Help', path: '/help', icon: <HelpCircle className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
 ];

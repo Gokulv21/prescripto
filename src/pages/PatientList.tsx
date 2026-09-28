@@ -1,19 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { useOutletContext } from 'react-router-dom';
+import { useAuth } from '@/lib/auth';
+import { useQuery } from '@tanstack/react-query';
 import PageBanner from "@/components/PageBanner";
 import patientListBanner from "@/assets/patient_list_banner.png";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, User, History, Edit, Printer, Eye, X } from 'lucide-react';
+import { Search, User, History, Edit, Printer, Eye, X, Plus, Activity, Loader2, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import PrescriptionTemplate from '@/components/PrescriptionTemplate';
 import { printPrescription } from '@/lib/printPrescription';
 import { formatAge, getPatientCurrentAge, calculateDobFromAge } from '@/lib/utils';
+import { buildPatientSearchFilter } from '@/lib/patientSearch';
+import { validateNumericRange } from '@/lib/security-sanitize';
 import {
   Pagination,
   PaginationContent,
@@ -24,8 +28,20 @@ import {
 
 import type { Clinic } from '@/types/clinic';
 
+interface VitalsForm {
+  weight: string;
+  blood_pressure: string;
+  pulse_rate: string;
+  spo2: string;
+  temperature: string;
+  cbg: string;
+}
+
+const initialVitals: VitalsForm = { weight: '', blood_pressure: '', pulse_rate: '', spo2: '', temperature: '', cbg: '' };
+
 export default function PatientList() {
   const { clinic } = useOutletContext<{ clinic: Clinic }>();
+  const { user, profile } = useAuth();
   const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
@@ -39,18 +55,72 @@ export default function PatientList() {
   const [loadingRx, setLoadingRx] = useState(false);
   const pageSize = 25;
 
+  // Add Visit states
+  const [addVisitOpen, setAddVisitOpen] = useState(false);
+  const [addVisitVitals, setAddVisitVitals] = useState<VitalsForm>(initialVitals);
+  const [addVisitDoctorId, setAddVisitDoctorId] = useState<string>('general');
+  const [submittingVisit, setSubmittingVisit] = useState(false);
+
+  // Doctors in clinic for visit assignment
+  const { data: doctors } = useQuery({
+    queryKey: ['doctors_v2', clinic?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, user_id, full_name, role, email')
+        .in('role', ['doctor', 'owner'])
+        .eq('clinic_id', clinic?.id)
+        .neq('is_superadmin', true);
+      return data || [];
+    },
+    enabled: !!clinic?.id
+  });
+
+  const doctorOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return (doctors || [])
+      .map((doctor: any) => {
+        const assignId = doctor?.id || doctor?.user_id || '';
+        return { ...doctor, assignId: String(assignId) };
+      })
+      .filter((doctor: any) => {
+        if (!doctor.assignId || seen.has(doctor.assignId)) return false;
+        seen.add(doctor.assignId);
+        return true;
+      });
+  }, [doctors]);
+
+  // Auto-default doctor assignment to current doctor if applicable
+  useEffect(() => {
+    if (addVisitOpen) {
+      if (profile?.role === 'doctor' || profile?.role === 'owner') {
+        const myDoc = doctorOptions.find(d => d.user_id === user?.id || d.id === profile?.id);
+        if (myDoc) {
+          setAddVisitDoctorId(myDoc.assignId);
+        } else {
+          setAddVisitDoctorId('general');
+        }
+      } else {
+        setAddVisitDoctorId('general');
+      }
+    }
+  }, [addVisitOpen, profile, user, doctorOptions]);
+
   const fetchPatients = async () => {
     const start = (page - 1) * pageSize;
     const end = start + pageSize - 1;
 
-    let query = supabase.from('patients').select('*', { count: 'exact' }).eq('clinic_id', clinic?.id).order('last_opened_at', { ascending: false, nullsFirst: false }).range(start, end);
+    let query = supabase
+      .from('patients')
+      .select('*', { count: 'exact' })
+      .eq('clinic_id', clinic?.id)
+      .order('last_opened_at', { ascending: false, nullsFirst: false })
+      .range(start, end);
+
     if (search.trim()) {
-      // Check if search looks like a UUID for ID search
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search.trim());
-      if (isUuid) {
-        query = query.or(`id.eq.${search.trim()},name.ilike.%${search}%,phone.ilike.%${search}%,registration_id.ilike.%${search}%`);
-      } else {
-        query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%,registration_id.ilike.%${search}%`);
+      const filter = buildPatientSearchFilter(search.trim());
+      if (filter) {
+        query = query.or(filter);
       }
     }
     const { data, count, error } = await query;
@@ -184,6 +254,79 @@ export default function PatientList() {
     }
   };
 
+  const handleAddVisit = async () => {
+    if (!selectedPatient || !clinic?.id) return;
+
+    if (addVisitVitals.weight && !validateNumericRange(addVisitVitals.weight, 0, 500)) {
+      toast.error("Invalid weight value (0-500 kg)");
+      return;
+    }
+    if (addVisitVitals.pulse_rate && !validateNumericRange(addVisitVitals.pulse_rate, 0, 300)) {
+      toast.error("Invalid pulse rate (0-300 bpm)");
+      return;
+    }
+
+    setSubmittingVisit(true);
+    const loadingToast = toast.loading("Generating token and creating visit...");
+
+    try {
+      let token = 1;
+      const { data: tokenData, error: tokenError } = await (supabase.rpc as any)('get_next_token', { p_clinic_id: clinic?.id });
+      if (tokenError) {
+        console.error('[PatientList] RPC get_next_token error:', tokenError);
+        token = 1;
+      } else {
+        token = tokenData || 1;
+      }
+
+      const normalizedAssignedDoctorId =
+        addVisitDoctorId !== 'general' && addVisitDoctorId ? addVisitDoctorId : null;
+
+      const { data: newVisit, error: visitError } = await supabase.from('visits').insert({
+        patient_id: selectedPatient.id,
+        token_number: token,
+        weight: addVisitVitals.weight ? parseFloat(addVisitVitals.weight) : null,
+        blood_pressure: addVisitVitals.blood_pressure.trim() || null,
+        pulse_rate: addVisitVitals.pulse_rate ? parseInt(addVisitVitals.pulse_rate) : null,
+        spo2: addVisitVitals.spo2 ? parseFloat(addVisitVitals.spo2) : null,
+        temperature: addVisitVitals.temperature ? parseFloat(addVisitVitals.temperature) : null,
+        cbg: addVisitVitals.cbg ? parseFloat(addVisitVitals.cbg) : null,
+        assigned_doctor_id: normalizedAssignedDoctorId,
+        clinic_id: clinic.id,
+        created_by: user?.id
+      }).select('*, prescriptions(*)').single();
+
+      if (visitError) throw visitError;
+
+      // Update patient's last_opened_at
+      await supabase.from('patients').update({
+        last_opened_at: new Date().toISOString()
+      }).eq('id', selectedPatient.id);
+
+      if (newVisit) {
+        setVisits(prev => [newVisit, ...prev]);
+      } else {
+        const { data: refreshed } = await supabase
+          .from('visits')
+          .select('*, prescriptions(*)')
+          .eq('patient_id', selectedPatient.id)
+          .order('created_at', { ascending: false });
+        setVisits(refreshed || []);
+      }
+
+      toast.dismiss(loadingToast);
+      toast.success(`Visit created for ${selectedPatient.title ? selectedPatient.title + ' ' : ''}${selectedPatient.name} — Token #${token}`);
+      setAddVisitOpen(false);
+      setAddVisitVitals(initialVitals);
+    } catch (err: any) {
+      toast.dismiss(loadingToast);
+      console.error('[PatientList] Add visit failed:', err);
+      toast.error(err?.message || 'Failed to create visit');
+    } finally {
+      setSubmittingVisit(false);
+    }
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto animate-in fade-in duration-500 pb-12">
       <PageBanner
@@ -256,12 +399,15 @@ export default function PatientList() {
       <Dialog open={!!selectedPatient} onOpenChange={open => !open && setSelectedPatient(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>{(selectedPatient?.title ? selectedPatient.title + ' ' : '') + selectedPatient?.name}</span>
-              <Button size="sm" variant="outline" onClick={() => setEditing(!editing)}>
-                <Edit className="w-4 h-4 mr-1" />{editing ? 'Cancel' : 'Edit'}
+            <div className="flex items-center justify-between pr-8">
+              <DialogTitle className="text-xl font-bold font-heading truncate">
+                {(selectedPatient?.title ? selectedPatient.title + ' ' : '') + selectedPatient?.name}
+              </DialogTitle>
+              <Button size="sm" variant="outline" onClick={() => setEditing(!editing)} className="h-8 gap-1.5 shrink-0 ml-3">
+                <Edit className="w-3.5 h-3.5" />
+                {editing ? 'Cancel' : 'Edit'}
               </Button>
-            </DialogTitle>
+            </div>
           </DialogHeader>
 
           {editing ? (
@@ -351,7 +497,16 @@ export default function PatientList() {
                 <div className="col-span-2"><span className="text-muted-foreground">Address:</span> {selectedPatient?.address || '—'}</div>
               </div>
 
-              <h3 className="font-heading font-bold mt-4">Visit History ({visits.length})</h3>
+              <div className="flex items-center justify-between mt-4">
+                <h3 className="font-heading font-bold">Visit History ({visits.length})</h3>
+                <Button 
+                  size="sm" 
+                  onClick={() => setAddVisitOpen(true)}
+                  className="gap-1.5 font-bold shadow-sm bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  <Plus className="w-4 h-4" /> Add Visit
+                </Button>
+              </div>
               <div className="space-y-3">
                 {visits.map(v => (
                   <Card key={v.id}>
@@ -393,10 +548,151 @@ export default function PatientList() {
         </DialogContent>
       </Dialog>
 
+      {/* Add Visit Dialog */}
+      <Dialog open={addVisitOpen} onOpenChange={open => { if (!submittingVisit) setAddVisitOpen(open); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader className="pr-8">
+            <DialogTitle className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-primary" />
+              <span>Add Visit — {selectedPatient?.title ? selectedPatient.title + ' ' : ''}{selectedPatient?.name}</span>
+            </DialogTitle>
+            <DialogDescription>
+              Record patient vitals and generate a queue token for today's visit.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="p-3 rounded-lg bg-muted/60 border border-border flex items-center justify-between text-xs">
+              <div>
+                <span className="font-bold text-foreground">{formatAge(selectedPatient)}</span>
+                <span className="text-muted-foreground ml-1.5">· {selectedPatient?.sex}</span>
+                {selectedPatient?.phone && <span className="text-muted-foreground ml-1.5">· {selectedPatient.phone}</span>}
+              </div>
+              {selectedPatient?.registration_id && (
+                <span className="font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded text-[10px]">
+                  {selectedPatient.registration_id}
+                </span>
+              )}
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground">Assign Doctor</Label>
+              <Select value={addVisitDoctorId} onValueChange={setAddVisitDoctorId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select doctor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">General Queue (Any Doctor)</SelectItem>
+                  {doctorOptions.map((doc: any) => (
+                    <SelectItem key={doc.assignId} value={doc.assignId}>
+                      {doc.full_name || doc.email} ({doc.role})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground">Vitals (Optional)</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">Weight (kg)</Label>
+                  <Input 
+                    type="number"
+                    step="0.1"
+                    placeholder="e.g. 65"
+                    value={addVisitVitals.weight}
+                    onChange={e => setAddVisitVitals(v => ({ ...v, weight: e.target.value }))}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">BP (mmHg)</Label>
+                  <Input 
+                    placeholder="120/80"
+                    value={addVisitVitals.blood_pressure}
+                    onChange={e => setAddVisitVitals(v => ({ ...v, blood_pressure: e.target.value }))}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">Pulse (bpm)</Label>
+                  <Input 
+                    type="number"
+                    placeholder="e.g. 72"
+                    value={addVisitVitals.pulse_rate}
+                    onChange={e => setAddVisitVitals(v => ({ ...v, pulse_rate: e.target.value }))}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">SpO2 (%)</Label>
+                  <Input 
+                    type="number"
+                    placeholder="e.g. 98"
+                    value={addVisitVitals.spo2}
+                    onChange={e => setAddVisitVitals(v => ({ ...v, spo2: e.target.value }))}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">Temp (°F)</Label>
+                  <Input 
+                    type="number"
+                    step="0.1"
+                    placeholder="98.6"
+                    value={addVisitVitals.temperature}
+                    onChange={e => setAddVisitVitals(v => ({ ...v, temperature: e.target.value }))}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">CBG (mg/dL)</Label>
+                  <Input 
+                    type="number"
+                    placeholder="e.g. 110"
+                    value={addVisitVitals.cbg}
+                    onChange={e => setAddVisitVitals(v => ({ ...v, cbg: e.target.value }))}
+                    className="h-9 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3">
+              <Button 
+                variant="outline" 
+                onClick={() => setAddVisitOpen(false)} 
+                disabled={submittingVisit}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleAddVisit} 
+                disabled={submittingVisit}
+                className="gap-2 font-bold"
+              >
+                {submittingVisit ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generating Token...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    Generate Token & Add
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Prescription Preview Dialog */}
       <Dialog open={!!viewingRx} onOpenChange={open => !open && setViewingRx(null)}>
         <DialogContent className="max-w-[800px] p-0 overflow-hidden bg-muted">
-          <div className="bg-card p-4 border-b border-border flex items-center justify-between sticky top-0 z-20">
+          <div className="bg-card p-4 pr-12 border-b border-border flex items-center justify-between sticky top-0 z-20">
             <h3 className="font-bold text-foreground">Prescription History</h3>
             <div className="flex items-center gap-2">
               <Button size="sm" onClick={() => printPrescription('.print-container')} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">

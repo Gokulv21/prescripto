@@ -10,7 +10,7 @@ import {
     Medal, FileSignature, Save, RefreshCw, Plus, Stethoscope, Printer,
     ArrowRight, CheckCircle2, Circle, PanelLeft, LayoutDashboard,
     Group, Info, Moon, Sun, HeartPulse, TrendingUp, Search, UserPlus, Camera, Trash2, Eye, X, Pencil, ChevronDown,
-    Lock, Building2, Upload, Palette, Sparkles, Check
+    Lock, Building2, Upload, Palette, Sparkles, Check, Pipette, Sliders
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { startOfDay, endOfDay, subDays, format, isSameDay, parseISO } from 'date-fns';
@@ -26,7 +26,7 @@ import {
     PieChart as RePieChart, Pie, Cell, LineChart, Line, AreaChart, Area, Legend
 } from 'recharts';
 import SignaturePad from '@/components/SignaturePad';
-import { useTheme, ACCENT_OPTIONS, AccentColor } from '@/components/ThemeProvider';
+import { useTheme, ACCENT_OPTIONS, AccentColor, hexToRgb, rgbToHex } from '@/components/ThemeProvider';
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
     DialogDescription, DialogFooter
@@ -115,18 +115,46 @@ const COMMON_FREQUENCIES = [
 
 export default function DoctorProfile() {
     const { user, roles, hasRole, refresh: refreshAuth } = useAuth();
-    const { theme, setTheme, accent, setAccent } = useTheme();
+    const { theme, setTheme, accent, setAccent, customColor, setCustomColor } = useTheme();
     const { slug } = useParams();
     const { clinic } = useOutletContext<{ clinic: Clinic }>();
     const navigate = useNavigate();
+
+    // Local RGB Picker state
+    const [colorPickerOpen, setColorPickerOpen] = useState(false);
+    const [rgbVals, setRgbVals] = useState(() => hexToRgb(customColor || '#2563eb'));
+    const [hexInput, setHexInput] = useState(customColor || '#2563eb');
+
+    useEffect(() => {
+        if (customColor) {
+            setRgbVals(hexToRgb(customColor));
+            setHexInput(customColor.toUpperCase());
+        }
+    }, [customColor]);
+
+    const handleRgbChange = (channel: 'r' | 'g' | 'b', val: number) => {
+        const clamped = Math.max(0, Math.min(255, isNaN(val) ? 0 : val));
+        const updated = { ...rgbVals, [channel]: clamped };
+        setRgbVals(updated);
+        const hex = rgbToHex(updated.r, updated.g, updated.b).toUpperCase();
+        setHexInput(hex);
+        setCustomColor(hex);
+    };
+
+    const handleHexChange = (val: string) => {
+        let clean = val.trim();
+        if (!clean.startsWith('#')) clean = '#' + clean;
+        setHexInput(clean);
+        if (/^#[0-9A-F]{6}$/i.test(clean)) {
+            const rgb = hexToRgb(clean);
+            setRgbVals(rgb);
+            setCustomColor(clean);
+        }
+    };
     const isClinicOwner = Boolean(
-        clinic?.id && (
-            clinic?.owner_id === user?.id ||
-            hasRole('owner') ||
-            roles?.includes('owner') ||
-            hasRole('superadmin') ||
-            roles?.includes('superadmin') ||
-            profile?.is_superadmin
+        clinic?.id && user?.id && (
+            clinic.owner_id === user.id ||
+            (roles?.includes('owner') && (!clinic.owner_id || clinic.owner_id === user.id))
         )
     );
 
@@ -218,11 +246,7 @@ export default function DoctorProfile() {
                     // Update profile state with clinic specific data if needed
                     const isOwnerUser = Boolean(
                         clinicData.owner_id === user.id ||
-                        hasRole('owner') ||
-                        roles?.includes('owner') ||
-                        hasRole('superadmin') ||
-                        roles?.includes('superadmin') ||
-                        profData?.is_superadmin
+                        (roles?.includes('owner') && (!clinicData.owner_id || clinicData.owner_id === user.id))
                     );
                     if (isOwnerUser) {
                         setProfile(prev => ({
@@ -355,20 +379,26 @@ export default function DoctorProfile() {
             }
 
             // Update profiles table (only columns that actually exist in DB)
+            const profilePayload: any = {
+                full_name: sData.full_name,
+                qualifications: sData.qualifications,
+                registration_id: sData.registration_id,
+                signature_data: profile.signature_data,
+                // @ts-ignore
+                avatar_url: profile.avatar_url,
+                theme: theme
+            };
+
+            // Only update clinic branding columns in profiles if current user is the owner
+            if (isClinicOwner) {
+                profilePayload.clinic_name = sData.clinic_name;
+                profilePayload.clinic_address = sData.clinic_address;
+                profilePayload.clinic_phone = sData.clinic_phone;
+            }
+
             const { error } = await supabase
                 .from('profiles')
-                .update({
-                    full_name: sData.full_name,
-                    qualifications: sData.qualifications,
-                    registration_id: sData.registration_id,
-                    clinic_name: sData.clinic_name,
-                    clinic_address: sData.clinic_address,
-                    clinic_phone: sData.clinic_phone,
-                    signature_data: profile.signature_data,
-                    // @ts-ignore
-                    avatar_url: profile.avatar_url,
-                    theme: theme
-                })
+                .update(profilePayload)
                 .eq('user_id', user.id);
 
             if (error) throw error;
@@ -1144,12 +1174,19 @@ export default function DoctorProfile() {
                                     </div>
                                 </div>
 
-                                {/* Color Swatches */}
+                                {/* Color Swatches & RGB Picker */}
                                 <div className="space-y-2.5">
                                     <div className="flex items-center justify-between">
                                         <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Theme Color</Label>
-                                        <span className="text-xs font-bold text-primary capitalize">
-                                            {ACCENT_OPTIONS.find(a => a.id === accent)?.name}
+                                        <span className="text-xs font-bold text-primary capitalize flex items-center gap-1.5">
+                                            {accent === 'custom' ? (
+                                                <>
+                                                    <span className="w-2.5 h-2.5 rounded-full inline-block shadow-xs" style={{ backgroundColor: customColor }} />
+                                                    <span>RGB {customColor}</span>
+                                                </>
+                                            ) : (
+                                                ACCENT_OPTIONS.find(a => a.id === accent)?.name
+                                            )}
                                         </span>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2.5 p-2 bg-slate-100 dark:bg-slate-800/60 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
@@ -1177,6 +1214,176 @@ export default function DoctorProfile() {
                                                 </button>
                                             );
                                         })}
+
+                                        {/* Divider */}
+                                        <div className="h-6 w-[1px] bg-slate-300 dark:bg-slate-700 mx-0.5" />
+
+                                        {/* Custom RGB Color Picker Popover */}
+                                        <Popover open={colorPickerOpen} onOpenChange={setColorPickerOpen}>
+                                            <PopoverTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className={cn(
+                                                        "relative flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-200 active:scale-90",
+                                                        accent === 'custom'
+                                                            ? "ring-2 ring-offset-2 ring-primary dark:ring-offset-slate-900 scale-105 shadow-md"
+                                                            : "hover:scale-105 opacity-85 hover:opacity-100"
+                                                    )}
+                                                    style={{
+                                                        backgroundColor: accent === 'custom' ? customColor : undefined,
+                                                        background: accent !== 'custom' ? 'conic-gradient(from 180deg at 50% 50%, #f43f5e 0deg, #f59e0b 60deg, #10b981 120deg, #06b6d4 180deg, #3b82f6 240deg, #8b5cf6 300deg, #f43f5e 360deg)' : undefined,
+                                                        boxShadow: accent === 'custom' ? `0 6px 16px ${customColor}55` : undefined
+                                                    }}
+                                                    title="Custom RGB Color Picker"
+                                                >
+                                                    {accent === 'custom' ? (
+                                                        <Check className="w-4 h-4 text-white stroke-[3] drop-shadow-sm" />
+                                                    ) : (
+                                                        <Pipette className="w-4 h-4 text-white drop-shadow-sm" />
+                                                    )}
+                                                </button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-80 p-4 rounded-2xl shadow-2xl border-slate-200 dark:border-slate-800" align="end">
+                                                <div className="space-y-4">
+                                                    <div className="flex items-center justify-between pb-2 border-b border-border/60">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                                                                <Pipette className="w-3.5 h-3.5" />
+                                                            </div>
+                                                            <h4 className="text-xs font-black uppercase tracking-wider text-foreground">Custom RGB Picker</h4>
+                                                        </div>
+                                                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-primary/10 text-primary font-mono">
+                                                            {hexInput}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Color preview & native eye-dropper / wheel */}
+                                                    <div className="flex items-center gap-3">
+                                                        <div
+                                                            className="w-14 h-14 rounded-2xl border-2 border-white dark:border-slate-800 shadow-md shrink-0 flex items-center justify-center transition-all"
+                                                            style={{ backgroundColor: customColor }}
+                                                        >
+                                                            <Sparkles className="w-5 h-5 text-white drop-shadow-md" />
+                                                        </div>
+                                                        <div className="flex-1 space-y-1">
+                                                            <Label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Pick from Wheel</Label>
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="color"
+                                                                    value={customColor}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value.toUpperCase();
+                                                                        setCustomColor(val);
+                                                                        setHexInput(val);
+                                                                        setRgbVals(hexToRgb(val));
+                                                                    }}
+                                                                    className="w-full h-8 rounded-xl cursor-pointer border border-border/80 p-0.5 bg-background shadow-2xs"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* HEX Input */}
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Hex Color Code</Label>
+                                                        <Input
+                                                            value={hexInput}
+                                                            onChange={(e) => handleHexChange(e.target.value)}
+                                                            placeholder="#2563EB"
+                                                            maxLength={7}
+                                                            className="h-8 text-xs font-mono font-bold rounded-xl uppercase"
+                                                        />
+                                                    </div>
+
+                                                    {/* RGB Sliders */}
+                                                    <div className="space-y-2.5 pt-1 border-t border-border/50">
+                                                        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">RGB Color Channels</p>
+                                                        
+                                                        {/* R Channel */}
+                                                        <div className="flex items-center gap-2.5">
+                                                            <span className="w-4 text-xs font-black text-rose-500">R</span>
+                                                            <input
+                                                                type="range"
+                                                                min="0"
+                                                                max="255"
+                                                                value={rgbVals.r}
+                                                                onChange={(e) => handleRgbChange('r', parseInt(e.target.value))}
+                                                                className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-rose-500"
+                                                            />
+                                                            <span className="w-8 text-right text-xs font-mono font-bold text-foreground tabular-nums">
+                                                                {rgbVals.r}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* G Channel */}
+                                                        <div className="flex items-center gap-2.5">
+                                                            <span className="w-4 text-xs font-black text-emerald-500">G</span>
+                                                            <input
+                                                                type="range"
+                                                                min="0"
+                                                                max="255"
+                                                                value={rgbVals.g}
+                                                                onChange={(e) => handleRgbChange('g', parseInt(e.target.value))}
+                                                                className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                                            />
+                                                            <span className="w-8 text-right text-xs font-mono font-bold text-foreground tabular-nums">
+                                                                {rgbVals.g}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* B Channel */}
+                                                        <div className="flex items-center gap-2.5">
+                                                            <span className="w-4 text-xs font-black text-blue-500">B</span>
+                                                            <input
+                                                                type="range"
+                                                                min="0"
+                                                                max="255"
+                                                                value={rgbVals.b}
+                                                                onChange={(e) => handleRgbChange('b', parseInt(e.target.value))}
+                                                                className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                                            />
+                                                            <span className="w-8 text-right text-xs font-mono font-bold text-foreground tabular-nums">
+                                                                {rgbVals.b}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Quick Curated Palettes */}
+                                                    <div className="pt-2 border-t border-border/50">
+                                                        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1.5">Vivid Tones</p>
+                                                        <div className="grid grid-cols-6 gap-1.5">
+                                                            {['#6366F1', '#EC4899', '#14B8A6', '#F97316', '#84CC16', '#A855F7'].map((c) => (
+                                                                <button
+                                                                    key={c}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setCustomColor(c);
+                                                                        setHexInput(c);
+                                                                        setRgbVals(hexToRgb(c));
+                                                                    }}
+                                                                    className="h-6 rounded-lg transition-transform hover:scale-110 active:scale-95 border border-white/20 shadow-xs"
+                                                                    style={{ backgroundColor: c }}
+                                                                    title={c}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            setCustomColor(hexInput);
+                                                            setColorPickerOpen(false);
+                                                            toast.success(`Custom theme color applied: ${hexInput}`);
+                                                        }}
+                                                        className="w-full h-8 text-xs font-extrabold rounded-xl bg-primary text-white shadow-sm"
+                                                    >
+                                                        Apply Color
+                                                    </Button>
+                                                </div>
+                                            </PopoverContent>
+                                        </Popover>
                                     </div>
                                 </div>
                             </div>
@@ -1379,36 +1586,63 @@ export default function DoctorProfile() {
                                 </div>
 
                                 <div className="space-y-4">
+                                    {!isClinicOwner && (
+                                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2.5 text-xs font-bold text-amber-700 dark:text-amber-400">
+                                            <Lock className="w-4 h-4 shrink-0 text-amber-500" />
+                                            <span>Clinic branding can only be modified by the registered Clinic Owner.</span>
+                                        </div>
+                                    )}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Clinic Name</Label>
+                                            <div className="flex items-center justify-between">
+                                                <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Clinic Name</Label>
+                                                {!isClinicOwner && <Lock className="w-3 h-3 text-slate-400" />}
+                                            </div>
                                             <Input
                                                 value={(isClinicOwner ? profile?.clinic_name : ownerProfile?.clinic_name) || ''}
-                                                onChange={e => setProfile(p => ({ ...p!, clinic_name: e.target.value }))}
+                                                onChange={isClinicOwner ? e => setProfile(p => ({ ...p!, clinic_name: e.target.value })) : undefined}
                                                 placeholder="e.g. GV Clinic"
-                                                className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
+                                                className={cn(
+                                                    "h-11 border-slate-200 dark:border-slate-800 rounded-xl px-4 font-bold text-sm",
+                                                    isClinicOwner ? "bg-white dark:bg-slate-800" : "bg-slate-100/70 dark:bg-slate-800/40 text-slate-500 cursor-not-allowed select-none"
+                                                )}
                                                 readOnly={!isClinicOwner}
+                                                disabled={!isClinicOwner}
                                             />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Contact Number</Label>
+                                            <div className="flex items-center justify-between">
+                                                <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Contact Number</Label>
+                                                {!isClinicOwner && <Lock className="w-3 h-3 text-slate-400" />}
+                                            </div>
                                             <Input
                                                 value={(isClinicOwner ? profile?.clinic_phone : ownerProfile?.clinic_phone) || ''}
-                                                onChange={e => setProfile(p => ({ ...p!, clinic_phone: e.target.value }))}
+                                                onChange={isClinicOwner ? e => setProfile(p => ({ ...p!, clinic_phone: e.target.value })) : undefined}
                                                 placeholder="+91 00000 00000"
-                                                className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
+                                                className={cn(
+                                                    "h-11 border-slate-200 dark:border-slate-800 rounded-xl px-4 font-bold text-sm",
+                                                    isClinicOwner ? "bg-white dark:bg-slate-800" : "bg-slate-100/70 dark:bg-slate-800/40 text-slate-500 cursor-not-allowed select-none"
+                                                )}
                                                 readOnly={!isClinicOwner}
+                                                disabled={!isClinicOwner}
                                             />
                                         </div>
                                     </div>
                                     <div className="space-y-1.5">
-                                        <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Full Address</Label>
+                                        <div className="flex items-center justify-between">
+                                            <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Full Address</Label>
+                                            {!isClinicOwner && <Lock className="w-3 h-3 text-slate-400" />}
+                                        </div>
                                         <Input
                                             value={(isClinicOwner ? profile?.clinic_address : ownerProfile?.clinic_address) || ''}
-                                            onChange={e => setProfile(p => ({ ...p!, clinic_address: e.target.value }))}
+                                            onChange={isClinicOwner ? e => setProfile(p => ({ ...p!, clinic_address: e.target.value })) : undefined}
                                             placeholder="Complete street address with pincode"
-                                            className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
+                                            className={cn(
+                                                "h-11 border-slate-200 dark:border-slate-800 rounded-xl px-4 font-bold text-sm",
+                                                isClinicOwner ? "bg-white dark:bg-slate-800" : "bg-slate-100/70 dark:bg-slate-800/40 text-slate-500 cursor-not-allowed select-none"
+                                            )}
                                             readOnly={!isClinicOwner}
+                                            disabled={!isClinicOwner}
                                         />
                                     </div>
                                 </div>

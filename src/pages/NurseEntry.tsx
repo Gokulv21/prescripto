@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import PageBanner from "@/components/PageBanner";
 import patientEntryBanner from "@/assets/patient_entry_banner.png";
 import { formatAge, calculateDobFromAge, getPatientCurrentAge } from '@/lib/utils';
+import { buildPatientSearchFilter, rankPatientSearchResults } from '@/lib/patientSearch';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -47,6 +48,7 @@ export default function NurseEntry() {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [selectedPatientFull, setSelectedPatientFull] = useState<any>(null); // To show full details in confirmation
   const [ageUnit, setAgeUnit] = useState<'years' | 'months' | 'days'>('years');
@@ -145,32 +147,57 @@ export default function NurseEntry() {
   }, [doctors]);
 
   const searchPatients = async (query: string = searchQuery) => {
-    if (!query.trim() || query.trim().length < 3) {
-        setSearchResults([]);
-        return;
+    const trimmed = query.trim();
+    if (!trimmed || trimmed.length < 2) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
     }
-    
-    // Simple debounce to prevent overwhelming the DB during rapid typing
-    const { data } = await supabase
-      .from('patients')
-      .select('*')
-      .eq('clinic_id', clinic?.id)
-      .or(`phone.ilike.%${query}%,name.ilike.%${query}%,registration_id.ilike.%${query}%`)
-      .limit(10);
-    setSearchResults(data || []);
+
+    const filter = buildPatientSearchFilter(trimmed);
+    if (!filter) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const { data, error } = await supabase
+        .from('patients')
+        .select('*')
+        .eq('clinic_id', clinic?.id)
+        .or(filter)
+        .order('last_opened_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error('[NurseEntry] Search error:', error);
+        setSearchResults([]);
+      } else {
+        const ranked = rankPatientSearchResults(data || [], trimmed);
+        setSearchResults(ranked);
+      }
+    } catch (err) {
+      console.error('[NurseEntry] Search error:', err);
+    } finally {
+      setIsSearching(false);
+    }
   };
 
-  // Add a dedicated effect for debounced search
+  // Dedicated effect for debounced search (250ms for snappy response)
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (searchQuery.trim() && searchQuery.trim().length >= 3) {
+      if (searchQuery.trim() && searchQuery.trim().length >= 2) {
         searchPatients(searchQuery);
       } else {
         setSearchResults([]);
+        setIsSearching(false);
       }
-    }, 800); // 800ms debounce and 3 char minimum to reduce DB load
+    }, 250);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, clinic?.id]);
 
   const selectOldPatient = (p: any) => {
     setSelectedPatientId(p.id);
@@ -494,63 +521,91 @@ export default function NurseEntry() {
                         <CardContent className="pt-6">
                             <div className="flex flex-col md:flex-row gap-4 items-center">
                                 <div className="relative flex-1 w-full">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                                    {isSearching ? (
+                                        <Loader2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-primary animate-spin" />
+                                    ) : (
+                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                                    )}
                                     <Input
                                         className="h-14 pl-12 text-lg border-border focus:border-primary focus:ring-primary/20 transition-all rounded-xl shadow-sm bg-background dark:bg-slate-900"
                                         placeholder="Search by Name, Phone, or Reg ID..."
                                         value={searchQuery}
-                                        onFocus={() => setShowSearch(true)}
+                                        onFocus={() => {
+                                            setShowSearch(true);
+                                            if (searchQuery.trim().length >= 2 && searchResults.length === 0) {
+                                                searchPatients(searchQuery);
+                                            }
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                searchPatients(searchQuery);
+                                            }
+                                        }}
                                         onChange={(e) => {
                                             setSearchQuery(e.target.value);
                                             setShowSearch(true);
                                         }}
                                     />
-                                    {showSearch && searchQuery && (
-                                        <div className="absolute z-50 top-full left-0 right-0 mt-3 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden max-h-[400px] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
-                                            <div className="p-2 space-y-1">
-                                                {searchResults.map(p => (
-                                                    <button
-                                                        key={p.id}
-                                                        onClick={() => selectOldPatient(p)}
-                                                        className="w-full flex items-center justify-between p-4 hover:bg-primary/5 transition-all text-left rounded-xl group/item"
-                                                    >
-                                                        <div className="flex-1">
-                                                            <div className="font-heading font-bold text-foreground flex items-center gap-2">
-                                                                {p.title} {p.name}
-                                                                {p.registration_id && (
-                                                                    <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest font-black">
-                                                                        {p.registration_id}
-                                                                    </span>
+                                    {showSearch && searchQuery.trim().length >= 2 && (
+                                        <div className="absolute z-50 top-full left-0 right-0 mt-3 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden max-h-[420px] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+                                            {isSearching && searchResults.length === 0 ? (
+                                                <div className="p-8 text-center space-y-3">
+                                                    <Loader2 className="w-6 h-6 text-primary animate-spin mx-auto" />
+                                                    <p className="text-sm text-muted-foreground font-medium">Searching patient records...</p>
+                                                </div>
+                                            ) : (
+                                                <div className="p-2 space-y-1">
+                                                    {searchResults.length > 0 && (
+                                                        <div className="px-3 py-1.5 text-[11px] font-semibold text-muted-foreground/80 border-b border-border flex items-center justify-between">
+                                                            <span>Found {searchResults.length} {searchResults.length === 1 ? 'patient' : 'patients'}</span>
+                                                            <span className="text-[10px] text-primary font-bold uppercase tracking-wider">Click patient to select</span>
+                                                        </div>
+                                                    )}
+                                                    {searchResults.map(p => (
+                                                        <button
+                                                            key={p.id}
+                                                            onClick={() => selectOldPatient(p)}
+                                                            className="w-full flex items-center justify-between p-4 hover:bg-primary/5 transition-all text-left rounded-xl group/item"
+                                                        >
+                                                            <div className="flex-1">
+                                                                <div className="font-heading font-bold text-foreground flex items-center gap-2">
+                                                                    {p.title ? `${p.title} ` : ''}{p.name}
+                                                                    {p.registration_id && (
+                                                                        <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest font-black">
+                                                                            {p.registration_id}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="text-sm text-muted-foreground font-medium flex items-center gap-2">
+                                                                    <span>{p.phone || 'No Phone'}</span>
+                                                                    <span>·</span>
+                                                                    <span>{formatAge(p)}</span>
+                                                                    <span>·</span>
+                                                                    <span>{p.sex}</span>
+                                                                </div>
+                                                                {p.address && (
+                                                                    <div className="text-[11px] text-muted-foreground/60 italic mt-0.5 line-clamp-1 flex items-center gap-1">
+                                                                        <MapPin className="w-3 h-3" /> {p.address}
+                                                                    </div>
                                                                 )}
                                                             </div>
-                                                            <div className="text-sm text-muted-foreground font-medium flex items-center gap-2">
-                                                                <span>{p.phone || 'No Phone'}</span>
-                                                                <span>·</span>
-                                                                <span>{formatAge(p)}</span>
-                                                                <span>·</span>
-                                                                <span>{p.sex}</span>
+                                                            <div className="text-right hidden md:flex flex-col items-end">
+                                                                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Reg ID</div>
+                                                                <div className="text-sm font-mono font-bold text-primary/80">{p.registration_id || 'N/A'}</div>
                                                             </div>
-                                                            {p.address && (
-                                                                <div className="text-[11px] text-muted-foreground/60 italic mt-0.5 line-clamp-1 flex items-center gap-1">
-                                                                    <MapPin className="w-3 h-3" /> {p.address}
-                                                                </div>
-                                                            )}
+                                                        </button>
+                                                    ))}
+                                                    {searchResults.length === 0 && !isSearching && (
+                                                        <div className="p-8 text-center space-y-3">
+                                                            <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto">
+                                                                <Search className="w-6 h-6 text-muted-foreground/40" />
+                                                            </div>
+                                                            <p className="text-sm text-muted-foreground font-medium">No patients found for "{searchQuery}"</p>
                                                         </div>
-                                                        <div className="text-right hidden md:flex flex-col items-end">
-                                                            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Reg ID</div>
-                                                            <div className="text-sm font-mono font-bold text-primary/80">{p.registration_id || 'N/A'}</div>
-                                                        </div>
-                                                    </button>
-                                                ))}
-                                                {searchResults.length === 0 && (
-                                                    <div className="p-8 text-center space-y-3">
-                                                        <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto">
-                                                            <Search className="w-6 h-6 text-muted-foreground/40" />
-                                                        </div>
-                                                        <p className="text-sm text-muted-foreground font-medium">No patients found for "{searchQuery}"</p>
-                                                    </div>
-                                                )}
-                                            </div>
+                                                    )}
+                                                </div>
+                                            )}
                                             <div className="bg-muted/50 p-3 border-t border-border flex justify-center">
                                                 <Button 
                                                     variant="ghost" 

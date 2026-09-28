@@ -11,9 +11,11 @@ interface ChartContainerProps {
   className?: string;
   icon?: ReactNode;
   extra?: ReactNode;
+  height?: number | string;
+  footer?: ReactNode;
 }
 
-export const ChartContainer = ({ title, description, children, className, icon, extra }: ChartContainerProps) => (
+export const ChartContainer = ({ title, description, children, className, icon, extra, height = 300, footer }: ChartContainerProps) => (
   <Card className={cn("border-none shadow-sm bg-card overflow-hidden group hover:shadow-md transition-all duration-300 rounded-[2rem]", className)}>
     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-border/50">
       <div className="flex items-center gap-3">
@@ -30,11 +32,12 @@ export const ChartContainer = ({ title, description, children, className, icon, 
       {extra}
     </CardHeader>
     <CardContent className="pt-6">
-      <div className="w-full h-[300px]">
+      <div className="w-full" style={{ height: typeof height === 'number' ? `${height}px` : height }}>
         <ResponsiveContainer width="100%" height="100%">
           {children as any}
         </ResponsiveContainer>
       </div>
+      {footer}
     </CardContent>
   </Card>
 );
@@ -60,7 +63,7 @@ export const CustomTooltip = ({ active, payload, label }: TooltipProps<number, s
               </div>
               <span className="text-sm font-black text-primary">
                 {item.value}
-                {String(item.name).toLowerCase() === 'percentage' ? '%' : ''}
+                {String(item.name).toLowerCase() === 'percentage' ? '%' : String(item.name).toLowerCase().includes('patient') ? ' patients' : ''}
               </span>
             </div>
           ))}
