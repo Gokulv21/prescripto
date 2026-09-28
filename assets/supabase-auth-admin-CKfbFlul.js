@@ -1,1 +1,0 @@
-import{aQ as e}from"./index-D4MdJemh.js";const t=e("https://yyaawwmgzqymyewdmbtj.supabase.co","sb_publishable_kr1nCWS2swThupcIePG9Jg_Ve3_UEfc",{auth:{persistSession:!1,autoRefreshToken:!1,detectSessionInUrl:!1,storage:{getItem:()=>null,setItem:()=>{},removeItem:()=>{}}}});export{t as r};
