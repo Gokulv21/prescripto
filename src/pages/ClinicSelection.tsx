@@ -251,6 +251,33 @@ export default function ClinicSelection() {
 
       if (roleError) throw roleError;
 
+      // 6. Notify Super Admin & New Owner
+      try {
+        const notifs = [
+          {
+            user_id: authData.user.id,
+            clinic_id: newClinic.id,
+            title: "Welcome to Prescripto",
+            message: `Your clinic "${newClinic.name}" has been registered. You can now configure branding, add staff, and start taking patients.`,
+            type: "info",
+            is_read: false
+          }
+        ];
+        if (user?.id) {
+          notifs.push({
+            user_id: user.id,
+            clinic_id: newClinic.id,
+            title: "New Clinic Created",
+            message: `Clinic "${newClinic.name}" was onboarded successfully with owner ${formData.ownerEmail}.`,
+            type: "success",
+            is_read: false
+          });
+        }
+        await supabase.from('notifications').insert(notifs);
+      } catch (notifErr) {
+        console.error("Non-fatal: failed to create clinic onboarding notifications", notifErr);
+      }
+
       toast.success("Clinic created successfully!");
       setIsAddClinicOpen(false);
       setFormData({ clinicName: "", ownerName: "", ownerEmail: "", password: "" });

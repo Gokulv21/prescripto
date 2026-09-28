@@ -324,6 +324,7 @@ const App = () => (
 
                   {/* 2. Root Redirector & Global Pages */}
                   <Route path="/" element={<RootRouter />} />
+                  <Route path="/select-clinic" element={<ProtectedRoute><ClinicSelection /></ProtectedRoute>} />
                   <Route path="/help" element={<ProtectedRoute><AppLayout><Help /></AppLayout></ProtectedRoute>} />
 
                   {/* 3. Multi-Clinic Scoped Routes */}

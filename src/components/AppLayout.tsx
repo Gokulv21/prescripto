@@ -3,7 +3,7 @@ import { useAuth, AppRole } from '@/lib/auth';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
-  Stethoscope, ClipboardPlus, Printer, BarChart3, Users, LogOut, Home, Menu, HelpCircle, Sun, Moon, Monitor, ChevronDown, Info, Tv, User, LayoutGrid
+  Stethoscope, ClipboardPlus, Printer, BarChart3, Users, LogOut, Home, Menu, HelpCircle, Sun, Moon, Monitor, ChevronDown, Info, Tv, User, LayoutGrid, Building2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -34,7 +34,10 @@ const navItems: NavItem[] = [
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const { profile, roles, signOut } = useAuth();
+  const { user, profile, roles, signOut } = useAuth();
+  const isSuperAdminDoctor = Boolean(
+    user?.email?.toLowerCase() === 'doctor@clinic.com' || profile?.email?.toLowerCase() === 'doctor@clinic.com'
+  );
   const { theme, setTheme } = useTheme();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -133,6 +136,38 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </AnimatePresence>
           </div>
         </div>
+
+        {/* Special Super Admin Quick Switcher */}
+        {isSuperAdminDoctor && (
+          <div className="px-3 pt-2.5 pb-1">
+            <button
+              onClick={() => navigate('/')}
+              className={cn(
+                "w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 border border-primary/30 bg-primary/10 hover:bg-primary hover:text-white text-primary shadow-xs group"
+              )}
+              title="All Clinics Dashboard & Add Clinic (Super Admin)"
+            >
+              <div className="shrink-0 w-5 flex justify-center">
+                <Building2 className="w-4 h-4 text-primary group-hover:text-white transition-colors" />
+              </div>
+              <AnimatePresence>
+                {isSidebarExpanded && (
+                  <motion.div
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }}
+                    className="flex items-center justify-between flex-1 truncate"
+                  >
+                    <span className="font-bold tracking-tight">All Clinics</span>
+                    <span className="text-[9px] font-black uppercase bg-primary/20 group-hover:bg-white/20 px-1.5 py-0.5 rounded-full">
+                      Switch
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </button>
+          </div>
+        )}
 
         {/* Sidebar Nav - Scrollable section */}
         <nav className="flex-1 px-3 space-y-1 overflow-y-auto no-scrollbar py-3">
@@ -246,6 +281,21 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Special Super Admin All Clinics Button (Header) */}
+            {isSuperAdminDoctor && (
+              <button
+                onClick={() => navigate('/')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 hover:from-primary hover:to-purple-600 text-primary hover:text-white border border-primary/25 hover:border-transparent text-xs font-bold shadow-xs hover:shadow-md transition-all active:scale-95 group shrink-0"
+                title="Super Admin: Return to All Clinics Dashboard & Add Clinic"
+              >
+                <Building2 className="w-3.5 h-3.5 text-primary group-hover:text-white transition-colors" />
+                <span className="hidden sm:inline font-bold">All Clinics</span>
+                <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-primary/15 group-hover:bg-white/25 text-primary group-hover:text-white uppercase tracking-wider">
+                  Admin
+                </span>
+              </button>
+            )}
+
             <NotificationCenter />
             
             {/* Google-style Profile Avatar / Settings Button */}
@@ -427,6 +477,27 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <ChevronDown className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
               </Button>
             </div>
+
+            {/* Super Admin Special Button in Mobile Drawer */}
+            {isSuperAdminDoctor && (
+              <div className="px-3 pt-2">
+                <button
+                  onClick={() => {
+                    navigate('/');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full flex items-center justify-between p-2.5 rounded-xl bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-primary/25 text-primary font-bold text-xs shadow-xs active:scale-95 transition-all"
+                >
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-primary" />
+                    <span>All Clinics / Add Clinic</span>
+                  </div>
+                  <span className="text-[9px] font-black uppercase bg-primary/15 px-2 py-0.5 rounded-full">
+                    Super Admin
+                  </span>
+                </button>
+              </div>
+            )}
 
             {/* Compact Grid - 4 Columns, Compact Icons - 100% Fits with ZERO Scrolling */}
             <div className="px-3 py-2.5 grid grid-cols-4 gap-1.5 overflow-hidden">

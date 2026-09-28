@@ -65,16 +65,47 @@ export default function NotificationCenter() {
   };
 
 
-  const isSuper = roles.includes('superadmin');
-  const isOwner = roles.includes('owner');
-  const isDoctor = roles.includes('doctor');
+  const isSuper = Boolean(roles.includes('superadmin') || profile?.is_superadmin || profile?.role === 'superadmin');
+  const isOwner = Boolean(roles.includes('owner') || profile?.role === 'owner');
+  const isDoctor = Boolean(roles.includes('doctor') || profile?.role === 'doctor');
   const clinicId = profile?.clinic_id;
+
+  const getDismissedKey = (uid?: string) => uid ? `prescripto_dismissed_notifs_${uid}` : 'prescripto_dismissed_notifs';
+  const getReadKey = (uid?: string) => uid ? `prescripto_read_notifs_${uid}` : 'prescripto_read_notifs';
+
+  const [readIds, setReadIds] = useState<string[]>(() => {
+    try {
+      const key = user?.id ? `prescripto_read_notifs_${user.id}` : 'prescripto_read_notifs';
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
+    try {
+      const key = user?.id ? `prescripto_dismissed_notifs_${user.id}` : 'prescripto_dismissed_notifs';
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  // Re-sync local storage keys whenever user switches/logs in
+  useEffect(() => {
+    if (!user?.id) return;
+    try {
+      setReadIds(JSON.parse(localStorage.getItem(getReadKey(user.id)) || '[]'));
+      setDismissedIds(JSON.parse(localStorage.getItem(getDismissedKey(user.id)) || '[]'));
+    } catch {
+      setReadIds([]);
+      setDismissedIds([]);
+    }
+  }, [user?.id]);
 
   const fetchRequests = async () => {
     if (!isSuper && !isOwner && !isDoctor) return;
     
-    // Fetch all pending requests and filter client-side for maximum reliability and simplicity,
-    // which aligns with Row Level Security (RLS) policies.
     const { data, error } = await supabase
       .from('password_reset_requests')
       .select('*')
@@ -87,14 +118,10 @@ export default function NotificationCenter() {
     }
 
     const filtered = (data || []).filter(req => {
-      if (isSuper) {
-        // Super Admin sees clinic owner requests (and doctor requests as fallback/legacy)
-        if (req.requester_role === 'owner' || req.requester_role === 'doctor') {
-          return true;
-        }
-      }
+      // Super Admin sees all reset requests across the platform
+      if (isSuper) return true;
+      // Clinic owners/doctors see staff and doctor requests for their clinic
       if (isOwner || isDoctor) {
-        // Clinic owners/doctors see staff and doctor requests for their clinic
         if (req.clinic_id === clinicId && (req.requester_role === 'staff' || req.requester_role === 'doctor')) {
           return true;
         }
@@ -105,40 +132,45 @@ export default function NotificationCenter() {
     setRequests(filtered);
   };
 
-  const [readIds, setReadIds] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('prescripto_read_notifs') || '[]');
-    } catch {
-      return [];
-    }
-  });
-  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('prescripto_dismissed_notifs') || '[]');
-    } catch {
-      return [];
-    }
-  });
-
   const fetchSystemNotifications = async () => {
     if (!user) return;
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(30);
+
+    // Purge stale "CALLING PATIENT" pager alerts older than 24 hours
+    try {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      await supabase
+        .from('notifications')
+        .delete()
+        .eq('title', 'CALLING PATIENT')
+        .lt('created_at', oneDayAgo);
+    } catch (e) {
+      // non-fatal
+    }
+
+    const { data, error } = isSuper
+      ? await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(40)
+      : await supabase.from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(30);
     
     if (!error && data) {
       let currentDismissed: string[] = [];
       let currentRead: string[] = [];
       try {
-        currentDismissed = JSON.parse(localStorage.getItem('prescripto_dismissed_notifs') || '[]');
-        currentRead = JSON.parse(localStorage.getItem('prescripto_read_notifs') || '[]');
+        currentDismissed = JSON.parse(localStorage.getItem(getDismissedKey(user.id)) || '[]');
+        currentRead = JSON.parse(localStorage.getItem(getReadKey(user.id)) || '[]');
       } catch {}
 
       const filtered = data
-        .filter(n => !currentDismissed.includes(n.id))
+        .filter(n => {
+          if (currentDismissed.includes(n.id)) return false;
+          // Filter out stale patient calls older than 24 hours
+          if (n.title === 'CALLING PATIENT') {
+            const ageHours = (Date.now() - new Date(n.created_at).getTime()) / (1000 * 60 * 60);
+            if (ageHours > 24) return false;
+            // Super admin does not need specific clinic nurse patient call pagers
+            if (isSuper && n.user_id !== user.id) return false;
+          }
+          return true;
+        })
         .map(n => ({
           ...n,
           is_read: n.is_read || currentRead.includes(n.id)
@@ -153,7 +185,7 @@ export default function NotificationCenter() {
     
     // Subscribe to password resets
     const channelResets = supabase
-      .channel('password_resets')
+      .channel(`password_resets_${user?.id || 'guest'}`)
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
@@ -161,14 +193,15 @@ export default function NotificationCenter() {
       }, () => fetchRequests())
       .subscribe();
 
-    // Subscribe to system notifications
+    // Subscribe to system notifications (superadmin listens to all, regular users listen to their own user_id)
+    const filter = isSuper ? undefined : `user_id=eq.${user?.id}`;
     const channelNotifs = supabase
-      .channel('system_notifications')
+      .channel(`system_notifications_${user?.id || 'guest'}`)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'notifications',
-        filter: `user_id=eq.${user?.id}`
+        ...(filter ? { filter } : {})
       }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           playChime();
@@ -182,7 +215,6 @@ export default function NotificationCenter() {
       supabase.removeChannel(channelNotifs);
     };
   }, [clinicId, isSuper, isOwner, isDoctor, user?.id]);
-
 
   const handleApprove = (req: any) => {
     setResetModal({ open: true, request: req });
@@ -215,7 +247,6 @@ export default function NotificationCenter() {
 
     setSaving(true);
     try {
-      // Call Edge Function
       const { data, error } = await supabase.functions.invoke('admin-reset-password', {
         body: { 
           userId: resetModal.request.user_id, 
@@ -242,7 +273,7 @@ export default function NotificationCenter() {
     const updated = Array.from(new Set([...readIds, id]));
     setReadIds(updated);
     try {
-      localStorage.setItem('prescripto_read_notifs', JSON.stringify(updated));
+      localStorage.setItem(getReadKey(user?.id), JSON.stringify(updated));
     } catch {}
     setSystemNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     try {
@@ -256,11 +287,11 @@ export default function NotificationCenter() {
     const updated = Array.from(new Set([...readIds, ...allIds]));
     setReadIds(updated);
     try {
-      localStorage.setItem('prescripto_read_notifs', JSON.stringify(updated));
+      localStorage.setItem(getReadKey(user?.id), JSON.stringify(updated));
     } catch {}
     setSystemNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     try {
-      await supabase.from('notifications').update({ is_read: true }).eq('user_id', user?.id);
+      await supabase.from('notifications').update({ is_read: true }).in('id', allIds);
     } catch {}
     toast.success('All notifications marked as read');
   };
@@ -270,7 +301,7 @@ export default function NotificationCenter() {
     const updated = Array.from(new Set([...dismissedIds, id]));
     setDismissedIds(updated);
     try {
-      localStorage.setItem('prescripto_dismissed_notifs', JSON.stringify(updated));
+      localStorage.setItem(getDismissedKey(user?.id), JSON.stringify(updated));
     } catch {}
     setSystemNotifications(prev => prev.filter(n => n.id !== id));
     try {
@@ -284,11 +315,11 @@ export default function NotificationCenter() {
     const updated = Array.from(new Set([...dismissedIds, ...allIds]));
     setDismissedIds(updated);
     try {
-      localStorage.setItem('prescripto_dismissed_notifs', JSON.stringify(updated));
+      localStorage.setItem(getDismissedKey(user?.id), JSON.stringify(updated));
     } catch {}
     setSystemNotifications([]);
     try {
-      await supabase.from('notifications').delete().eq('user_id', user?.id);
+      await supabase.from('notifications').delete().in('id', allIds);
     } catch {}
     toast.success('All notifications cleared');
   };
