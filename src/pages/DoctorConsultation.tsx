@@ -104,39 +104,7 @@ export default function DoctorConsultation() {
   const [printOnStationery, setPrintOnStationery] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
 
-  // Visit Entry Time Edit State (for night calls & past entries)
-  const [showEntryTimeEdit, setShowEntryTimeEdit] = useState(false);
-  const [editEntryTimeVal, setEditEntryTimeVal] = useState('');
-  const [updatingEntryTime, setUpdatingEntryTime] = useState(false);
 
-  const handleSaveEntryTime = async () => {
-    if (!selectedVisit || !editEntryTimeVal) return;
-    setUpdatingEntryTime(true);
-    try {
-      const newIso = new Date(editEntryTimeVal).toISOString();
-      const { error: visitErr } = await supabase
-        .from('visits')
-        .update({ created_at: newIso })
-        .eq('id', selectedVisit.id);
-      if (visitErr) throw visitErr;
-
-      // Keep prescription created_at in sync if a prescription was already saved
-      await supabase
-        .from('prescriptions')
-        .update({ created_at: newIso })
-        .eq('visit_id', selectedVisit.id);
-
-      // Update state so all components immediately reflect the corrected entry time
-      setSelectedVisit({ ...selectedVisit, created_at: newIso });
-      queryClient.invalidateQueries({ queryKey: ['visitQueue'] });
-      toast.success('Patient entry time updated successfully');
-      setShowEntryTimeEdit(false);
-    } catch (err: any) {
-      toast.error('Failed to update entry time: ' + (err.message || 'Unknown error'));
-    } finally {
-      setUpdatingEntryTime(false);
-    }
-  };
 
   // Initialize Vitals Edit values when modal opens
   useEffect(() => {
@@ -425,22 +393,9 @@ Wishing you a quick recovery!
                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Phone</p>
                     <p className="text-base font-bold text-foreground truncate">{patient?.phone || '—'}</p>
                   </div>
-                  <div className="bg-muted/30 p-3 rounded-xl border border-border min-w-0 flex flex-col justify-between">
-                    <div className="flex items-center justify-between gap-1">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Entry Time</p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditEntryTimeVal(selectedVisit.created_at ? format(new Date(selectedVisit.created_at), "yyyy-MM-dd'T'HH:mm") : format(new Date(), "yyyy-MM-dd'T'HH:mm"));
-                          setShowEntryTimeEdit(true);
-                        }}
-                        className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1 active:scale-95 transition-all shrink-0"
-                        title="Adjust Entry Time (e.g. for Night Phone Calls)"
-                      >
-                        <Clock className="w-3 h-3" /> Edit
-                      </button>
-                    </div>
-                    <p className="text-sm font-bold text-foreground truncate mt-1" title={selectedVisit.created_at ? new Date(selectedVisit.created_at).toLocaleString() : ''}>
+                  <div className="bg-muted/30 p-3 rounded-xl border border-border min-w-0">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Entry Time</p>
+                    <p className="text-base font-bold text-foreground truncate" title={selectedVisit.created_at ? new Date(selectedVisit.created_at).toLocaleString() : ''}>
                       {selectedVisit.created_at
                         ? new Date(selectedVisit.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + ' (' + new Date(selectedVisit.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ')'
                         : '—'}
@@ -803,102 +758,7 @@ Wishing you a quick recovery!
         </DialogContent>
       </Dialog>
 
-      {/* 5. Visit Entry Time Edit Dialogue (Night Calls & Custom Arrival) */}
-      <Dialog open={showEntryTimeEdit} onOpenChange={setShowEntryTimeEdit}>
-        <DialogContent className="max-w-[420px] w-[92vw] p-5 sm:p-6 rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-bold">
-              <Clock className="w-5 h-5 text-blue-600" />
-              <span>Adjust Patient Entry Time</span>
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground pt-1">
-              Sets when the patient actually arrived or called (e.g. for phone consultations after midnight). This synchronizes prescriptions, printouts, and Analytics peak hour graphs.
-            </DialogDescription>
-          </DialogHeader>
 
-          <div className="space-y-4 pt-3">
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Date & Time</Label>
-              <Input
-                type="datetime-local"
-                value={editEntryTimeVal}
-                onChange={(e) => setEditEntryTimeVal(e.target.value)}
-                className="h-11 font-bold text-sm"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Quick Presets</p>
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-xs font-semibold justify-start h-8 px-2.5 truncate"
-                  onClick={() => setEditEntryTimeVal(format(new Date(), "yyyy-MM-dd'T'HH:mm"))}
-                >
-                  Current Time (Now)
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-xs font-semibold justify-start h-8 px-2.5 truncate"
-                  onClick={() => {
-                    const d = new Date();
-                    d.setHours(0, 30, 0, 0);
-                    setEditEntryTimeVal(format(d, "yyyy-MM-dd'T'HH:mm"));
-                  }}
-                >
-                  Today 12:30 AM (Night)
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-xs font-semibold justify-start h-8 px-2.5 truncate"
-                  onClick={() => {
-                    const d = new Date();
-                    d.setHours(1, 30, 0, 0);
-                    setEditEntryTimeVal(format(d, "yyyy-MM-dd'T'HH:mm"));
-                  }}
-                >
-                  Today 01:30 AM (Night)
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-xs font-semibold justify-start h-8 px-2.5 truncate"
-                  onClick={() => {
-                    const d = new Date();
-                    d.setHours(2, 30, 0, 0);
-                    setEditEntryTimeVal(format(d, "yyyy-MM-dd'T'HH:mm"));
-                  }}
-                >
-                  Today 02:30 AM (Night)
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter className="flex flex-row justify-end gap-2 mt-4 pt-2 border-t">
-            <Button variant="outline" size="sm" onClick={() => setShowEntryTimeEdit(false)} disabled={updatingEntryTime}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={handleSaveEntryTime} disabled={updatingEntryTime} className="bg-blue-600 hover:bg-blue-700 text-white font-bold">
-              {updatingEntryTime ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
-                  Saving...
-                </>
-              ) : (
-                'Save Entry Time'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* What's New Floating Trigger Button */}
       <div className="fixed bottom-4 left-4 z-[40] hidden md:block">
