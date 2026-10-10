@@ -143,11 +143,11 @@ export default function About() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate(slug ? `/${slug}/consultation` : '/')}
+            onClick={() => navigate(slug ? `/${slug}/dashboard` : '/')}
             className="gap-2 text-muted-foreground hover:text-foreground font-bold rounded-xl"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back
+            Back to Dashboard
           </Button>
         </motion.div>
 

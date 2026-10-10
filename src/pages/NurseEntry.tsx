@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Search, UserPlus, History, CheckCircle, ArrowRight, User, Phone, MapPin, X, AlertCircle, ChevronDown, Loader2 } from 'lucide-react';
+import { Search, UserPlus, History, CheckCircle, ArrowRight, User, Phone, MapPin, X, AlertCircle, ChevronDown, Loader2, Clock } from 'lucide-react';
 import { sanitizeText, validatePhone, validateNumericRange } from '@/lib/security-sanitize';
 import type { Clinic } from '@/types/clinic';
 
@@ -54,6 +54,7 @@ export default function NurseEntry() {
   const [ageUnit, setAgeUnit] = useState<'years' | 'months' | 'days'>('years');
   const [tokenNumber, setTokenNumber] = useState<number | null>(null);
   const [assignedDoctorId, setAssignedDoctorId] = useState<string>("general");
+  const [customEntryTime, setCustomEntryTime] = useState<string>('');
   const { clinic } = useOutletContext<{ clinic: Clinic }>();
   const { profile, user, roles, hasRole } = useAuth();
   const [showSearch, setShowSearch] = useState(false);
@@ -367,7 +368,7 @@ export default function NurseEntry() {
 
       // Now insert the visit
       console.log('[NurseEntry] Creating visit for patient:', patientId, 'with token:', token);
-      const { error: visitError } = await supabase.from('visits').insert({
+      const visitPayload: any = {
         patient_id: patientId!,
         token_number: token,
         weight: vitals.weight ? parseFloat(vitals.weight) : null,
@@ -379,7 +380,11 @@ export default function NurseEntry() {
         assigned_doctor_id: normalizedAssignedDoctorId,
         clinic_id: clinic?.id,
         created_by: user?.id
-      });
+      };
+      if (customEntryTime) {
+        visitPayload.created_at = new Date(customEntryTime).toISOString();
+      }
+      const { error: visitError } = await supabase.from('visits').insert(visitPayload);
       console.log('[NurseEntry] Visit insert result:', visitError ? 'Error: ' + visitError.message : 'Success');
 
       if (visitError) throw visitError;
@@ -407,6 +412,7 @@ export default function NurseEntry() {
     setSearchResults([]);
     setAgeUnit('years');
     setAssignedDoctorId('general');
+    setCustomEntryTime('');
     setTab('new'); // Keep for internal logic if needed
   };
   
@@ -828,6 +834,38 @@ export default function NurseEntry() {
                  </Select>
                  <p className="text-[10px] text-muted-foreground mt-2 font-medium">If left unassigned, this visit will appear in the general waiting list for all active doctors.</p>
               </div>
+
+              {/* Patient Entry / Arrival Time (Defaults to Current, allows past/night time) */}
+              <div className="bg-primary/5 p-4 rounded-xl border border-primary/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                 <div>
+                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                     <Clock className="w-3.5 h-3.5 text-primary" /> Patient Entry Time
+                   </Label>
+                   <p className="text-[11px] text-muted-foreground mt-0.5 font-medium">
+                     {customEntryTime ? `Custom: ${new Date(customEntryTime).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'Current Time (Now) — Automatic'}
+                   </p>
+                 </div>
+                 <div className="flex items-center gap-2">
+                   <Input
+                     type="datetime-local"
+                     value={customEntryTime}
+                     onChange={(e) => setCustomEntryTime(e.target.value)}
+                     className="h-10 text-xs font-bold w-full sm:w-auto rounded-xl"
+                   />
+                   {customEntryTime && (
+                     <Button
+                       type="button"
+                       variant="ghost"
+                       size="sm"
+                       onClick={() => setCustomEntryTime('')}
+                       className="h-10 px-3 text-xs text-muted-foreground hover:text-foreground rounded-xl"
+                     >
+                       Reset
+                     </Button>
+                   )}
+                 </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 <div className="space-y-3">
                   <Label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">Weight <span className="text-muted-foreground/40">(kg)</span></Label>

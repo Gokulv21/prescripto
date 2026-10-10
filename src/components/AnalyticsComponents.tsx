@@ -18,19 +18,19 @@ interface ChartContainerProps {
 
 export const ChartContainer = ({ title, description, children, className, icon, extra, height = 300, footer, topSlot }: ChartContainerProps) => (
   <Card className={cn("border-none shadow-sm bg-card overflow-hidden group hover:shadow-md transition-all duration-300 rounded-[2rem]", className)}>
-    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-border/50">
-      <div className="flex items-center gap-3">
+    <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between space-y-0 pb-4 border-b border-border/50 gap-3">
+      <div className="flex items-center gap-3 min-w-0">
         {icon && (
-          <div className="p-2 bg-primary/10 rounded-xl text-primary group-hover:scale-110 transition-transform duration-300">
+          <div className="p-2 bg-primary/10 rounded-xl text-primary group-hover:scale-110 transition-transform duration-300 shrink-0">
             {icon}
           </div>
         )}
-        <div className="space-y-0.5">
-          <CardTitle className="text-base font-bold tracking-tight text-foreground">{title}</CardTitle>
-          {description && <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">{description}</p>}
+        <div className="space-y-0.5 min-w-0">
+          <CardTitle className="text-base font-bold tracking-tight text-foreground truncate">{title}</CardTitle>
+          {description && <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60 truncate">{description}</p>}
         </div>
       </div>
-      {extra}
+      {extra && <div className="min-w-0">{extra}</div>}
     </CardHeader>
     <CardContent className="pt-6">
       {topSlot}
@@ -94,9 +94,9 @@ export const MetricCard = ({ label, value, trend, icon, color, delay = 0 }: { la
             </div>
           )}
         </div>
-        <div>
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest ml-0.5">{label}</p>
-          <p className="text-4xl font-extrabold text-foreground tracking-tighter mt-1 tabular-nums group-hover:text-primary transition-colors">{value}</p>
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest ml-0.5 truncate">{label}</p>
+          <p className="text-3xl sm:text-4xl font-extrabold text-foreground tracking-tighter mt-1 tabular-nums group-hover:text-primary transition-colors truncate">{value}</p>
         </div>
       </CardContent>
     </Card>

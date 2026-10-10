@@ -166,7 +166,10 @@ const PrescriptionTemplate = React.memo(({
     }, [authUser, doctorId, prescriptionCreatedAt, visit?.clinic_id]);
 
 
-    const displayDate = prescriptionCreatedAt ? new Date(prescriptionCreatedAt) : (visit?.created_at ? new Date(visit.created_at) : new Date());
+    // Always prioritize the patient's entry registration time (visit.created_at) over the save time
+    const displayDate = visit?.created_at
+        ? new Date(visit.created_at)
+        : (prescriptionCreatedAt ? new Date(prescriptionCreatedAt) : new Date());
     const today = displayDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     const time = displayDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 

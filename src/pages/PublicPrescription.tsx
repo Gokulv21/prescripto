@@ -97,7 +97,7 @@ const PublicPrescription = () => {
                 handwrittenImage={prescription?.advice_image}
                 isWritingMode={prescription?.is_writing_mode}
                 doctorId={prescription?.doctor_id}
-                prescriptionCreatedAt={prescription?.created_at}
+                prescriptionCreatedAt={visit?.created_at || prescription?.created_at}
                 isPrint={false}
                 hideShare={true}
             />

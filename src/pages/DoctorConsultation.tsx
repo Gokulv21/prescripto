@@ -13,8 +13,9 @@ import {
   Plus, History, Stethoscope, User, Users, Trash2, Printer, 
   Phone, Pencil, ArrowLeft, Activity, Scale, Wind, 
   Thermometer, Droplet, MessageCircle, X, HeartPulse, Loader2, Sparkles, Info, GripVertical,
-  Move, LayoutGrid, Zap, Volume2, ShieldCheck
+  Move, LayoutGrid, Zap, Volume2, ShieldCheck, Clock
 } from 'lucide-react';
+import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import DigitalPrescription from '@/components/DigitalPrescription';
 import PrescriptionTemplate from '@/components/PrescriptionTemplate';
@@ -102,6 +103,40 @@ export default function DoctorConsultation() {
   const [currentHistoryRx, setCurrentHistoryRx] = useState<any>(null);
   const [printOnStationery, setPrintOnStationery] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
+
+  // Visit Entry Time Edit State (for night calls & past entries)
+  const [showEntryTimeEdit, setShowEntryTimeEdit] = useState(false);
+  const [editEntryTimeVal, setEditEntryTimeVal] = useState('');
+  const [updatingEntryTime, setUpdatingEntryTime] = useState(false);
+
+  const handleSaveEntryTime = async () => {
+    if (!selectedVisit || !editEntryTimeVal) return;
+    setUpdatingEntryTime(true);
+    try {
+      const newIso = new Date(editEntryTimeVal).toISOString();
+      const { error: visitErr } = await supabase
+        .from('visits')
+        .update({ created_at: newIso })
+        .eq('id', selectedVisit.id);
+      if (visitErr) throw visitErr;
+
+      // Keep prescription created_at in sync if a prescription was already saved
+      await supabase
+        .from('prescriptions')
+        .update({ created_at: newIso })
+        .eq('visit_id', selectedVisit.id);
+
+      // Update state so all components immediately reflect the corrected entry time
+      setSelectedVisit({ ...selectedVisit, created_at: newIso });
+      queryClient.invalidateQueries({ queryKey: ['visitQueue'] });
+      toast.success('Patient entry time updated successfully');
+      setShowEntryTimeEdit(false);
+    } catch (err: any) {
+      toast.error('Failed to update entry time: ' + (err.message || 'Unknown error'));
+    } finally {
+      setUpdatingEntryTime(false);
+    }
+  };
 
   // Initialize Vitals Edit values when modal opens
   useEffect(() => {
@@ -344,32 +379,32 @@ Wishing you a quick recovery!
             
             {/* Patient Header Card */}
             <Card className="border-none shadow-sm bg-card rounded-2xl">
-              <CardHeader className="pb-3 px-6">
-                <CardTitle className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
+              <CardHeader className="pb-3 px-4 sm:px-6">
+                <CardTitle className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 flex-wrap sm:flex-nowrap">
                     <Button 
                       variant="ghost" 
                       size="icon" 
                       onClick={() => setSelectedVisit(null)} 
-                      className="h-10 w-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-90"
+                      className="h-9 w-9 sm:h-10 sm:w-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-90 shrink-0"
                       title="Back to Queue"
                     >
-                      <ArrowLeft className="w-6 h-6 text-slate-600 dark:text-slate-400" />
+                      <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6 text-slate-600 dark:text-slate-400" />
                     </Button>
-                    <div className="p-2 bg-blue-50 dark:bg-blue-500/10 rounded-lg">
+                    <div className="p-2 bg-blue-50 dark:bg-blue-500/10 rounded-lg shrink-0">
                       <User className="w-5 h-5 text-blue-600" />
                     </div>
-                    <span className="text-xl font-extrabold tracking-tight text-foreground">
+                    <span className="text-lg sm:text-xl font-extrabold tracking-tight text-foreground truncate max-w-full">
                       {(patient?.title ? patient.title + ' ' : '') + patient?.name}
                     </span>
                     {isDraftRestored && (
-                      <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800/50 flex items-center gap-1.5 animate-pulse h-6">
+                      <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800/50 flex items-center gap-1.5 animate-pulse h-6 shrink-0">
                         <History className="w-3 h-3" />
                         <span className="text-[10px] font-bold uppercase tracking-wider">Draft Restored</span>
                       </Badge>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap justify-between sm:justify-end">
                     <Button variant="ghost" size="sm" onClick={markAsNoShow} disabled={saving} className="h-8 px-2 text-red-500 hover:text-red-700 hover:bg-red-50 gap-1 rounded-lg">
                       <Trash2 className="w-3.5 h-3.5" />
                       <span className="text-[11px] font-bold">No Show / Remove</span>
@@ -380,15 +415,36 @@ Wishing you a quick recovery!
                   </div>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="px-6 pb-6">
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                  <div className="bg-muted/30 p-3 rounded-xl border border-border">
+              <CardContent className="px-4 sm:px-6 pb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 text-sm">
+                  <div className="bg-muted/30 p-3 rounded-xl border border-border min-w-0">
                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Age / Sex</p>
-                    <p className="text-base font-bold text-foreground">{formatAge(patient)}/{patient?.sex?.charAt(0) ?? '—'}</p>
+                    <p className="text-base font-bold text-foreground truncate">{formatAge(patient)}/{patient?.sex?.charAt(0) ?? '—'}</p>
                   </div>
-                  <div className="bg-muted/30 p-3 rounded-xl border border-border">
+                  <div className="bg-muted/30 p-3 rounded-xl border border-border min-w-0">
                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Phone</p>
-                    <p className="text-base font-bold text-foreground">{patient?.phone}</p>
+                    <p className="text-base font-bold text-foreground truncate">{patient?.phone || '—'}</p>
+                  </div>
+                  <div className="bg-muted/30 p-3 rounded-xl border border-border min-w-0 flex flex-col justify-between">
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Entry Time</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditEntryTimeVal(selectedVisit.created_at ? format(new Date(selectedVisit.created_at), "yyyy-MM-dd'T'HH:mm") : format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+                          setShowEntryTimeEdit(true);
+                        }}
+                        className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1 active:scale-95 transition-all shrink-0"
+                        title="Adjust Entry Time (e.g. for Night Phone Calls)"
+                      >
+                        <Clock className="w-3 h-3" /> Edit
+                      </button>
+                    </div>
+                    <p className="text-sm font-bold text-foreground truncate mt-1" title={selectedVisit.created_at ? new Date(selectedVisit.created_at).toLocaleString() : ''}>
+                      {selectedVisit.created_at
+                        ? new Date(selectedVisit.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + ' (' + new Date(selectedVisit.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ')'
+                        : '—'}
+                    </p>
                   </div>
                 </div>
 
@@ -407,7 +463,7 @@ Wishing you a quick recovery!
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
                     {[
                       { label: 'Weight', value: selectedVisit.weight, unit: 'kg', icon: Scale, color: 'text-orange-500', bg: 'bg-orange-50 dark:bg-orange-500/10', dbKey: 'weight' },
                       { label: 'BP', value: selectedVisit.blood_pressure, unit: 'mmHg', icon: HeartPulse, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-500/10', dbKey: 'blood_pressure' },
@@ -416,12 +472,14 @@ Wishing you a quick recovery!
                       { label: 'Temp', value: selectedVisit.temperature, unit: '°F', icon: Thermometer, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-500/10', dbKey: 'temperature' },
                       { label: 'CBG', value: selectedVisit.cbg, unit: 'mg/dL', icon: Droplet, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-500/10', dbKey: 'cbg' },
                     ].map(v => (
-                      <div key={v.label} className="text-center p-3 rounded-2xl bg-card border border-border shadow-sm flex flex-col items-center gap-1.5 hover:border-blue-500/30 transition-all">
-                        <div className={cn("p-2 rounded-xl", v.bg)}>
-                          <v.icon className={cn("w-4 h-4", v.color)} />
+                      <div key={v.label} className="text-center p-2.5 sm:p-3 rounded-2xl bg-card border border-border shadow-sm flex flex-col items-center gap-1 sm:gap-1.5 hover:border-blue-500/30 transition-all min-w-0 overflow-hidden">
+                        <div className={cn("p-1.5 sm:p-2 rounded-xl", v.bg)}>
+                          <v.icon className={cn("w-3.5 h-3.5 sm:w-4 sm:h-4", v.color)} />
                         </div>
-                        <p className="text-[10px] font-extrabold text-muted-foreground uppercase">{v.label}</p>
-                        <p className="font-extrabold text-sm text-foreground leading-none">{v.value ?? '—'}<span className="text-[10px] font-medium ml-0.5 opacity-60">{v.value ? ` ${v.unit}` : ''}</span></p>
+                        <p className="text-[10px] font-extrabold text-muted-foreground uppercase truncate w-full">{v.label}</p>
+                        <p className="font-extrabold text-xs sm:text-sm text-foreground leading-tight text-center break-words w-full">
+                          {v.value ?? '—'}<span className="text-[10px] font-medium ml-0.5 opacity-60">{v.value ? ` ${v.unit}` : ''}</span>
+                        </p>
                         {renderSparkline(v.dbKey, v.color)}
                       </div>
                     ))}
@@ -515,23 +573,23 @@ Wishing you a quick recovery!
       {/* 2. Prescription Preview Dialogue */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
         <DialogContent className="max-w-[900px] w-[95vw] p-0 overflow-hidden bg-background">
-          <DialogHeader className="bg-muted/50 p-4 pr-12 border-b relative flex flex-row items-center justify-between">
-            <div className="flex items-center gap-2 z-10">
-              <Button variant="outline" size="sm" onClick={() => printPrescription('#consultation-print-preview')} className="gap-2">
+          <DialogHeader className="bg-muted/50 p-3 sm:p-4 pr-12 border-b relative flex flex-row items-center justify-between">
+            <div className="flex items-center gap-2 z-10 flex-wrap">
+              <Button variant="outline" size="sm" onClick={() => printPrescription('#consultation-print-preview')} className="gap-2 h-9 text-xs font-bold">
                 <Printer className="w-4 h-4" /> Print PDF
               </Button>
-              <Button variant="outline" size="sm" onClick={() => shareToWhatsApp(selectedVisit, patient)} className="gap-2 border-green-500/30 text-green-600 hover:bg-green-50">
+              <Button variant="outline" size="sm" onClick={() => shareToWhatsApp(selectedVisit, patient)} className="gap-2 border-green-500/30 text-green-600 hover:bg-green-50 h-9 text-xs font-bold">
                 <MessageCircle className="w-4 h-4" /> WhatsApp
               </Button>
               
-              <label className="text-xs font-bold text-slate-500 cursor-pointer select-none flex items-center gap-1.5 bg-background border border-border px-2.5 py-1.5 rounded-lg shadow-sm">
+              <label className="text-xs font-bold text-slate-500 cursor-pointer select-none flex items-center gap-1.5 bg-background border border-border px-2.5 py-1.5 rounded-lg shadow-sm h-9">
                 <input
                   type="checkbox"
                   checked={printOnStationery}
                   onChange={(e) => setPrintOnStationery(e.target.checked)}
                   className="h-3.5 w-3.5 text-blue-600 rounded cursor-pointer animate-none"
                 />
-                Print on letterhead
+                <span className="truncate">Print on letterhead</span>
               </label>
             </div>
             <DialogTitle className="hidden sm:block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-sm font-black uppercase tracking-widest text-slate-400">
@@ -550,7 +608,7 @@ Wishing you a quick recovery!
                isWritingMode={lastInputWay === 'writing'}
                isPrint={true}
                doctorId={user?.id}
-               prescriptionCreatedAt={new Date().toISOString()}
+               prescriptionCreatedAt={selectedVisit?.created_at || new Date().toISOString()}
                doctorName={myProfile?.full_name}
                doctorQualifications={myProfile?.qualifications}
                doctorRegId={myProfile?.registration_id}
@@ -589,7 +647,7 @@ Wishing you a quick recovery!
                   isWritingMode={currentHistoryRx.is_writing_mode}
                   isPrint={true}
                   doctorId={currentHistoryRx.doctor_id}
-                  prescriptionCreatedAt={currentHistoryRx.created_at}
+                  prescriptionCreatedAt={viewingHistoryRx?.created_at || currentHistoryRx.created_at}
                   doctorName={myProfile?.full_name}
                   doctorQualifications={myProfile?.qualifications}
                   doctorRegId={myProfile?.registration_id}
@@ -742,6 +800,103 @@ Wishing you a quick recovery!
               }
             }}>Save Changes</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 5. Visit Entry Time Edit Dialogue (Night Calls & Custom Arrival) */}
+      <Dialog open={showEntryTimeEdit} onOpenChange={setShowEntryTimeEdit}>
+        <DialogContent className="max-w-[420px] w-[92vw] p-5 sm:p-6 rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <Clock className="w-5 h-5 text-blue-600" />
+              <span>Adjust Patient Entry Time</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1">
+              Sets when the patient actually arrived or called (e.g. for phone consultations after midnight). This synchronizes prescriptions, printouts, and Analytics peak hour graphs.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-3">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Date & Time</Label>
+              <Input
+                type="datetime-local"
+                value={editEntryTimeVal}
+                onChange={(e) => setEditEntryTimeVal(e.target.value)}
+                className="h-11 font-bold text-sm"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Quick Presets</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs font-semibold justify-start h-8 px-2.5 truncate"
+                  onClick={() => setEditEntryTimeVal(format(new Date(), "yyyy-MM-dd'T'HH:mm"))}
+                >
+                  Current Time (Now)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs font-semibold justify-start h-8 px-2.5 truncate"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setHours(0, 30, 0, 0);
+                    setEditEntryTimeVal(format(d, "yyyy-MM-dd'T'HH:mm"));
+                  }}
+                >
+                  Today 12:30 AM (Night)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs font-semibold justify-start h-8 px-2.5 truncate"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setHours(1, 30, 0, 0);
+                    setEditEntryTimeVal(format(d, "yyyy-MM-dd'T'HH:mm"));
+                  }}
+                >
+                  Today 01:30 AM (Night)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs font-semibold justify-start h-8 px-2.5 truncate"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setHours(2, 30, 0, 0);
+                    setEditEntryTimeVal(format(d, "yyyy-MM-dd'T'HH:mm"));
+                  }}
+                >
+                  Today 02:30 AM (Night)
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-row justify-end gap-2 mt-4 pt-2 border-t">
+            <Button variant="outline" size="sm" onClick={() => setShowEntryTimeEdit(false)} disabled={updatingEntryTime}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleSaveEntryTime} disabled={updatingEntryTime} className="bg-blue-600 hover:bg-blue-700 text-white font-bold">
+              {updatingEntryTime ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+                  Saving...
+                </>
+              ) : (
+                'Save Entry Time'
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

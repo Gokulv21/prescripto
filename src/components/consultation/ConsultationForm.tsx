@@ -147,18 +147,18 @@ export default function ConsultationForm({
 
   return (
     <Card className="border-none shadow-sm overflow-hidden bg-card">
-      <CardHeader className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-4 px-6 bg-muted/50">
+      <CardHeader className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 sm:gap-4 pb-4 px-4 sm:px-6 bg-muted/50">
         <div className="flex items-center justify-between w-full xl:w-auto">
           <div className="flex items-center gap-2">
             <div className="p-1.5 bg-blue-500/10 rounded-md">
               <ClipboardList className="w-4 h-4 text-blue-600" />
             </div>
-            <CardTitle className="text-lg font-bold text-foreground">Prescription Details</CardTitle>
+            <CardTitle className="text-base sm:text-lg font-bold text-foreground">Prescription Details</CardTitle>
           </div>
           <div className="xl:hidden ml-2">{getSyncBadge()}</div>
         </div>
         
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
           <div className="hidden xl:block">{getSyncBadge()}</div>
           <div className="flex items-center gap-1 bg-muted p-1 rounded-lg shrink-0 border border-border">
             <Button
@@ -168,7 +168,7 @@ export default function ConsultationForm({
                 setIsWritingMode(false);
                 setLastInputWay('typing');
               }}
-              className={cn("h-8 px-3 text-[11px] font-bold", !isWritingMode && "bg-background shadow-sm")}
+              className={cn("h-8 px-2.5 sm:px-3 text-[11px] font-bold", !isWritingMode && "bg-background shadow-sm")}
             >
               Typing Mode
             </Button>
@@ -179,7 +179,7 @@ export default function ConsultationForm({
                 setIsWritingMode(true);
                 setLastInputWay('writing');
               }}
-              className={cn("h-8 px-3 text-[11px] font-bold", isWritingMode && "bg-background shadow-sm")}
+              className={cn("h-8 px-2.5 sm:px-3 text-[11px] font-bold", isWritingMode && "bg-background shadow-sm")}
             >
               Writing Mode
             </Button>
@@ -199,12 +199,12 @@ export default function ConsultationForm({
               onOpenDigitalRx();
             }}
             className={cn(
-              "h-10 px-6 bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-lg rounded-xl border-none",
+              "h-auto min-h-[2.25rem] py-2 px-3 sm:px-6 bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-lg rounded-xl border-none w-full sm:w-auto justify-center",
               !isWritingMode && "opacity-40"
             )}
           >
-            <PenTool className="w-4 h-4 mr-2" />
-            <span className="text-xs font-black uppercase tracking-widest">Open Signature & Pen Template</span>
+            <PenTool className="w-4 h-4 mr-2 shrink-0" />
+            <span className="text-xs font-black uppercase tracking-wider sm:tracking-widest">Open Signature & Pen Template</span>
           </Button>
         </div>
       </CardHeader>
@@ -621,14 +621,14 @@ export default function ConsultationForm({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3 pt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 pt-4">
           <Button
             type="button"
             variant="outline"
-            className="h-11 rounded-xl"
+            className="min-h-[2.75rem] h-auto py-2.5 rounded-xl font-bold text-xs sm:text-sm"
             onClick={onOpenPreview}
           >
-            <Eye className="w-4 h-4 mr-2" />
+            <Eye className="w-4 h-4 mr-2 shrink-0" />
             <span>Preview</span>
             <kbd className="hidden sm:inline-block ml-2 px-1.5 py-0.5 text-[10px] font-mono font-bold bg-muted text-muted-foreground rounded border border-border">Ctrl+P</kbd>
           </Button>
@@ -636,7 +636,7 @@ export default function ConsultationForm({
             onClick={savePrescription} 
             disabled={saving} 
             className={cn(
-              "h-11 shadow-lg transition-all rounded-xl text-white font-bold text-xs sm:text-sm w-full",
+              "min-h-[2.75rem] h-auto py-2.5 shadow-lg transition-all rounded-xl text-white font-bold text-xs sm:text-sm w-full",
               saveError ? "bg-red-600 hover:bg-red-700 animate-pulse" : "bg-blue-600 hover:bg-blue-750"
             )}
           >

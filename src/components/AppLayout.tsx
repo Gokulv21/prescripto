@@ -54,20 +54,102 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const { slug } = useParams();
 
-  const handleMobileNav = (path: string) => {
-    const isGlobal = path === '/help';
-    const fullPath = (slug && !isGlobal) ? `/${slug}${path === '/' ? '/dashboard' : path}` : path;
-    navigate(fullPath);
-    setIsMobileMenuOpen(false);
-  };
-
-  const visibleItems = navItems.filter(item => item.roles.some(r => roles.includes(r)));
-
   const getFullPath = (itemPath: string) => {
     if (!slug || itemPath === '/help') return itemPath;
     if (itemPath === '/') return `/${slug}/dashboard`;
     return `/${slug}${itemPath}`;
   };
+
+  const dashboardPath = slug ? `/${slug}/dashboard` : '/';
+  const isCurrentlyDashboard =
+    location.pathname === dashboardPath ||
+    location.pathname === '/' ||
+    location.pathname.endsWith('/dashboard');
+
+  const isCurrentlyDashboardRef = useRef(isCurrentlyDashboard);
+  useEffect(() => {
+    isCurrentlyDashboardRef.current = isCurrentlyDashboard;
+  }, [isCurrentlyDashboard]);
+
+  const isMobileMenuOpenRef = useRef(isMobileMenuOpen);
+  useEffect(() => {
+    isMobileMenuOpenRef.current = isMobileMenuOpen;
+  }, [isMobileMenuOpen]);
+
+  // Ensure Dashboard is always the base root in history even if the user loaded directly on a tab
+  useEffect(() => {
+    try {
+      if (!slug) return;
+      const hasHistoryRoot = sessionStorage.getItem(`prescripto_nav_root_${slug}`);
+      if (isCurrentlyDashboard) {
+        sessionStorage.setItem(`prescripto_nav_root_${slug}`, 'true');
+      } else if (!hasHistoryRoot) {
+        const fullDashboardUrl = `/prescripto/${slug}/dashboard`;
+        window.history.replaceState({ isRoot: true }, '', fullDashboardUrl);
+        window.history.pushState(null, '', window.location.pathname + window.location.search);
+        sessionStorage.setItem(`prescripto_nav_root_${slug}`, 'true');
+      }
+    } catch (e) {
+      // Safe fallback
+    }
+  }, [isCurrentlyDashboard, slug]);
+
+  // Instagram-style Tab Navigation:
+  // When switching between tabs on mobile, replace the current history entry
+  // instead of continuously pushing each tab into the browser history stack.
+  // This keeps the stack clean as [..., Dashboard, CurrentTab].
+  // When Back is pressed from any tab, it pops directly to Dashboard!
+  const navigateTab = (targetPath: string) => {
+    if (isMobileMenuOpen) {
+      setIsMobileMenuOpen(false);
+    }
+
+    const fullPath = getFullPath(targetPath);
+    const isTargetDashboard = targetPath === '/' || fullPath === dashboardPath || fullPath.endsWith('/dashboard');
+
+    if (isTargetDashboard) {
+      navigate(dashboardPath);
+    } else {
+      if (!isCurrentlyDashboard) {
+        navigate(fullPath, { replace: true });
+      } else {
+        navigate(fullPath);
+      }
+    }
+  };
+
+  // Instagram-style Back Button listener:
+  // Catches Android back button, mobile browser back, or swipe gestures.
+  // Whichever secondary tab the user was on, pressing Back immediately returns to Dashboard.
+  useEffect(() => {
+    const handlePopState = () => {
+      // 1. If mobile menu sheet was open, close it
+      if (isMobileMenuOpenRef.current) {
+        setIsMobileMenuOpen(false);
+        return;
+      }
+
+      // 2. Instagram Rule: Whichever tab the user was on, pressing Back goes to Dashboard
+      const currentPath = window.location.pathname;
+      const isDestinationDashboard =
+        currentPath.endsWith('/dashboard') ||
+        currentPath.endsWith('/prescripto/') ||
+        currentPath.endsWith('/prescripto');
+
+      if (!isDestinationDashboard && !isCurrentlyDashboardRef.current) {
+        navigate(dashboardPath, { replace: true });
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [dashboardPath, navigate]);
+
+  const handleMobileNav = (path: string) => {
+    navigateTab(path);
+  };
+
+  const visibleItems = navItems.filter(item => item.roles.some(r => roles.includes(r)));
 
   // 4 Core Quick Nav Items (5th tab is the Menu/All Modules Hamburger)
   const mobileCoreTabs = [
@@ -180,7 +262,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 key={item.path}
                 onMouseEnter={() => setHoveredItem(item.path)}
                 onMouseLeave={() => setHoveredItem(null)}
-                onClick={() => navigate(fullPath)}
+                onClick={() => navigateTab(item.path)}
                 className={cn(
                   "w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 relative z-10",
                   isActive ? "text-white" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
@@ -300,7 +382,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             
             {/* Google-style Profile Avatar / Settings Button */}
             <button
-              onClick={() => navigate(getFullPath('/profile'))}
+              onClick={() => navigateTab('/profile')}
               className={cn(
                 "relative flex items-center gap-2 p-1 sm:pr-3 rounded-full bg-white dark:bg-slate-900 border transition-all active:scale-95 group shadow-xs",
                 location.pathname.endsWith('/profile')
@@ -374,7 +456,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             localStorage.setItem(DOCK_POS_KEY, JSON.stringify(newPos));
           } catch (e) {}
         }}
-        className="fixed bottom-4 inset-x-0 mx-auto z-50 flex md:hidden items-center justify-between w-[92vw] max-w-[370px] h-[62px] px-1.5 rounded-[2.25rem] bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl border border-white/70 dark:border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.18)] select-none touch-none cursor-grab"
+        className="fixed bottom-4 inset-x-0 mx-auto z-50 flex md:hidden items-center justify-between w-[94vw] max-w-[390px] min-h-[62px] h-auto py-1 px-1 rounded-[2.25rem] bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl border border-white/70 dark:border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.18)] select-none touch-none cursor-grab"
       >
         {/* Drag Indicator Pill (Double-tap to reset center) */}
         <div
@@ -390,24 +472,24 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <button
               key={item.path}
               onClick={() => {
-                if (!isDraggingDock) navigate(fullPath);
+                if (!isDraggingDock) navigateTab(item.path);
               }}
-              className="flex-1 flex flex-col items-center justify-center py-1 select-none active:scale-90 transition-transform relative"
+              className="flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 select-none active:scale-90 transition-transform relative"
             >
               <div className={cn(
-                "w-6 h-6 flex items-center justify-center transition-all duration-150",
+                "w-6 h-6 flex items-center justify-center transition-all duration-150 shrink-0",
                 isActive ? "text-primary scale-110 drop-shadow-[0_0_8px_var(--accent-glow)]" : "text-slate-400 dark:text-slate-500"
               )}>
                 {item.icon}
               </div>
               <span className={cn(
-                "text-[10px] font-bold mt-0.5 leading-none transition-colors duration-150",
+                "text-[10px] font-bold mt-0.5 leading-none transition-colors duration-150 truncate max-w-full",
                 isActive ? "text-slate-900 dark:text-white font-extrabold" : "text-slate-400 dark:text-slate-500"
               )}>
                 {item.label}
               </span>
               {isActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1 shadow-[0_0_6px_var(--accent-glow)]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1 shadow-[0_0_6px_var(--accent-glow)] shrink-0" />
               )}
             </button>
           );
@@ -418,22 +500,22 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           onClick={() => {
             if (!isDraggingDock) setIsMobileMenuOpen(true);
           }}
-          className="flex-1 flex flex-col items-center justify-center py-1 select-none active:scale-90 transition-transform relative"
+          className="flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 select-none active:scale-90 transition-transform relative"
         >
           <div className={cn(
-            "w-6 h-6 flex items-center justify-center transition-all duration-150",
+            "w-6 h-6 flex items-center justify-center transition-all duration-150 shrink-0",
             isMobileMenuOpen ? "text-primary scale-110 drop-shadow-[0_0_8px_var(--accent-glow)]" : "text-slate-400 dark:text-slate-500"
           )}>
             <LayoutGrid className="w-5 h-5" />
           </div>
           <span className={cn(
-            "text-[10px] font-bold mt-0.5 leading-none transition-colors duration-150",
+            "text-[10px] font-bold mt-0.5 leading-none transition-colors duration-150 truncate max-w-full",
             isMobileMenuOpen ? "text-slate-900 dark:text-white font-extrabold" : "text-slate-400 dark:text-slate-500"
           )}>
             Menu
           </span>
           {isMobileMenuOpen && (
-            <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1 shadow-[0_0_6px_var(--accent-glow)]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1 shadow-[0_0_6px_var(--accent-glow)] shrink-0" />
           )}
         </button>
       </motion.nav>

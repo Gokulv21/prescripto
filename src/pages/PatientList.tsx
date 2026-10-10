@@ -805,7 +805,7 @@ export default function PatientList() {
                       advice={currentRx?.advice_image} 
                       isWritingMode={currentRx?.is_writing_mode ?? (!!currentRx?.advice_image && String(currentRx.advice_image).startsWith('data:image'))}
                       doctorId={currentRx?.doctor_id || viewingRx.assigned_doctor_id}
-                      prescriptionCreatedAt={currentRx?.created_at}
+                      prescriptionCreatedAt={viewingRx?.created_at || currentRx?.created_at}
                     />
                   )}
                 </div>

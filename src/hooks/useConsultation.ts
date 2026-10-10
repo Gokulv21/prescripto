@@ -475,7 +475,8 @@ export function useConsultation(clinic: any) {
         raw_paths: finalPaths as any,
         is_writing_mode: isWritingMode,
         doctor_id: user?.id,
-        clinic_id: clinic?.id
+        clinic_id: clinic?.id,
+        created_at: selectedVisit.created_at || new Date().toISOString()
       }, { onConflict: 'visit_id' });
       
       if (rxError) {

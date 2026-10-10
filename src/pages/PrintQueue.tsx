@@ -165,7 +165,7 @@ export default function PrintQueue() {
                 isWritingMode={isWritingMode}
                 isPrint={true}
                 doctorId={printData.doctor_id}
-                prescriptionCreatedAt={printData.created_at}
+                prescriptionCreatedAt={printData.visits?.created_at || printData.created_at}
               />
             );
           })()}
