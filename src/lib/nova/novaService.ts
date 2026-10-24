@@ -413,6 +413,28 @@ LANGUAGE RULES (CRITICAL):
         actionLink
       };
     }
+  } else {
+    // Try calling Supabase Edge Function 'prescripto-nova' (server-side Gemini with zero client secrets)
+    try {
+      const { data: edgeRes, error: edgeErr } = await supabase.functions.invoke('prescripto-nova', {
+        body: {
+          message: query,
+          clinicId: clinicId,
+          userRole: context.userRole || 'doctor'
+        }
+      });
+      if (!edgeErr && edgeRes?.text) {
+        return {
+          id: `msg-${Date.now()}`,
+          sender: 'assistant',
+          text: edgeRes.text,
+          timestamp: new Date(),
+          patientCards: edgeRes.patientCards
+        };
+      }
+    } catch (edgeCallErr) {
+      console.warn('Edge function nova fallback notice:', edgeCallErr);
+    }
   }
 
   // 5. Fallback: Intelligent Deterministic Analytics Engine (Offline / API failure)
