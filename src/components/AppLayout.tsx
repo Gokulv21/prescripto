@@ -11,6 +11,7 @@ import { useTheme } from '@/components/ThemeProvider';
 import logo from '@/assets/logo.png';
 import { motion, AnimatePresence } from 'framer-motion';
 import NotificationCenter from './NotificationCenter';
+import { PrescriptoNova } from './nova/PrescriptoNova';
 
 interface NavItem {
   label: string;
@@ -654,6 +655,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </motion.div>
         </SheetContent>
       </Sheet>
+
+      {/* Nova AI by Zevox for Hospital Staff & Doctors */}
+      <PrescriptoNova />
     </div>
   );
 }
