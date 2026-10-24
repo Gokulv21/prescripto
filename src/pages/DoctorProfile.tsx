@@ -10,7 +10,7 @@ import {
     Medal, FileSignature, Save, RefreshCw, Plus, Stethoscope, Printer,
     ArrowRight, CheckCircle2, Circle, PanelLeft, LayoutDashboard,
     Group, Info, Moon, Sun, HeartPulse, TrendingUp, Search, UserPlus, Camera, Trash2, Eye, X, Pencil, ChevronDown,
-    Lock, Building2, Upload, Palette, Sparkles, Check, Pipette, Sliders, Stamp
+    Lock, Building2, Upload, Palette, Sparkles, Check, Pipette, Sliders, Stamp, FileText
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { startOfDay, endOfDay, subDays, format, isSameDay, parseISO } from 'date-fns';
@@ -183,7 +183,9 @@ export default function DoctorProfile() {
     const [clinicUploading, setClinicUploading] = useState(false);
     const [watermarkUrl, setWatermarkUrl] = useState<string | null>(null);
     const [watermarkUploading, setWatermarkUploading] = useState(false);
-    const [headerMode, setHeaderMode] = useState<'name' | 'logo' | 'both'>('name');
+    const [headerMode, setHeaderMode] = useState<'name' | 'logo' | 'both'>('both');
+    const [clinicCaption, setClinicCaption] = useState<string>('24/7 Emergency · ECG · Lab');
+    const [settingsSection, setSettingsSection] = useState<'template' | 'identity' | 'appearance'>('template');
     const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const clinicFileInputRef = useRef<HTMLInputElement>(null);
@@ -231,7 +233,8 @@ export default function DoctorProfile() {
             // Fetch Clinic branding & Watermark from Supabase Storage avatars bucket & profile metadata
             let clinicPhotoUrl = '';
             let clinicWatermarkUrl = '';
-            let clinicHeaderMode: 'name' | 'logo' | 'both' = 'name';
+            let clinicHeaderMode: 'name' | 'logo' | 'both' = 'both';
+            let clinicCaptionVal = '24/7 Emergency · ECG · Lab';
 
             if (profData?.bio) {
                 try {
@@ -239,6 +242,7 @@ export default function DoctorProfile() {
                     if (parsed?.clinic_photo) clinicPhotoUrl = parsed.clinic_photo;
                     if (parsed?.clinic_watermark) clinicWatermarkUrl = parsed.clinic_watermark;
                     if (parsed?.prescription_header_mode) clinicHeaderMode = parsed.prescription_header_mode;
+                    if (parsed?.clinic_caption !== undefined) clinicCaptionVal = parsed.clinic_caption;
                 } catch (e) {}
             }
 
@@ -247,6 +251,10 @@ export default function DoctorProfile() {
                 const cachedMode = localStorage.getItem(`prescripto_clinic_header_mode_${clinic.id}`);
                 if (cachedMode && ['name', 'logo', 'both'].includes(cachedMode)) {
                     clinicHeaderMode = cachedMode as any;
+                }
+                const cachedCaption = localStorage.getItem(`prescripto_clinic_caption_${clinic.id}`);
+                if (cachedCaption !== null) {
+                    clinicCaptionVal = cachedCaption;
                 }
 
                 try {
@@ -280,6 +288,7 @@ export default function DoctorProfile() {
 
                     setWatermarkUrl(clinicWatermarkUrl);
                     setHeaderMode(clinicHeaderMode);
+                    setClinicCaption(clinicCaptionVal);
 
                     if (isOwnerUser) {
                         setProfile(prev => ({
@@ -311,6 +320,10 @@ export default function DoctorProfile() {
                                     if (parsed?.clinic_photo && !clinicPhotoUrl) {
                                         clinicPhotoUrl = parsed.clinic_photo;
                                     }
+                                    if (parsed?.clinic_caption !== undefined && !cachedCaption) {
+                                        clinicCaptionVal = parsed.clinic_caption;
+                                        setClinicCaption(parsed.clinic_caption);
+                                    }
                                 }
                             } catch (e) {}
                         }
@@ -322,7 +335,8 @@ export default function DoctorProfile() {
                             clinic_phone: clinicData.phone,
                             clinic_photo: clinicPhotoUrl,
                             clinic_watermark: clinicWatermarkUrl,
-                            header_mode: clinicHeaderMode
+                            header_mode: clinicHeaderMode,
+                            clinic_caption: clinicCaptionVal
                         });
                     }
                 }
@@ -462,6 +476,7 @@ export default function DoctorProfile() {
                     if (profile.clinic_photo) curBio.clinic_photo = profile.clinic_photo;
                     if (watermarkUrl) curBio.clinic_watermark = watermarkUrl;
                     curBio.prescription_header_mode = headerMode;
+                    curBio.clinic_caption = clinicCaption;
                     profilePayload.bio = JSON.stringify(curBio);
                 } catch (e) {}
             }
@@ -765,6 +780,41 @@ export default function DoctorProfile() {
             toast.success(`Prescription header style updated: ${modeLabel}`);
         } catch (e: any) {
             console.warn('Failed to save header mode preference:', e);
+        }
+    };
+
+    const handleCaptionChange = (val: string) => {
+        setClinicCaption(val);
+        if (clinic?.id) {
+            localStorage.setItem(`prescripto_clinic_caption_${clinic.id}`, val);
+        }
+    };
+
+    const handleSaveCaption = async (val?: string) => {
+        const toSave = val !== undefined ? val : clinicCaption;
+        if (!isClinicOwner) {
+            toast.error('Only the Clinic Owner can change the prescription tagline/caption.');
+            return;
+        }
+        if (clinic?.id) {
+            localStorage.setItem(`prescripto_clinic_caption_${clinic.id}`, toSave);
+        }
+        try {
+            let currentMeta: any = {};
+            if (profile?.bio) {
+                try { currentMeta = JSON.parse(profile.bio); } catch (e) {}
+            }
+            const updatedMeta = {
+                ...currentMeta,
+                clinic_caption: toSave
+            };
+            if (watermarkUrl) updatedMeta.clinic_watermark = watermarkUrl;
+            if (headerMode) updatedMeta.prescription_header_mode = headerMode;
+            await supabase.from('profiles').update({ bio: JSON.stringify(updatedMeta) }).eq('user_id', user?.id);
+            toast.success(toSave ? `Tagline updated: "${toSave}"` : 'Tagline cleared (hidden from prescription)');
+        } catch (e: any) {
+            console.warn('Failed to save caption preference:', e);
+            toast.error('Failed to save caption');
         }
     };
 
@@ -1376,10 +1426,554 @@ export default function DoctorProfile() {
                     </Card>
                 </TabsContent>
 
-                <TabsContent value="settings" className="focus-visible:outline-none space-y-8">
-                    <form onSubmit={handleUpdateProfile} className="space-y-8">
-                        {/* 1. App Appearance & Themes Customizer Card */}
-                        <Card className="border-slate-100 dark:border-slate-800 rounded-2xl p-6 space-y-6 bg-white dark:bg-slate-900 shadow-sm transition-all">
+                <TabsContent value="settings" className="focus-visible:outline-none space-y-6">
+                    {/* Modern Sub-navigation Pills for Settings */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={() => setSettingsSection('template')}
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all",
+                                    settingsSection === 'template'
+                                        ? "bg-white dark:bg-slate-900 text-primary shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/50"
+                                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/50 dark:hover:bg-slate-800/50"
+                                )}
+                            >
+                                <FileText className="w-4 h-4" />
+                                <span>Prescription Template</span>
+                                <Badge className="ml-1 bg-primary/10 text-primary hover:bg-primary/20 text-[9px] px-1.5 py-0 h-4 border-none">
+                                    Branding & Live Preview
+                                </Badge>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSettingsSection('identity')}
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all",
+                                    settingsSection === 'identity'
+                                        ? "bg-white dark:bg-slate-900 text-primary shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/50"
+                                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/50 dark:hover:bg-slate-800/50"
+                                )}
+                            >
+                                <User className="w-4 h-4" />
+                                <span>Doctor & Clinic Profile</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSettingsSection('appearance')}
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all",
+                                    settingsSection === 'appearance'
+                                        ? "bg-white dark:bg-slate-900 text-primary shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/50"
+                                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/50 dark:hover:bg-slate-800/50"
+                                )}
+                            >
+                                <Palette className="w-4 h-4" />
+                                <span>Appearance & Themes</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <form onSubmit={handleUpdateProfile} className="space-y-6">
+                        {/* ================= SECTION 1: PRESCRIPTION TEMPLATE & BRANDING ================= */}
+                        {settingsSection === 'template' && (
+                            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+                                {/* Left Controls Column */}
+                                <div className="xl:col-span-7 space-y-6">
+                                    <Card className="border-slate-200/80 dark:border-slate-800/80 rounded-[2rem] p-6 sm:p-7 space-y-6 bg-white/80 dark:bg-slate-900/80 shadow-xs backdrop-blur-sm">
+                                        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2.5 bg-primary/10 rounded-xl">
+                                                    <FileText className="w-5 h-5 text-primary" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-xl font-black tracking-tight dark:text-slate-100">Prescription Header & Watermark</h3>
+                                                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Configure clinic logo, watermark stamp, header style, and custom tagline</p>
+                                                </div>
+                                            </div>
+                                            {isClinicOwner ? (
+                                                <Badge className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-[9px] uppercase font-black tracking-wider px-2.5 py-0.5 rounded-full">
+                                                    Owner Control
+                                                </Badge>
+                                            ) : (
+                                                <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 border-none text-[9px] uppercase tracking-wider text-slate-500 gap-1 px-2.5 py-0.5 rounded-full">
+                                                    <Lock className="w-3 h-3" /> Managed by Owner
+                                                </Badge>
+                                            )}
+                                        </div>
+
+                                        {/* 1. Clinic Logo / Header Branding Section */}
+                                        <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                                            <div className="relative group/clinicphoto shrink-0">
+                                                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex items-center justify-center p-1.5">
+                                                    {(profile?.clinic_photo || ownerProfile?.clinic_photo) ? (
+                                                        <img
+                                                            src={profile?.clinic_photo || ownerProfile?.clinic_photo}
+                                                            alt="Clinic Logo"
+                                                            className="w-full h-full object-contain"
+                                                        />
+                                                    ) : (
+                                                        <Building2 className="w-8 h-8 text-slate-400 dark:text-slate-500" />
+                                                    )}
+                                                </div>
+
+                                                {isClinicOwner && (
+                                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/clinicphoto:opacity-100 transition-opacity rounded-2xl flex items-center justify-center gap-1.5 p-1 backdrop-blur-xs">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => clinicFileInputRef.current?.click()}
+                                                            disabled={clinicUploading}
+                                                            className="p-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-transform hover:scale-110"
+                                                            title="Upload Clinic Photo"
+                                                        >
+                                                            {clinicUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+                                                        </button>
+                                                        {profile?.clinic_photo && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleDeleteClinicPhoto}
+                                                                disabled={clinicUploading}
+                                                                className="p-1.5 bg-red-500/50 hover:bg-red-500/70 text-white rounded-lg transition-transform hover:scale-110"
+                                                                title="Delete Clinic Photo"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <input
+                                                type="file"
+                                                ref={clinicFileInputRef}
+                                                onChange={handleClinicPhotoUpload}
+                                                className="hidden"
+                                                accept="image/*"
+                                            />
+
+                                            <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
+                                                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                                                    <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">Clinic Logo / Header Branding</h4>
+                                                    {(profile?.clinic_photo || ownerProfile?.clinic_photo) && (
+                                                        <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">Active</span>
+                                                    )}
+                                                    <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200/80 dark:border-blue-800/80">
+                                                        Recommended: 500 × 500 px (1:1) or 600 × 400 px (3:2)
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
+                                                    {isClinicOwner
+                                                        ? "Official clinic logo placed right before your clinic name in all prescriptions, and shown on Waiting Room TV screen. Any size uploaded is automatically scaled and fitted without distortion."
+                                                        : "Displayed in the prescription header and Waiting Room TV screen. Managed by Clinic Owner."}
+                                                </p>
+                                                {isClinicOwner && (
+                                                    <div className="pt-2 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            disabled={clinicUploading}
+                                                            onClick={() => clinicFileInputRef.current?.click()}
+                                                            className="rounded-xl h-8 px-3 text-xs font-bold gap-1.5 border-slate-200 dark:border-slate-700 shadow-2xs"
+                                                        >
+                                                            {clinicUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                                                            {profile?.clinic_photo ? 'Change Logo' : 'Upload Logo'}
+                                                        </Button>
+                                                        {profile?.clinic_photo && (
+                                                            <>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => setImagePreviewUrl(profile?.clinic_photo || null)}
+                                                                    className="rounded-xl h-8 px-2.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                                                >
+                                                                    <Eye className="w-3.5 h-3.5 mr-1" /> View
+                                                                </Button>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    disabled={clinicUploading}
+                                                                    onClick={handleDeleteClinicPhoto}
+                                                                    className="rounded-xl h-8 px-2.5 text-xs font-bold gap-1 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900/50"
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5" /> Remove
+                                                                </Button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* 2. Prescription Watermark Section */}
+                                        <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                                            <div className="relative group/watermark shrink-0">
+                                                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex items-center justify-center relative p-2">
+                                                    <div className="absolute inset-0 opacity-[0.04] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:8px_8px]" />
+                                                    {(watermarkUrl || ownerProfile?.clinic_watermark) ? (
+                                                        <img
+                                                            src={watermarkUrl || ownerProfile?.clinic_watermark}
+                                                            alt="Prescription Watermark"
+                                                            className="w-full h-full object-contain drop-shadow-xs"
+                                                        />
+                                                    ) : (
+                                                        <div className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
+                                                            <Stamp className="w-8 h-8 opacity-60" />
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {isClinicOwner && (
+                                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/watermark:opacity-100 transition-opacity rounded-2xl flex items-center justify-center gap-1.5 p-1 backdrop-blur-xs">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => watermarkFileInputRef.current?.click()}
+                                                            disabled={watermarkUploading}
+                                                            className="p-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-transform hover:scale-110"
+                                                            title="Upload Watermark"
+                                                        >
+                                                            {watermarkUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                                                        </button>
+                                                        {(watermarkUrl || ownerProfile?.clinic_watermark) && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleDeleteWatermark}
+                                                                disabled={watermarkUploading}
+                                                                className="p-1.5 bg-red-500/50 hover:bg-red-500/70 text-white rounded-lg transition-transform hover:scale-110"
+                                                                title="Delete Watermark"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <input
+                                                type="file"
+                                                ref={watermarkFileInputRef}
+                                                onChange={handleWatermarkUpload}
+                                                className="hidden"
+                                                accept="image/png,image/jpeg,image/webp"
+                                            />
+
+                                            <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
+                                                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                                                    <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                                                        <Stamp className="w-4 h-4 text-primary" />
+                                                        Prescription Watermark
+                                                    </h4>
+                                                    {(watermarkUrl || ownerProfile?.clinic_watermark) ? (
+                                                        <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">Active</span>
+                                                    ) : (
+                                                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">None Set (Clean Sheet)</span>
+                                                    )}
+                                                    <span className="text-[10px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded-md border border-purple-200/80 dark:border-purple-800/80">
+                                                        Recommended: 800 × 800 px • Transparent PNG
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
+                                                    {isClinicOwner
+                                                        ? "Subtly watermarked in the center of all prescription pages for this clinic. Transparent PNG strongly recommended. If none is set, prescription sheets remain clean without background text."
+                                                        : "Watermark applied to all prescriptions in this clinic. Managed by Clinic Owner."}
+                                                </p>
+                                                {isClinicOwner && (
+                                                    <div className="pt-2 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            disabled={watermarkUploading}
+                                                            onClick={() => watermarkFileInputRef.current?.click()}
+                                                            className="rounded-xl h-8 px-3 text-xs font-bold gap-1.5 border-slate-200 dark:border-slate-700 shadow-2xs"
+                                                        >
+                                                            {watermarkUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                                                            {(watermarkUrl || ownerProfile?.clinic_watermark) ? 'Change Watermark' : 'Upload Watermark'}
+                                                        </Button>
+                                                        {(watermarkUrl || ownerProfile?.clinic_watermark) && (
+                                                            <>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => setImagePreviewUrl(watermarkUrl || ownerProfile?.clinic_watermark || null)}
+                                                                    className="rounded-xl h-8 px-2.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                                                >
+                                                                    <Eye className="w-3.5 h-3.5 mr-1" /> View
+                                                                </Button>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    disabled={watermarkUploading}
+                                                                    onClick={handleDeleteWatermark}
+                                                                    className="rounded-xl h-8 px-2.5 text-xs font-bold gap-1 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900/50"
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5" /> Remove
+                                                                </Button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* 3. Prescription Header Display Mode Selector */}
+                                        <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 space-y-3">
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                                <div>
+                                                    <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">Prescription Header Style</h4>
+                                                    <p className="text-xs text-slate-400 dark:text-slate-500">Clinic Name is always displayed. Choose whether to show the clinic logo alongside it.</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                                                {[
+                                                    {
+                                                        id: 'both',
+                                                        label: 'Logo & Clinic Name (Standard)',
+                                                        desc: 'Dedicated logo slot placed right before your clinic name',
+                                                        icon: Sliders
+                                                    },
+                                                    {
+                                                        id: 'name',
+                                                        label: 'Clinic Name Only',
+                                                        desc: 'Displays clinic name typography without header logo',
+                                                        icon: Building2
+                                                    }
+                                                ].map((opt) => {
+                                                    const isSelected = ((headerMode || 'both') === opt.id) || (opt.id === 'both' && headerMode === 'logo');
+                                                    return (
+                                                        <button
+                                                            key={opt.id}
+                                                            type="button"
+                                                            disabled={!isClinicOwner}
+                                                            onClick={() => handleHeaderModeChange(opt.id as any)}
+                                                            className={cn(
+                                                                "relative p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5",
+                                                                isSelected
+                                                                    ? "bg-white dark:bg-slate-800 border-primary ring-2 ring-primary/20 shadow-xs"
+                                                                    : "bg-white/60 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600",
+                                                                !isClinicOwner && "cursor-not-allowed opacity-80"
+                                                            )}
+                                                        >
+                                                            <div className="flex items-center justify-between w-full">
+                                                                <div className="flex items-center gap-2">
+                                                                    <opt.icon className={cn("w-4 h-4", isSelected ? "text-primary font-bold" : "text-slate-400")} />
+                                                                    <span className={cn("text-xs font-bold", isSelected ? "text-slate-900 dark:text-slate-100" : "text-slate-600 dark:text-slate-400")}>
+                                                                        {opt.label}
+                                                                    </span>
+                                                                </div>
+                                                                {isSelected && (
+                                                                    <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                                                                )}
+                                                            </div>
+                                                            <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-snug">
+                                                                {opt.desc}
+                                                            </p>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* 4. Custom Clinic Header Tagline / Caption Input */}
+                                        <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 space-y-3">
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                                <div>
+                                                    <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">Prescription Header Caption / Tagline</h4>
+                                                    <p className="text-xs text-slate-400 dark:text-slate-500">Custom clinic services or sub-title displayed under your clinic name (e.g. 24/7 Emergency · ECG · Lab)</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-3 pt-1">
+                                                <div className="flex flex-col sm:flex-row gap-2">
+                                                    <Input
+                                                        value={clinicCaption}
+                                                        onChange={(e) => handleCaptionChange(e.target.value)}
+                                                        disabled={!isClinicOwner}
+                                                        placeholder="e.g. 24/7 Emergency · ECG · Lab (or leave empty)"
+                                                        className="h-10 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-xs"
+                                                    />
+                                                    {isClinicOwner && (
+                                                        <Button
+                                                            type="button"
+                                                            onClick={() => handleSaveCaption()}
+                                                            className="h-10 px-4 text-xs font-black rounded-xl bg-primary hover:bg-primary/90 text-white shrink-0"
+                                                        >
+                                                            Save Tagline
+                                                        </Button>
+                                                    )}
+                                                </div>
+
+                                                {/* Preset choices */}
+                                                {isClinicOwner && (
+                                                    <div className="space-y-1.5">
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Quick Presets:</span>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {[
+                                                                '24/7 Emergency · ECG · Lab',
+                                                                'Multi-Speciality Clinic & Diagnostic Centre',
+                                                                'General & Family Medicine',
+                                                                'Consultant Physician & Diabetologist',
+                                                            ].map((preset) => (
+                                                                <button
+                                                                    key={preset}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        handleCaptionChange(preset);
+                                                                        handleSaveCaption(preset);
+                                                                    }}
+                                                                    className={cn(
+                                                                        "text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all",
+                                                                        clinicCaption === preset
+                                                                            ? "bg-primary/10 border-primary/30 text-primary"
+                                                                            : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-primary/40"
+                                                                    )}
+                                                                >
+                                                                    {preset}
+                                                                </button>
+                                                            ))}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    handleCaptionChange('');
+                                                                    handleSaveCaption('');
+                                                                }}
+                                                                className={cn(
+                                                                    "text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900/50",
+                                                                    clinicCaption === '' ? "bg-red-50 dark:bg-red-950/40" : "bg-white dark:bg-slate-800"
+                                                                )}
+                                                            >
+                                                                Clear (Hide from Header)
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </Card>
+                                </div>
+
+                                {/* Right Live Preview Column */}
+                                <div className="xl:col-span-5 sticky top-6 space-y-4">
+                                    <Card className="border-slate-200/80 dark:border-slate-800/80 rounded-[2rem] p-5 sm:p-6 bg-white dark:bg-slate-900 shadow-lg space-y-4">
+                                        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                                            <div className="flex items-center gap-2">
+                                                <div className="p-1.5 bg-blue-500/10 text-blue-600 rounded-lg">
+                                                    <Eye className="w-4 h-4" />
+                                                </div>
+                                                <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Live Prescription Preview</h4>
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full">
+                                                Real-time
+                                            </span>
+                                        </div>
+
+                                        {/* A4 Sheet Simulation */}
+                                        <div className="relative bg-white text-slate-900 rounded-xl border border-slate-200 shadow-sm p-4 sm:p-5 overflow-hidden select-none min-h-[360px] flex flex-col justify-between">
+                                            {/* Watermark in background */}
+                                            {(watermarkUrl || ownerProfile?.clinic_watermark) ? (
+                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-8 z-0">
+                                                    <img
+                                                        src={watermarkUrl || ownerProfile?.clinic_watermark}
+                                                        alt="Watermark"
+                                                        className="max-w-[180px] max-h-[180px] object-contain opacity-15 filter grayscale contrast-125 select-none"
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+                                                    <span className="text-[11px] font-black uppercase tracking-widest text-slate-200 dark:text-slate-200/40">Clean Sheet (No Watermark)</span>
+                                                </div>
+                                            )}
+
+                                            {/* Prescription Header Content */}
+                                            <div className="relative z-10 space-y-3 pb-3 border-b-2 border-slate-900">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    {/* Left: Doctor Credentials */}
+                                                    <div className="space-y-0.5 max-w-[50%]">
+                                                        <h5 className="font-black text-sm text-slate-900 uppercase tracking-tight">
+                                                            {profile?.full_name ? `Dr. ${profile.full_name}` : 'Doctor Name'}
+                                                        </h5>
+                                                        <p className="text-[10px] font-bold text-slate-600 leading-tight">
+                                                            {profile?.qualifications || 'MBBS, MD'}
+                                                        </p>
+                                                        <p className="text-[9px] font-semibold text-slate-500">
+                                                            Reg No: {profile?.registration_id || '152590'}
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Right: Clinic Branding & Info */}
+                                                    <div className="text-right flex flex-col items-end max-w-[50%]">
+                                                        <div className="flex items-center gap-2 justify-end mb-0.5">
+                                                            {headerMode !== 'name' && (profile?.clinic_photo || ownerProfile?.clinic_photo) && (
+                                                                <img
+                                                                    src={profile?.clinic_photo || ownerProfile?.clinic_photo}
+                                                                    alt="Logo"
+                                                                    className="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded-md border border-slate-200 bg-white shrink-0 p-0.5"
+                                                                />
+                                                            )}
+                                                            <span className="font-black text-sm text-slate-900 uppercase tracking-tight leading-tight">
+                                                                {(isClinicOwner ? profile?.clinic_name : ownerProfile?.clinic_name) || clinic?.name || 'Clinic Name'}
+                                                            </span>
+                                                        </div>
+                                                        {clinicCaption && (
+                                                            <span className="text-[8px] font-black uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.2 rounded mb-0.5">
+                                                                {clinicCaption}
+                                                            </span>
+                                                        )}
+                                                        <p className="text-[9px] font-medium text-slate-600 leading-tight">
+                                                            {(isClinicOwner ? profile?.clinic_address : ownerProfile?.clinic_address) || clinic?.address || 'Clinic Address'}
+                                                        </p>
+                                                        <p className="text-[9px] font-bold text-slate-700">
+                                                            Ph: {(isClinicOwner ? profile?.clinic_phone : ownerProfile?.clinic_phone) || clinic?.phone || '+91 00000 00000'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Patient Mock Details Bar */}
+                                            <div className="relative z-10 py-2 border-b border-dashed border-slate-300 text-[9px] grid grid-cols-4 gap-1 text-slate-600 font-medium">
+                                                <div><span className="font-bold text-slate-800">Pt:</span> Sample Patient</div>
+                                                <div><span className="font-bold text-slate-800">Age/Sex:</span> 34Y / Male</div>
+                                                <div><span className="font-bold text-slate-800">Date:</span> {format(new Date(), 'dd/MM/yyyy')}</div>
+                                                <div className="text-right"><span className="font-bold text-slate-800">Rx ID:</span> #PR-1082</div>
+                                            </div>
+
+                                            {/* Rx Symbol Mock Area */}
+                                            <div className="relative z-10 my-4 space-y-2 flex-1">
+                                                <span className="font-serif italic font-black text-xl text-slate-800">℞</span>
+                                                <div className="space-y-1.5 opacity-30">
+                                                    <div className="h-2 bg-slate-400 rounded w-3/4" />
+                                                    <div className="h-2 bg-slate-300 rounded w-1/2" />
+                                                    <div className="h-2 bg-slate-200 rounded w-2/3" />
+                                                </div>
+                                            </div>
+
+                                            {/* Bottom signature preview in mock */}
+                                            <div className="relative z-10 pt-2 border-t border-slate-200 flex items-end justify-between text-[9px]">
+                                                <span className="text-[8px] text-slate-400 font-mono">Generated via Prescripto</span>
+                                                <div className="text-right flex flex-col items-center">
+                                                    {profile?.signature_data ? (
+                                                        <img src={profile.signature_data} alt="Signature" className="max-h-8 mb-0.5 contrast-125" />
+                                                    ) : (
+                                                        <div className="h-6 w-20 border-b border-dashed border-slate-400 mb-0.5" />
+                                                    )}
+                                                    <span className="font-bold text-slate-700">Doctor Signature</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </Card>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ================= SECTION 3: APP APPEARANCE & THEMES ================= */}
+                        {settingsSection === 'appearance' && (
+                            <Card className="border-slate-100 dark:border-slate-800 rounded-2xl p-6 space-y-6 bg-white dark:bg-slate-900 shadow-sm transition-all">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2.5 bg-primary/10 rounded-xl">
@@ -1634,504 +2228,235 @@ export default function DoctorProfile() {
                                 </div>
                             </div>
                         </Card>
+                        )}
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 items-start">
-                            {/* Identity Card */}
-                            <Card className="border-slate-200/80 dark:border-slate-800/80 rounded-[2rem] p-6 sm:p-8 space-y-6 bg-white/80 dark:bg-slate-900/80 shadow-xs backdrop-blur-sm">
-                                <div className="flex items-center gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
-                                    <div className="p-2.5 bg-primary/10 rounded-xl">
-                                        <User className="w-5 h-5 text-primary" />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xl font-black tracking-tight dark:text-slate-100">Professional Identity</h3>
-                                        <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Doctor credentials shown on Prescriptions & Reports</p>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4">
-                                    <div className="space-y-1.5">
-                                        <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Display Name</Label>
-                                        <Input
-                                            value={profile?.full_name}
-                                            onChange={e => setProfile(p => ({ ...p!, full_name: e.target.value }))}
-                                            className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold focus:ring-primary text-sm"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Primary Qualifications</Label>
-                                            <Input
-                                                value={profile?.qualifications}
-                                                onChange={e => setProfile(p => ({ ...p!, qualifications: e.target.value }))}
-                                                placeholder="e.g. MBBS, MD (Cardiology), CCEBDM"
-                                                className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
-                                            />
+                        {/* ================= SECTION 2: DOCTOR & CLINIC PROFILE ================= */}
+                        {settingsSection === 'identity' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 items-start">
+                                {/* Left Column: Doctor Identity & Digital Signature */}
+                                <div className="space-y-6">
+                                    {/* Professional Identity Card */}
+                                    <Card className="border-slate-200/80 dark:border-slate-800/80 rounded-[2rem] p-6 sm:p-8 space-y-6 bg-white/80 dark:bg-slate-900/80 shadow-xs backdrop-blur-sm">
+                                        <div className="flex items-center gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+                                            <div className="p-2.5 bg-primary/10 rounded-xl">
+                                                <User className="w-5 h-5 text-primary" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-xl font-black tracking-tight dark:text-slate-100">Professional Identity</h3>
+                                                <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Doctor credentials shown on Prescriptions & Reports</p>
+                                            </div>
                                         </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Medical Registration ID</Label>
-                                            <Input
-                                                value={profile?.registration_id}
-                                                onChange={e => setProfile(p => ({ ...p!, registration_id: e.target.value }))}
-                                                placeholder="e.g. 152590"
-                                                className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
-                                            />
-                                        </div>
-                                    </div>
 
-                                    <div className="space-y-2 pt-2">
-                                        <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Select Passport Vector Avatar</Label>
-                                        <div className="grid grid-cols-4 gap-2.5 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-                                            {AVATAR_OPTIONS.map((opt) => (
-                                                <button
-                                                    key={opt.url}
-                                                    type="button"
-                                                    onClick={() => setProfile(p => ({ ...p!, avatar_url: opt.url }))}
-                                                    className={cn(
-                                                        "relative aspect-square rounded-xl overflow-hidden border-2 transition-all hover:scale-105 bg-white dark:bg-slate-800 shadow-xs",
-                                                        profile?.avatar_url === opt.url ? "border-primary ring-2 ring-primary/30 scale-105" : "border-slate-200 dark:border-slate-700 opacity-75 hover:opacity-100"
-                                                    )}
-                                                    title={opt.name}
-                                                >
-                                                    <img src={opt.url} className="w-full h-full object-cover" alt={opt.name} />
-                                                    {profile?.avatar_url === opt.url && (
-                                                        <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                                                            <CheckCircle2 className="w-5 h-5 text-primary drop-shadow-sm" />
+                                        <div className="space-y-4">
+                                            <div className="space-y-1.5">
+                                                <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Display Name</Label>
+                                                <Input
+                                                    value={profile?.full_name}
+                                                    onChange={e => setProfile(p => ({ ...p!, full_name: e.target.value }))}
+                                                    className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold focus:ring-primary text-sm"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Primary Qualifications</Label>
+                                                    <Input
+                                                        value={profile?.qualifications}
+                                                        onChange={e => setProfile(p => ({ ...p!, qualifications: e.target.value }))}
+                                                        placeholder="e.g. MBBS, MD (Cardiology), CCEBDM"
+                                                        className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Medical Registration ID</Label>
+                                                    <Input
+                                                        value={profile?.registration_id}
+                                                        onChange={e => setProfile(p => ({ ...p!, registration_id: e.target.value }))}
+                                                        placeholder="e.g. 152590"
+                                                        className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2 pt-2">
+                                                <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Select Passport Vector Avatar</Label>
+                                                <div className="grid grid-cols-4 gap-2.5 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                                                    {AVATAR_OPTIONS.map((opt) => (
+                                                        <button
+                                                            key={opt.url}
+                                                            type="button"
+                                                            onClick={() => setProfile(p => ({ ...p!, avatar_url: opt.url }))}
+                                                            className={cn(
+                                                                "relative aspect-square rounded-xl overflow-hidden border-2 transition-all hover:scale-105 bg-white dark:bg-slate-800 shadow-xs",
+                                                                profile?.avatar_url === opt.url ? "border-primary ring-2 ring-primary/30 scale-105" : "border-slate-200 dark:border-slate-700 opacity-75 hover:opacity-100"
+                                                            )}
+                                                            title={opt.name}
+                                                        >
+                                                            <img src={opt.url} className="w-full h-full object-cover" alt={opt.name} />
+                                                            {profile?.avatar_url === opt.url && (
+                                                                <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                                                                    <CheckCircle2 className="w-5 h-5 text-primary drop-shadow-sm" />
+                                                                </div>
+                                                            )}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </Card>
+
+                                    {/* Digital Signature Card */}
+                                    <Card className="border-slate-200/80 dark:border-slate-800/80 rounded-[2rem] p-6 sm:p-8 space-y-6 bg-white/80 dark:bg-slate-900/80 shadow-xs backdrop-blur-sm">
+                                        <div className="flex items-center gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+                                            <div className="p-2.5 bg-amber-50 dark:bg-amber-900/40 rounded-xl">
+                                                <FileSignature className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-xl font-black tracking-tight dark:text-slate-100">Digital Signature</h3>
+                                                <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Used for validating digital prescriptions</p>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-4">
+                                            <SignaturePad
+                                                initialSignature={profile?.signature_data}
+                                                onSave={(data) => setProfile(p => ({ ...p!, signature_data: data }))}
+                                            />
+                                            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center min-h-[120px]">
+                                                {profile?.signature_data ? (
+                                                    <div className="space-y-2 text-center w-full">
+                                                        <div className="relative group/sig mx-auto w-fit">
+                                                            <img src={profile.signature_data} className="max-h-16 mx-auto contrast-125 dark:invert" alt="Preview" />
+                                                            <div className="absolute -top-2 -right-2 opacity-0 group-hover/sig:opacity-100 transition-opacity">
+                                                                <Button
+                                                                    variant="destructive"
+                                                                    size="icon"
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        setProfile(p => ({ ...p!, signature_data: undefined }));
+                                                                    }}
+                                                                    className="h-7 w-7 rounded-full shadow-lg"
+                                                                    title="Delete Signature"
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                </Button>
+                                                            </div>
                                                         </div>
-                                                    )}
-                                                </button>
-                                            ))}
+                                                        <div className="flex flex-col items-center gap-0.5">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Live Signature Active</p>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setProfile(p => ({ ...p!, signature_data: undefined }))}
+                                                                className="text-[9px] font-bold text-red-500 hover:underline uppercase tracking-tighter"
+                                                            >
+                                                                Clear ❌
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-center space-y-1.5 opacity-30">
+                                                        <FileSignature className="w-8 h-8 mx-auto" />
+                                                        <p className="text-xs font-black uppercase tracking-widest">No signature saved</p>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                </div>
-                            </Card>
-
-                            {/* Clinic Branding Card */}
-                            <Card className="border-slate-200/80 dark:border-slate-800/80 rounded-[2rem] p-6 sm:p-8 space-y-6 bg-white/80 dark:bg-slate-900/80 shadow-xs backdrop-blur-sm">
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2.5 bg-emerald-50 dark:bg-emerald-900/40 rounded-xl">
-                                            <Building2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-xl font-black tracking-tight dark:text-slate-100">Clinic Branding</h3>
-                                            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Displayed across Prescriptions & TV Screen</p>
-                                        </div>
-                                    </div>
-                                    {isClinicOwner ? (
-                                        <Badge className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-[9px] uppercase font-black tracking-wider px-2.5 py-0.5 rounded-full">
-                                            Owner Control
-                                        </Badge>
-                                    ) : (
-                                        <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 border-none text-[9px] uppercase tracking-wider text-slate-500 gap-1 px-2.5 py-0.5 rounded-full">
-                                            <Lock className="w-3 h-3" /> Managed by Owner
-                                        </Badge>
-                                    )}
+                                    </Card>
                                 </div>
 
-                                {/* Clinic Photo Upload / Display Section */}
-                                <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center sm:items-start gap-4">
-                                    <div className="relative group/clinicphoto shrink-0">
-                                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex items-center justify-center">
-                                            {(profile?.clinic_photo || ownerProfile?.clinic_photo) ? (
-                                                <img
-                                                    src={profile?.clinic_photo || ownerProfile?.clinic_photo}
-                                                    alt="Clinic"
-                                                    className="w-full h-full object-cover"
-                                                />
+                                {/* Right Column: Clinic Information Card */}
+                                <div className="space-y-6">
+                                    <Card className="border-slate-200/80 dark:border-slate-800/80 rounded-[2rem] p-6 sm:p-8 space-y-6 bg-white/80 dark:bg-slate-900/80 shadow-xs backdrop-blur-sm">
+                                        <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2.5 bg-emerald-50 dark:bg-emerald-900/40 rounded-xl">
+                                                    <Building2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-xl font-black tracking-tight dark:text-slate-100">Clinic Information</h3>
+                                                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Registered clinic contact & location details</p>
+                                                </div>
+                                            </div>
+                                            {isClinicOwner ? (
+                                                <Badge className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-[9px] uppercase font-black tracking-wider px-2.5 py-0.5 rounded-full">
+                                                    Owner Control
+                                                </Badge>
                                             ) : (
-                                                <Building2 className="w-8 h-8 text-slate-400 dark:text-slate-500" />
+                                                <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 border-none text-[9px] uppercase tracking-wider text-slate-500 gap-1 px-2.5 py-0.5 rounded-full">
+                                                    <Lock className="w-3 h-3" /> Managed by Owner
+                                                </Badge>
                                             )}
                                         </div>
 
-                                        {isClinicOwner && (
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/clinicphoto:opacity-100 transition-opacity rounded-2xl flex items-center justify-center gap-1.5 p-1 backdrop-blur-xs">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => clinicFileInputRef.current?.click()}
-                                                    disabled={clinicUploading}
-                                                    className="p-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-transform hover:scale-110"
-                                                    title="Upload Clinic Photo"
-                                                >
-                                                    {clinicUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
-                                                </button>
-                                                {profile?.clinic_photo && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleDeleteClinicPhoto}
-                                                        disabled={clinicUploading}
-                                                        className="p-1.5 bg-red-500/50 hover:bg-red-500/70 text-white rounded-lg transition-transform hover:scale-110"
-                                                        title="Delete Clinic Photo"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <input
-                                        type="file"
-                                        ref={clinicFileInputRef}
-                                        onChange={handleClinicPhotoUpload}
-                                        className="hidden"
-                                        accept="image/*"
-                                    />
-
-                                    <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
-                                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                                            <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">Clinic Logo / Header Branding</h4>
-                                            {(profile?.clinic_photo || ownerProfile?.clinic_photo) && (
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">Active</span>
-                                            )}
-                                            <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200/80 dark:border-blue-800/80">
-                                                Recommended: 500 × 500 px (1:1) or 600 × 400 px (3:2)
-                                            </span>
-                                        </div>
-                                        <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
-                                            {isClinicOwner
-                                                ? "Official clinic logo placed right in front of your clinic name in all prescriptions, and shown on the Waiting Room TV screen. Any size uploaded is automatically scaled and fitted without distortion."
-                                                : "Displayed in the prescription header and Waiting Room TV screen. Managed by Clinic Owner."}
-                                        </p>
-                                        {isClinicOwner && (
-                                            <div className="pt-2 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    disabled={clinicUploading}
-                                                    onClick={() => clinicFileInputRef.current?.click()}
-                                                    className="rounded-xl h-8 px-3 text-xs font-bold gap-1.5 border-slate-200 dark:border-slate-700 shadow-2xs"
-                                                >
-                                                    {clinicUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                                                    {profile?.clinic_photo ? 'Change Logo' : 'Upload Logo'}
-                                                </Button>
-                                                {profile?.clinic_photo && (
-                                                    <>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => setImagePreviewUrl(profile?.clinic_photo || null)}
-                                                            className="rounded-xl h-8 px-2.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                                                        >
-                                                            <Eye className="w-3.5 h-3.5 mr-1" /> View
-                                                        </Button>
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            disabled={clinicUploading}
-                                                            onClick={handleDeleteClinicPhoto}
-                                                            className="rounded-xl h-8 px-2.5 text-xs font-bold gap-1 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900/50"
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" /> Remove
-                                                        </Button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Clinic Watermark Upload / Display Section */}
-                                <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center sm:items-start gap-4">
-                                    <div className="relative group/watermark shrink-0">
-                                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex items-center justify-center relative p-2">
-                                            {/* Subtle paper grid pattern behind watermark to show transparency */}
-                                            <div className="absolute inset-0 opacity-[0.04] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:8px_8px]" />
-                                            {(watermarkUrl || ownerProfile?.clinic_watermark) ? (
-                                                <img
-                                                    src={watermarkUrl || ownerProfile?.clinic_watermark}
-                                                    alt="Prescription Watermark"
-                                                    className="w-full h-full object-contain drop-shadow-xs"
-                                                />
-                                            ) : (
-                                                <div className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
-                                                    <Stamp className="w-8 h-8 opacity-60" />
+                                        <div className="space-y-4">
+                                            {!isClinicOwner && (
+                                                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2.5 text-xs font-bold text-amber-700 dark:text-amber-400">
+                                                    <Lock className="w-4 h-4 shrink-0 text-amber-500" />
+                                                    <span>Clinic details can only be modified by the registered Clinic Owner.</span>
                                                 </div>
                                             )}
-                                        </div>
-
-                                        {isClinicOwner && (
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/watermark:opacity-100 transition-opacity rounded-2xl flex items-center justify-center gap-1.5 p-1 backdrop-blur-xs">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => watermarkFileInputRef.current?.click()}
-                                                    disabled={watermarkUploading}
-                                                    className="p-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-transform hover:scale-110"
-                                                    title="Upload Watermark"
-                                                >
-                                                    {watermarkUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                                                </button>
-                                                {(watermarkUrl || ownerProfile?.clinic_watermark) && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleDeleteWatermark}
-                                                        disabled={watermarkUploading}
-                                                        className="p-1.5 bg-red-500/50 hover:bg-red-500/70 text-white rounded-lg transition-transform hover:scale-110"
-                                                        title="Delete Watermark"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <input
-                                        type="file"
-                                        ref={watermarkFileInputRef}
-                                        onChange={handleWatermarkUpload}
-                                        className="hidden"
-                                        accept="image/png,image/jpeg,image/webp"
-                                    />
-
-                                    <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
-                                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                                            <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                                                <Stamp className="w-4 h-4 text-primary" />
-                                                Prescription Watermark
-                                            </h4>
-                                            {(watermarkUrl || ownerProfile?.clinic_watermark) ? (
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">Active</span>
-                                            ) : (
-                                                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">None Set (Clean Sheet)</span>
-                                            )}
-                                            <span className="text-[10px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded-md border border-purple-200/80 dark:border-purple-800/80">
-                                                Recommended: 800 × 800 px • Transparent PNG
-                                            </span>
-                                        </div>
-                                        <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
-                                            {isClinicOwner
-                                                ? "Subtly watermarked in the center of all prescription pages for this clinic. Transparent PNG strongly recommended. If none is set, prescription sheets remain clean without background text."
-                                                : "Watermark applied to all prescriptions in this clinic. Managed by Clinic Owner."}
-                                        </p>
-                                        {isClinicOwner && (
-                                            <div className="pt-2 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    disabled={watermarkUploading}
-                                                    onClick={() => watermarkFileInputRef.current?.click()}
-                                                    className="rounded-xl h-8 px-3 text-xs font-bold gap-1.5 border-slate-200 dark:border-slate-700 shadow-2xs"
-                                                >
-                                                    {watermarkUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                                                    {(watermarkUrl || ownerProfile?.clinic_watermark) ? 'Change Watermark' : 'Upload Watermark'}
-                                                </Button>
-                                                {(watermarkUrl || ownerProfile?.clinic_watermark) && (
-                                                    <>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => setImagePreviewUrl(watermarkUrl || ownerProfile?.clinic_watermark || null)}
-                                                            className="rounded-xl h-8 px-2.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                                                        >
-                                                            <Eye className="w-3.5 h-3.5 mr-1" /> View
-                                                        </Button>
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            disabled={watermarkUploading}
-                                                            onClick={handleDeleteWatermark}
-                                                            className="rounded-xl h-8 px-2.5 text-xs font-bold gap-1 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900/50"
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" /> Remove
-                                                        </Button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Prescription Header Display Mode Selector */}
-                                <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 space-y-3">
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                                        <div>
-                                            <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">Prescription Header Style</h4>
-                                            <p className="text-xs text-slate-400 dark:text-slate-500">Clinic Name is always displayed. Choose whether to show the clinic logo alongside it.</p>
-                                        </div>
-                                        {!isClinicOwner && (
-                                            <Badge variant="outline" className="text-[9px] uppercase tracking-wider text-slate-500 gap-1 w-fit">
-                                                <Lock className="w-3 h-3" /> Managed by Owner
-                                            </Badge>
-                                        )}
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                                        {[
-                                            {
-                                                id: 'both',
-                                                label: 'Logo & Clinic Name (Standard)',
-                                                desc: 'Dedicated logo slot placed right before your clinic name',
-                                                icon: Sliders
-                                            },
-                                            {
-                                                id: 'name',
-                                                label: 'Clinic Name Only',
-                                                desc: 'Displays clinic name typography without header logo',
-                                                icon: Building2
-                                            }
-                                        ].map((opt) => {
-                                            const isSelected = ((headerMode || 'both') === opt.id) || (opt.id === 'both' && headerMode === 'logo');
-                                            return (
-                                                <button
-                                                    key={opt.id}
-                                                    type="button"
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Clinic Name</Label>
+                                                    {!isClinicOwner && <Lock className="w-3 h-3 text-slate-400" />}
+                                                </div>
+                                                <Input
+                                                    value={(isClinicOwner ? profile?.clinic_name : ownerProfile?.clinic_name) || ''}
+                                                    onChange={isClinicOwner ? e => setProfile(p => ({ ...p!, clinic_name: e.target.value })) : undefined}
+                                                    placeholder="e.g. GV Clinic"
+                                                    className={cn(
+                                                        "h-11 border-slate-200 dark:border-slate-800 rounded-xl px-4 font-bold text-sm",
+                                                        isClinicOwner ? "bg-white dark:bg-slate-800" : "bg-slate-100/70 dark:bg-slate-800/40 text-slate-500 cursor-not-allowed select-none"
+                                                    )}
+                                                    readOnly={!isClinicOwner}
                                                     disabled={!isClinicOwner}
-                                                    onClick={() => handleHeaderModeChange(opt.id as any)}
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Contact Number</Label>
+                                                    {!isClinicOwner && <Lock className="w-3 h-3 text-slate-400" />}
+                                                </div>
+                                                <Input
+                                                    value={(isClinicOwner ? profile?.clinic_phone : ownerProfile?.clinic_phone) || ''}
+                                                    onChange={isClinicOwner ? e => setProfile(p => ({ ...p!, clinic_phone: e.target.value })) : undefined}
+                                                    placeholder="+91 00000 00000"
                                                     className={cn(
-                                                        "relative p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5",
-                                                        isSelected
-                                                            ? "bg-white dark:bg-slate-800 border-primary ring-2 ring-primary/20 shadow-xs"
-                                                            : "bg-white/60 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600",
-                                                        !isClinicOwner && "cursor-not-allowed opacity-80"
+                                                        "h-11 border-slate-200 dark:border-slate-800 rounded-xl px-4 font-bold text-sm",
+                                                        isClinicOwner ? "bg-white dark:bg-slate-800" : "bg-slate-100/70 dark:bg-slate-800/40 text-slate-500 cursor-not-allowed select-none"
                                                     )}
-                                                >
-                                                    <div className="flex items-center justify-between w-full">
-                                                        <div className="flex items-center gap-2">
-                                                            <opt.icon className={cn("w-4 h-4", isSelected ? "text-primary font-bold" : "text-slate-400")} />
-                                                            <span className={cn("text-xs font-bold", isSelected ? "text-slate-900 dark:text-slate-100" : "text-slate-600 dark:text-slate-400")}>
-                                                                {opt.label}
-                                                            </span>
-                                                        </div>
-                                                        {isSelected && (
-                                                            <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                                                        )}
-                                                    </div>
-                                                    <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-snug">
-                                                        {opt.desc}
-                                                    </p>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4">
-                                    {!isClinicOwner && (
-                                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2.5 text-xs font-bold text-amber-700 dark:text-amber-400">
-                                            <Lock className="w-4 h-4 shrink-0 text-amber-500" />
-                                            <span>Clinic branding can only be modified by the registered Clinic Owner.</span>
-                                        </div>
-                                    )}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center justify-between">
-                                                <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Clinic Name</Label>
-                                                {!isClinicOwner && <Lock className="w-3 h-3 text-slate-400" />}
+                                                    readOnly={!isClinicOwner}
+                                                    disabled={!isClinicOwner}
+                                                />
                                             </div>
-                                            <Input
-                                                value={(isClinicOwner ? profile?.clinic_name : ownerProfile?.clinic_name) || ''}
-                                                onChange={isClinicOwner ? e => setProfile(p => ({ ...p!, clinic_name: e.target.value })) : undefined}
-                                                placeholder="e.g. GV Clinic"
-                                                className={cn(
-                                                    "h-11 border-slate-200 dark:border-slate-800 rounded-xl px-4 font-bold text-sm",
-                                                    isClinicOwner ? "bg-white dark:bg-slate-800" : "bg-slate-100/70 dark:bg-slate-800/40 text-slate-500 cursor-not-allowed select-none"
-                                                )}
-                                                readOnly={!isClinicOwner}
-                                                disabled={!isClinicOwner}
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center justify-between">
-                                                <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Contact Number</Label>
-                                                {!isClinicOwner && <Lock className="w-3 h-3 text-slate-400" />}
-                                            </div>
-                                            <Input
-                                                value={(isClinicOwner ? profile?.clinic_phone : ownerProfile?.clinic_phone) || ''}
-                                                onChange={isClinicOwner ? e => setProfile(p => ({ ...p!, clinic_phone: e.target.value })) : undefined}
-                                                placeholder="+91 00000 00000"
-                                                className={cn(
-                                                    "h-11 border-slate-200 dark:border-slate-800 rounded-xl px-4 font-bold text-sm",
-                                                    isClinicOwner ? "bg-white dark:bg-slate-800" : "bg-slate-100/70 dark:bg-slate-800/40 text-slate-500 cursor-not-allowed select-none"
-                                                )}
-                                                readOnly={!isClinicOwner}
-                                                disabled={!isClinicOwner}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <div className="flex items-center justify-between">
-                                            <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Full Address</Label>
-                                            {!isClinicOwner && <Lock className="w-3 h-3 text-slate-400" />}
-                                        </div>
-                                        <Input
-                                            value={(isClinicOwner ? profile?.clinic_address : ownerProfile?.clinic_address) || ''}
-                                            onChange={isClinicOwner ? e => setProfile(p => ({ ...p!, clinic_address: e.target.value })) : undefined}
-                                            placeholder="Complete street address with pincode"
-                                            className={cn(
-                                                "h-11 border-slate-200 dark:border-slate-800 rounded-xl px-4 font-bold text-sm",
-                                                isClinicOwner ? "bg-white dark:bg-slate-800" : "bg-slate-100/70 dark:bg-slate-800/40 text-slate-500 cursor-not-allowed select-none"
-                                            )}
-                                            readOnly={!isClinicOwner}
-                                            disabled={!isClinicOwner}
-                                        />
-                                    </div>
-                                </div>
-                            </Card>
-
-                            {/* Digital Signature Card */}
-                            <Card className="border-slate-200/80 dark:border-slate-800/80 rounded-[2rem] p-6 sm:p-8 space-y-6 bg-white/80 dark:bg-slate-900/80 shadow-xs backdrop-blur-sm lg:col-span-2">
-                                <div className="flex items-center gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
-                                    <div className="p-2.5 bg-amber-50 dark:bg-amber-900/40 rounded-xl">
-                                        <FileSignature className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xl font-black tracking-tight dark:text-slate-100">Digital Signature</h3>
-                                        <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Used for validating digital prescriptions</p>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 items-center">
-                                    <SignaturePad
-                                        initialSignature={profile?.signature_data}
-                                        onSave={(data) => setProfile(p => ({ ...p!, signature_data: data }))}
-                                    />
-                                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-6 border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center min-h-[140px]">
-                                        {profile?.signature_data ? (
-                                            <div className="space-y-3 text-center w-full">
-                                                <div className="relative group/sig mx-auto w-fit">
-                                                    <img src={profile.signature_data} className="max-h-20 mx-auto contrast-125 dark:invert" alt="Preview" />
-                                                    <div className="absolute -top-2 -right-2 opacity-0 group-hover/sig:opacity-100 transition-opacity">
-                                                        <Button
-                                                            variant="destructive"
-                                                            size="icon"
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                setProfile(p => ({ ...p!, signature_data: undefined }));
-                                                            }}
-                                                            className="h-7 w-7 rounded-full shadow-lg"
-                                                            title="Delete Signature"
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </Button>
-                                                    </div>
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Full Address</Label>
+                                                    {!isClinicOwner && <Lock className="w-3 h-3 text-slate-400" />}
                                                 </div>
-                                                <div className="flex flex-col items-center gap-0.5">
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Live Signature Active</p>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setProfile(p => ({ ...p!, signature_data: undefined }))}
-                                                        className="text-[9px] font-bold text-red-500 hover:underline uppercase tracking-tighter"
-                                                    >
-                                                        Clear ❌
-                                                    </button>
-                                                </div>
+                                                <Input
+                                                    value={(isClinicOwner ? profile?.clinic_address : ownerProfile?.clinic_address) || ''}
+                                                    onChange={isClinicOwner ? e => setProfile(p => ({ ...p!, clinic_address: e.target.value })) : undefined}
+                                                    placeholder="Complete street address with pincode"
+                                                    className={cn(
+                                                        "h-11 border-slate-200 dark:border-slate-800 rounded-xl px-4 font-bold text-sm",
+                                                        isClinicOwner ? "bg-white dark:bg-slate-800" : "bg-slate-100/70 dark:bg-slate-800/40 text-slate-500 cursor-not-allowed select-none"
+                                                    )}
+                                                    readOnly={!isClinicOwner}
+                                                    disabled={!isClinicOwner}
+                                                />
                                             </div>
-                                        ) : (
-                                            <div className="text-center space-y-1.5 opacity-30">
-                                                <FileSignature className="w-10 h-10 mx-auto" />
-                                                <p className="text-xs font-black uppercase tracking-widest">No signature saved</p>
-                                            </div>
-                                        )}
-                                    </div>
+                                        </div>
+
+                                        <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 flex items-start gap-3">
+                                            <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                                            <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed font-medium">
+                                                Prescription logo, watermark, header style, and tagline are managed under the <button type="button" onClick={() => setSettingsSection('template')} className="font-bold underline hover:text-blue-900 dark:hover:text-white">Prescription Template</button> tab.
+                                            </p>
+                                        </div>
+                                    </Card>
                                 </div>
-                            </Card>
-                        </div>
+                            </div>
+                        )}
 
                         <div className="flex items-center justify-end pt-4">
                             <Button

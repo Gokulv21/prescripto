@@ -72,6 +72,7 @@ interface PrescriptionTemplateProps {
     clinicPhone?: string;
     clinicLogo?: string;
     clinicWatermark?: string;
+    clinicCaption?: string | null;
     headerMode?: 'name' | 'logo' | 'both';
     hideBranding?: boolean;
 }
@@ -89,6 +90,7 @@ const PrescriptionTemplate = React.memo(({
     clinicName, clinicAddress, clinicPhone,
     clinicLogo: propClinicLogo,
     clinicWatermark: propClinicWatermark,
+    clinicCaption: propClinicCaption,
     headerMode: propHeaderMode,
     hideBranding = false
 }: PrescriptionTemplateProps) => {
@@ -98,6 +100,7 @@ const PrescriptionTemplate = React.memo(({
     const [ownerProfile, setOwnerProfile] = useState<any>(null);
     const [watermarkUrl, setWatermarkUrl] = useState<string | null>(propClinicWatermark || null);
     const [clinicLogoUrl, setClinicLogoUrl] = useState<string | null>(propClinicLogo || null);
+    const [clinicCaption, setClinicCaption] = useState<string | null>(propClinicCaption ?? null);
     const [headerMode, setHeaderMode] = useState<'name' | 'logo' | 'both'>(propHeaderMode || 'name');
 
     useEffect(() => {
@@ -129,6 +132,10 @@ const PrescriptionTemplate = React.memo(({
                         if (cachedWm && !propClinicWatermark) {
                             setWatermarkUrl(cachedWm);
                         }
+                        const cachedCaption = localStorage.getItem(`prescripto_clinic_caption_${clinicData.id}`);
+                        if (cachedCaption !== null && propClinicCaption === undefined) {
+                            setClinicCaption(cachedCaption);
+                        }
 
                         // Fetch owner bio if available
                         if (clinicData.owner_id) {
@@ -148,6 +155,9 @@ const PrescriptionTemplate = React.memo(({
                                     }
                                     if (parsed.clinic_photo && !propClinicLogo) {
                                         setClinicLogoUrl(parsed.clinic_photo);
+                                    }
+                                    if (parsed.clinic_caption !== undefined && propClinicCaption === undefined && cachedCaption === null) {
+                                        setClinicCaption(parsed.clinic_caption);
                                     }
                                 }
                             } catch (e) {}
@@ -371,6 +381,7 @@ Follow the instructions carefully.
                             clinicAddress={clinicAddress || ownerProfile?.clinic_address}
                             clinicPhone={clinicPhone || ownerProfile?.clinic_phone}
                             clinicLogoUrl={clinicLogoUrl}
+                            clinicCaption={clinicCaption}
                             headerMode={headerMode}
                             hideBranding={hideBranding}
                         />
@@ -482,6 +493,7 @@ interface PageOneProps {
     clinicAddress?: string;
     clinicPhone?: string;
     clinicLogoUrl?: string | null;
+    clinicCaption?: string | null;
     headerMode?: 'name' | 'logo' | 'both';
     hideBranding?: boolean;
 }
@@ -493,6 +505,7 @@ function PageOne({
     doctorName, doctorQualifications, doctorRegId,
     clinicName, clinicAddress, clinicPhone,
     clinicLogoUrl,
+    clinicCaption,
     headerMode = 'name',
     hideBranding = false
 }: PageOneProps) {
@@ -593,9 +606,11 @@ function PageOne({
                             <div style={{ fontWeight: 900, color: '#7d326cff', fontSize: '3.2em', letterSpacing: '0.04em', lineHeight: 1, textAlign: 'right' }}>
                                 {dispClinicName}
                             </div>
-                            <div style={{ color: '#475569', fontSize: '0.8em', marginTop: '0.4em', letterSpacing: '0.2em', fontWeight: 800, textAlign: 'right' }}>
-                                24/7 Emergency · ECG · Lab
-                            </div>
+                            {(clinicCaption !== null && clinicCaption !== undefined ? clinicCaption : (ownerProfile?.clinic_caption ?? '24/7 Emergency · ECG · Lab')) ? (
+                                <div style={{ color: '#475569', fontSize: '0.8em', marginTop: '0.4em', letterSpacing: '0.15em', fontWeight: 800, textAlign: 'right' }}>
+                                    {clinicCaption !== null && clinicCaption !== undefined ? clinicCaption : (ownerProfile?.clinic_caption ?? '24/7 Emergency · ECG · Lab')}
+                                </div>
+                            ) : null}
                             <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.2em', letterSpacing: '0.02em', fontWeight: 500, textAlign: 'right' }}>
                                 {dispClinicAddress}
                             </div>
