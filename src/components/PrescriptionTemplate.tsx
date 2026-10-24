@@ -413,8 +413,7 @@ Follow the instructions carefully.
                                     maxHeight: '65%',
                                     objectFit: 'contain',
                                     opacity: 0.08,
-                                    filter: 'grayscale(60%)',
-                                    transform: 'rotate(-12deg)',
+                                    filter: 'grayscale(40%)',
                                     pointerEvents: 'none',
                                     WebkitPrintColorAdjust: 'exact',
                                     printColorAdjust: 'exact',
@@ -564,48 +563,45 @@ function PageOne({
                             </div>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
-                        {headerMode === 'logo' && clinicLogoUrl ? (
-                            <img
-                                src={clinicLogoUrl}
-                                alt={dispClinicName || 'Clinic Logo'}
-                                style={{
-                                    maxHeight: '4.5em',
-                                    maxWidth: '14em',
-                                    objectFit: 'contain',
-                                    marginBottom: '0.25em',
-                                    display: 'block'
-                                }}
-                            />
-                        ) : headerMode === 'both' && clinicLogoUrl ? (
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.6em', marginBottom: '0.2em' }}>
+                    {/* RIGHT — Clinic Branding & Info (Clinic Name is ALWAYS ON; Dedicated slot for Logo before Name) */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '1.2em' }}>
+                        {clinicLogoUrl && headerMode !== 'name' && (
+                            <div style={{
+                                height: '5.2em',
+                                maxWidth: '7em',
+                                minWidth: '4.2em',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0
+                            }}>
                                 <img
                                     src={clinicLogoUrl}
                                     alt={dispClinicName || 'Clinic Logo'}
                                     style={{
-                                        maxHeight: '3.2em',
-                                        maxWidth: '5.5em',
+                                        maxHeight: '100%',
+                                        maxWidth: '100%',
+                                        width: 'auto',
+                                        height: 'auto',
                                         objectFit: 'contain',
                                         display: 'block'
                                     }}
                                 />
-                                <div style={{ fontWeight: 900, color: '#7d326cff', fontSize: '2.5em', letterSpacing: '0.03em', lineHeight: 1 }}>
-                                    {dispClinicName}
-                                </div>
-                            </div>
-                        ) : (
-                            <div style={{ fontWeight: 900, color: '#7d326cff', fontSize: '3.2em', letterSpacing: '0.04em', lineHeight: 1 }}>
-                                {dispClinicName}
                             </div>
                         )}
-                        <div style={{ color: '#475569', fontSize: '0.8em', marginTop: (headerMode === 'logo' && clinicLogoUrl) ? '0.1em' : '0.4em', letterSpacing: '0.2em', fontWeight: 800 }}>
-                            24/7 Emergency · ECG · Lab
-                        </div>
-                        <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.2em', letterSpacing: '0.02em', fontWeight: 500 }}>
-                            {dispClinicAddress}
-                        </div>
-                        <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.2em', letterSpacing: '0.02em', fontWeight: 500, textAlign: 'right' }}>
-                            {dispClinicPhone}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
+                            <div style={{ fontWeight: 900, color: '#7d326cff', fontSize: '3.2em', letterSpacing: '0.04em', lineHeight: 1, textAlign: 'right' }}>
+                                {dispClinicName}
+                            </div>
+                            <div style={{ color: '#475569', fontSize: '0.8em', marginTop: '0.4em', letterSpacing: '0.2em', fontWeight: 800, textAlign: 'right' }}>
+                                24/7 Emergency · ECG · Lab
+                            </div>
+                            <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.2em', letterSpacing: '0.02em', fontWeight: 500, textAlign: 'right' }}>
+                                {dispClinicAddress}
+                            </div>
+                            <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.2em', letterSpacing: '0.02em', fontWeight: 500, textAlign: 'right' }}>
+                                {dispClinicPhone}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -715,19 +711,7 @@ function PageOne({
                             )}
                         </div>
                     )}
-                    {/* Watermark */}
-                    {!hideBranding && (
-                        <div style={{
-                            position: 'absolute', top: '50%', left: '50%',
-                            transform: 'translate(-50%, -50%) rotate(-45deg)',
-                            fontSize: '10cqw', fontWeight: 900, color: '#f8fafc',
-                            pointerEvents: 'none', zIndex: 5,
-                            whiteSpace: 'nowrap', textTransform: 'uppercase',
-                            letterSpacing: '0.2em'
-                        }}>
-                            GV CLINIC
-                        </div>
-                    )}
+                    {/* Prescription background is clean unless uploaded watermark exists */}
 
                     {/* Writing Grid */}
                     <div className="no-print" style={{ position: 'absolute', top: '5em', left: '1.5em', right: '1.5em', bottom: 0, backgroundImage: 'radial-gradient(circle, #cbd5e1 0.8px, transparent 0.8px)', backgroundSize: '1.8em 1.8em', pointerEvents: 'none', zIndex: 0, opacity: 0.4 }} />

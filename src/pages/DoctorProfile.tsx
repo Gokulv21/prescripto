@@ -69,9 +69,18 @@ const getAvatarUrl = (url?: string | null) => {
     return `/prescripto/${clean.replace(/^\//, '')}`;
 };
 
-// Converts image file to a compressed binary JPEG Blob for direct Supabase Storage upload
-const fileToOptimizedBlob = (file: File, maxWidth = 1200, quality = 0.85): Promise<Blob> => {
+// Converts image file to an optimized binary Blob preserving PNG transparency
+const fileToOptimizedBlob = (
+    file: File,
+    maxWidth = 1200,
+    quality = 0.88
+): Promise<{ blob: Blob; mime: string; ext: string }> => {
     return new Promise((resolve, reject) => {
+        const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
+        const isWebp = file.type === 'image/webp' || file.name.toLowerCase().endsWith('.webp');
+        const targetMime = isPng ? 'image/png' : isWebp ? 'image/webp' : 'image/jpeg';
+        const targetExt = isPng ? 'png' : isWebp ? 'webp' : 'jpg';
+
         const reader = new FileReader();
         reader.onload = (e) => {
             const img = new Image();
@@ -87,20 +96,20 @@ const fileToOptimizedBlob = (file: File, maxWidth = 1200, quality = 0.85): Promi
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 if (!ctx) {
-                    resolve(file);
+                    resolve({ blob: file, mime: file.type || targetMime, ext: targetExt });
                     return;
                 }
                 ctx.drawImage(img, 0, 0, width, height);
                 canvas.toBlob(
                     (blob) => {
-                        if (blob) resolve(blob);
-                        else resolve(file);
+                        if (blob) resolve({ blob, mime: targetMime, ext: targetExt });
+                        else resolve({ blob: file, mime: file.type || targetMime, ext: targetExt });
                     },
-                    'image/jpeg',
-                    quality
+                    targetMime,
+                    targetMime === 'image/png' ? undefined : quality
                 );
             };
-            img.onerror = () => resolve(file);
+            img.onerror = () => resolve({ blob: file, mime: file.type || targetMime, ext: targetExt });
             img.src = e.target?.result as string;
         };
         reader.onerror = () => reject(new Error('Failed to read image file'));
@@ -508,40 +517,55 @@ export default function DoctorProfile() {
 
         setClinicUploading(true);
         try {
-            // 1. Client-side compress to clean JPEG Blob (< 500KB, valid MIME)
-            const compressedBlob = await fileToOptimizedBlob(file, 1200, 0.85);
+            // 1. Client-side compress / optimize image while preserving PNG transparency
+            const { blob, mime, ext } = await fileToOptimizedBlob(file, 1200, 0.9);
 
-            // 2. Upload directly to Supabase Storage bucket 'avatars' with clinic ID prefix for RLS compliance
-            const filePath = `${clinic.id}/clinic-branding.jpg`;
+            // 2. Clear previous clinic-branding files from storage to prevent stale collisions
+            try {
+                const { data: list } = await supabase.storage.from('avatars').list(clinic.id);
+                const oldBrandFiles = list?.filter(f => f.name.startsWith('clinic-branding')) || [];
+                if (oldBrandFiles.length > 0) {
+                    await supabase.storage.from('avatars').remove(oldBrandFiles.map(f => `${clinic.id}/${f.name}`));
+                }
+            } catch (cleanupErr) {
+                console.warn('Old branding cleanup warning:', cleanupErr);
+            }
+
+            // 3. Upload directly to Supabase Storage bucket 'avatars' with clinic ID prefix for RLS compliance
+            const filePath = `${clinic.id}/clinic-branding.${ext}`;
             const { error: uploadError } = await supabase.storage
                 .from('avatars')
-                .upload(filePath, compressedBlob, {
-                    contentType: 'image/jpeg',
+                .upload(filePath, blob, {
+                    contentType: mime,
                     upsert: true
                 });
 
             if (uploadError) throw uploadError;
 
-            // 3. Obtain public URL from Supabase Storage
+            // 4. Obtain public URL from Supabase Storage
             const { data: { publicUrl } } = supabase.storage
                 .from('avatars')
                 .getPublicUrl(filePath);
 
             const finalUrl = `${publicUrl}?t=${Date.now()}`;
 
-            // 4. Save metadata reference in profiles.bio as clean JSON
+            // 5. Save metadata reference in profiles.bio as clean JSON
             try {
-                const meta = { clinic_photo: finalUrl };
-                await supabase.from('profiles').update({ bio: JSON.stringify(meta) }).eq('user_id', user.id);
+                let currentMeta: any = {};
+                if (profile?.bio) {
+                    try { currentMeta = JSON.parse(profile.bio); } catch (e) {}
+                }
+                const updatedMeta = { ...currentMeta, clinic_photo: finalUrl };
+                await supabase.from('profiles').update({ bio: JSON.stringify(updatedMeta) }).eq('user_id', user.id);
             } catch (bioErr) {
                 console.warn('Bio update warning:', bioErr);
             }
 
-            // 5. Update local state so it displays immediately
+            // 6. Update local state so it displays immediately
             setProfile(prev => prev ? { ...prev, clinic_photo: finalUrl } : null);
             setOwnerProfile(prev => prev ? { ...prev, clinic_photo: finalUrl } : null);
 
-            toast.success('Clinic photo stored in Supabase Storage successfully');
+            toast.success('Clinic logo stored in Supabase Storage successfully');
             refreshAuth().catch(() => {});
         } catch (err: any) {
             console.error(err);
@@ -564,11 +588,22 @@ export default function DoctorProfile() {
 
         setClinicUploading(true);
         try {
-            // 1. Remove from Supabase Storage avatars bucket
-            await supabase.storage.from('avatars').remove([`${clinic.id}/clinic-branding.jpg`]);
+            // 1. Remove all clinic-branding files from Supabase Storage avatars bucket
+            const { data: list } = await supabase.storage.from('avatars').list(clinic.id);
+            const oldBrandFiles = list?.filter(f => f.name.startsWith('clinic-branding')) || [];
+            if (oldBrandFiles.length > 0) {
+                await supabase.storage.from('avatars').remove(oldBrandFiles.map(f => `${clinic.id}/${f.name}`));
+            }
 
-            // 2. Clear metadata in profiles.bio
-            await supabase.from('profiles').update({ bio: null }).eq('user_id', user?.id);
+            // 2. Clear clinic_photo metadata in profiles.bio
+            try {
+                let currentMeta: any = {};
+                if (profile?.bio) {
+                    try { currentMeta = JSON.parse(profile.bio); } catch (e) {}
+                }
+                delete currentMeta.clinic_photo;
+                await supabase.from('profiles').update({ bio: JSON.stringify(currentMeta) }).eq('user_id', user?.id);
+            } catch (e) {}
 
             // 3. Update local state
             setProfile(prev => prev ? { ...prev, clinic_photo: undefined } : null);
@@ -602,22 +637,26 @@ export default function DoctorProfile() {
 
         setWatermarkUploading(true);
         try {
-            // Keep PNG as PNG to preserve transparent alpha channel for watermark!
-            let uploadBlob: Blob = file;
-            let ext = file.name.split('.').pop()?.toLowerCase() || 'png';
-            if (ext !== 'png' && ext !== 'jpg' && ext !== 'jpeg' && ext !== 'webp') {
-                ext = 'png';
-            }
-            if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
-                uploadBlob = await fileToOptimizedBlob(file, 1600, 0.9);
-                ext = 'jpg';
+            // 1. Optimize image (preserving PNG transparency for watermark!)
+            const { blob, mime, ext } = await fileToOptimizedBlob(file, 1600, 0.9);
+
+            // 2. Clear previous watermark files from storage to prevent collisions
+            try {
+                const { data: list } = await supabase.storage.from('avatars').list(clinic.id);
+                const oldWmFiles = list?.filter(f => f.name.startsWith('clinic-watermark')) || [];
+                if (oldWmFiles.length > 0) {
+                    await supabase.storage.from('avatars').remove(oldWmFiles.map(f => `${clinic.id}/${f.name}`));
+                }
+            } catch (cleanupErr) {
+                console.warn('Old watermark cleanup warning:', cleanupErr);
             }
 
+            // 3. Upload to Supabase Storage
             const filePath = `${clinic.id}/clinic-watermark.${ext}`;
             const { error: uploadError } = await supabase.storage
                 .from('avatars')
-                .upload(filePath, uploadBlob, {
-                    contentType: file.type || 'image/png',
+                .upload(filePath, blob, {
+                    contentType: mime,
                     upsert: true
                 });
 
@@ -629,7 +668,7 @@ export default function DoctorProfile() {
 
             const finalUrl = `${publicUrl}?t=${Date.now()}`;
 
-            // Save in profiles.bio JSON
+            // 4. Save in profiles.bio JSON
             try {
                 let currentMeta: any = {};
                 if (profile?.bio) {
@@ -1740,16 +1779,19 @@ export default function DoctorProfile() {
                                     />
 
                                     <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
-                                        <div className="flex items-center justify-center sm:justify-start gap-2">
-                                            <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">Clinic Display Photo</h4>
+                                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                                            <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">Clinic Logo / Header Branding</h4>
                                             {(profile?.clinic_photo || ownerProfile?.clinic_photo) && (
                                                 <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">Active</span>
                                             )}
+                                            <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200/80 dark:border-blue-800/80">
+                                                Recommended: 500 × 500 px (1:1) or 600 × 400 px (3:2)
+                                            </span>
                                         </div>
                                         <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
                                             {isClinicOwner
-                                                ? "Featured on Waiting Room TV screen & digital branding."
-                                                : "Displayed on the Waiting Room TV screen. Managed by Clinic Owner."}
+                                                ? "Official clinic logo placed right in front of your clinic name in all prescriptions, and shown on the Waiting Room TV screen. Any size uploaded is automatically scaled and fitted without distortion."
+                                                : "Displayed in the prescription header and Waiting Room TV screen. Managed by Clinic Owner."}
                                         </p>
                                         {isClinicOwner && (
                                             <div className="pt-2 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
@@ -1762,7 +1804,7 @@ export default function DoctorProfile() {
                                                     className="rounded-xl h-8 px-3 text-xs font-bold gap-1.5 border-slate-200 dark:border-slate-700 shadow-2xs"
                                                 >
                                                     {clinicUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                                                    {profile?.clinic_photo ? 'Change Photo' : 'Upload Photo'}
+                                                    {profile?.clinic_photo ? 'Change Logo' : 'Upload Logo'}
                                                 </Button>
                                                 {profile?.clinic_photo && (
                                                     <>
@@ -1846,7 +1888,7 @@ export default function DoctorProfile() {
                                     />
 
                                     <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
-                                        <div className="flex items-center justify-center sm:justify-start gap-2">
+                                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                                             <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                                                 <Stamp className="w-4 h-4 text-primary" />
                                                 Prescription Watermark
@@ -1854,12 +1896,15 @@ export default function DoctorProfile() {
                                             {(watermarkUrl || ownerProfile?.clinic_watermark) ? (
                                                 <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">Active</span>
                                             ) : (
-                                                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">None Set</span>
+                                                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">None Set (Clean Sheet)</span>
                                             )}
+                                            <span className="text-[10px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded-md border border-purple-200/80 dark:border-purple-800/80">
+                                                Recommended: 800 × 800 px • Transparent PNG
+                                            </span>
                                         </div>
                                         <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
                                             {isClinicOwner
-                                                ? "Subtly watermarked across all prescription pages (past & new) for this clinic. Transparent PNG recommended."
+                                                ? "Subtly watermarked in the center of all prescription pages for this clinic. Transparent PNG strongly recommended. If none is set, prescription sheets remain clean without background text."
                                                 : "Watermark applied to all prescriptions in this clinic. Managed by Clinic Owner."}
                                         </p>
                                         {isClinicOwner && (
@@ -1908,7 +1953,7 @@ export default function DoctorProfile() {
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                                         <div>
                                             <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">Prescription Header Style</h4>
-                                            <p className="text-xs text-slate-400 dark:text-slate-500">Choose what displays in the top right header of prescriptions</p>
+                                            <p className="text-xs text-slate-400 dark:text-slate-500">Clinic Name is always displayed. Choose whether to show the clinic logo alongside it.</p>
                                         </div>
                                         {!isClinicOwner && (
                                             <Badge variant="outline" className="text-[9px] uppercase tracking-wider text-slate-500 gap-1 w-fit">
@@ -1917,28 +1962,22 @@ export default function DoctorProfile() {
                                         )}
                                     </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                                         {[
                                             {
-                                                id: 'name',
-                                                label: 'Clinic Name (Text)',
-                                                desc: 'Displays the clinic name in large typography',
-                                                icon: Building2
-                                            },
-                                            {
-                                                id: 'logo',
-                                                label: 'Clinic Logo',
-                                                desc: 'Displays your uploaded clinic display photo',
-                                                icon: Camera
-                                            },
-                                            {
                                                 id: 'both',
-                                                label: 'Both (Logo & Name)',
-                                                desc: 'Displays logo and name side-by-side',
+                                                label: 'Logo & Clinic Name (Standard)',
+                                                desc: 'Dedicated logo slot placed right before your clinic name',
                                                 icon: Sliders
+                                            },
+                                            {
+                                                id: 'name',
+                                                label: 'Clinic Name Only',
+                                                desc: 'Displays clinic name typography without header logo',
+                                                icon: Building2
                                             }
                                         ].map((opt) => {
-                                            const isSelected = (headerMode || 'name') === opt.id;
+                                            const isSelected = ((headerMode || 'both') === opt.id) || (opt.id === 'both' && headerMode === 'logo');
                                             return (
                                                 <button
                                                     key={opt.id}
