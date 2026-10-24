@@ -10,7 +10,7 @@ import {
     Medal, FileSignature, Save, RefreshCw, Plus, Stethoscope, Printer,
     ArrowRight, CheckCircle2, Circle, PanelLeft, LayoutDashboard,
     Group, Info, Moon, Sun, HeartPulse, TrendingUp, Search, UserPlus, Camera, Trash2, Eye, X, Pencil, ChevronDown,
-    Lock, Building2, Upload, Palette, Sparkles, Check, Pipette, Sliders
+    Lock, Building2, Upload, Palette, Sparkles, Check, Pipette, Sliders, Stamp
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { startOfDay, endOfDay, subDays, format, isSameDay, parseISO } from 'date-fns';
@@ -172,9 +172,13 @@ export default function DoctorProfile() {
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [clinicUploading, setClinicUploading] = useState(false);
+    const [watermarkUrl, setWatermarkUrl] = useState<string | null>(null);
+    const [watermarkUploading, setWatermarkUploading] = useState(false);
+    const [headerMode, setHeaderMode] = useState<'name' | 'logo' | 'both'>('name');
     const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const clinicFileInputRef = useRef<HTMLInputElement>(null);
+    const watermarkFileInputRef = useRef<HTMLInputElement>(null);
 
     // Stats & Analytics State
     const [stats, setStats] = useState({
@@ -215,22 +219,38 @@ export default function DoctorProfile() {
                 });
             }
 
-            // Fetch Clinic branding from Supabase Storage avatars bucket & profile metadata
+            // Fetch Clinic branding & Watermark from Supabase Storage avatars bucket & profile metadata
             let clinicPhotoUrl = '';
+            let clinicWatermarkUrl = '';
+            let clinicHeaderMode: 'name' | 'logo' | 'both' = 'name';
+
             if (profData?.bio) {
                 try {
                     const parsed = JSON.parse(profData.bio);
                     if (parsed?.clinic_photo) clinicPhotoUrl = parsed.clinic_photo;
+                    if (parsed?.clinic_watermark) clinicWatermarkUrl = parsed.clinic_watermark;
+                    if (parsed?.prescription_header_mode) clinicHeaderMode = parsed.prescription_header_mode;
                 } catch (e) {}
             }
 
             if (clinic?.id) {
+                // Check localStorage cache for instant responsiveness
+                const cachedMode = localStorage.getItem(`prescripto_clinic_header_mode_${clinic.id}`);
+                if (cachedMode && ['name', 'logo', 'both'].includes(cachedMode)) {
+                    clinicHeaderMode = cachedMode as any;
+                }
+
                 try {
                     const { data: list } = await supabase.storage.from('avatars').list(clinic.id);
                     const brandingFile = list?.find(f => f.name.startsWith('clinic-branding'));
                     if (brandingFile) {
                         const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(`${clinic.id}/${brandingFile.name}`);
                         clinicPhotoUrl = `${publicUrl}?t=${new Date(brandingFile.updated_at || Date.now()).getTime()}`;
+                    }
+                    const watermarkFile = list?.find(f => f.name.startsWith('clinic-watermark'));
+                    if (watermarkFile) {
+                        const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(`${clinic.id}/${watermarkFile.name}`);
+                        clinicWatermarkUrl = `${publicUrl}?t=${new Date(watermarkFile.updated_at || Date.now()).getTime()}`;
                     }
                 } catch (storageErr) {
                     console.warn('Avatars storage check warning:', storageErr);
@@ -248,6 +268,10 @@ export default function DoctorProfile() {
                         clinicData.owner_id === user.id ||
                         (roles?.includes('owner') && (!clinicData.owner_id || clinicData.owner_id === user.id))
                     );
+
+                    setWatermarkUrl(clinicWatermarkUrl);
+                    setHeaderMode(clinicHeaderMode);
+
                     if (isOwnerUser) {
                         setProfile(prev => ({
                             ...prev!,
@@ -257,12 +281,39 @@ export default function DoctorProfile() {
                             clinic_photo: clinicPhotoUrl || prev?.clinic_photo || ''
                         }));
                     } else {
-                        // For non-owners (including superadmin), show clinic branding in read-only
+                        // For non-owners (including superadmin/staff), fetch owner profile to read owner preferences if not cached
+                        if (clinicData.owner_id) {
+                            try {
+                                const { data: ownerProf } = await supabase
+                                    .from('profiles')
+                                    .select('bio')
+                                    .eq('user_id', clinicData.owner_id)
+                                    .maybeSingle();
+                                if (ownerProf?.bio) {
+                                    const parsed = JSON.parse(ownerProf.bio);
+                                    if (parsed?.prescription_header_mode && !cachedMode) {
+                                        clinicHeaderMode = parsed.prescription_header_mode;
+                                        setHeaderMode(parsed.prescription_header_mode);
+                                    }
+                                    if (parsed?.clinic_watermark && !clinicWatermarkUrl) {
+                                        clinicWatermarkUrl = parsed.clinic_watermark;
+                                        setWatermarkUrl(parsed.clinic_watermark);
+                                    }
+                                    if (parsed?.clinic_photo && !clinicPhotoUrl) {
+                                        clinicPhotoUrl = parsed.clinic_photo;
+                                    }
+                                }
+                            } catch (e) {}
+                        }
+
+                        // For non-owners, show clinic branding in read-only
                         setOwnerProfile({
                             clinic_name: clinicData.name,
                             clinic_address: clinicData.address,
                             clinic_phone: clinicData.phone,
-                            clinic_photo: clinicPhotoUrl
+                            clinic_photo: clinicPhotoUrl,
+                            clinic_watermark: clinicWatermarkUrl,
+                            header_mode: clinicHeaderMode
                         });
                     }
                 }
@@ -394,6 +445,16 @@ export default function DoctorProfile() {
                 profilePayload.clinic_name = sData.clinic_name;
                 profilePayload.clinic_address = sData.clinic_address;
                 profilePayload.clinic_phone = sData.clinic_phone;
+                try {
+                    let curBio: any = {};
+                    if (profile.bio) {
+                        try { curBio = JSON.parse(profile.bio); } catch(e) {}
+                    }
+                    if (profile.clinic_photo) curBio.clinic_photo = profile.clinic_photo;
+                    if (watermarkUrl) curBio.clinic_watermark = watermarkUrl;
+                    curBio.prescription_header_mode = headerMode;
+                    profilePayload.bio = JSON.stringify(curBio);
+                } catch (e) {}
             }
 
             const { error } = await supabase
@@ -519,6 +580,152 @@ export default function DoctorProfile() {
             toast.error(err.message || 'Failed to delete clinic photo');
         } finally {
             setClinicUploading(false);
+        }
+    };
+
+    const handleWatermarkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!isClinicOwner) {
+            toast.error('Only the Clinic Owner can change the clinic watermark.');
+            return;
+        }
+        const file = e.target.files?.[0];
+        if (!file || !user?.id || !clinic?.id) return;
+
+        if (!file.type.startsWith('image/')) {
+            toast.error('Please upload an image file (PNG recommended for transparent background)');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            toast.error('Image size must be less than 10MB');
+            return;
+        }
+
+        setWatermarkUploading(true);
+        try {
+            // Keep PNG as PNG to preserve transparent alpha channel for watermark!
+            let uploadBlob: Blob = file;
+            let ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+            if (ext !== 'png' && ext !== 'jpg' && ext !== 'jpeg' && ext !== 'webp') {
+                ext = 'png';
+            }
+            if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
+                uploadBlob = await fileToOptimizedBlob(file, 1600, 0.9);
+                ext = 'jpg';
+            }
+
+            const filePath = `${clinic.id}/clinic-watermark.${ext}`;
+            const { error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(filePath, uploadBlob, {
+                    contentType: file.type || 'image/png',
+                    upsert: true
+                });
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('avatars')
+                .getPublicUrl(filePath);
+
+            const finalUrl = `${publicUrl}?t=${Date.now()}`;
+
+            // Save in profiles.bio JSON
+            try {
+                let currentMeta: any = {};
+                if (profile?.bio) {
+                    try { currentMeta = JSON.parse(profile.bio); } catch (e) {}
+                }
+                const updatedMeta = {
+                    ...currentMeta,
+                    clinic_watermark: finalUrl,
+                    prescription_header_mode: headerMode
+                };
+                await supabase.from('profiles').update({ bio: JSON.stringify(updatedMeta) }).eq('user_id', user.id);
+            } catch (bioErr) {
+                console.warn('Bio watermark update warning:', bioErr);
+            }
+
+            setWatermarkUrl(finalUrl);
+            setOwnerProfile((prev: any) => prev ? { ...prev, clinic_watermark: finalUrl } : null);
+            localStorage.setItem(`prescripto_clinic_watermark_${clinic.id}`, finalUrl);
+
+            toast.success('Prescription watermark saved successfully!');
+            refreshAuth().catch(() => {});
+        } catch (err: any) {
+            console.error(err);
+            toast.error(err.message || 'Failed to upload watermark');
+        } finally {
+            setWatermarkUploading(false);
+            if (watermarkFileInputRef.current) watermarkFileInputRef.current.value = '';
+        }
+    };
+
+    const handleDeleteWatermark = async () => {
+        if (!isClinicOwner) {
+            toast.error('Only the Clinic Owner can delete the clinic watermark.');
+            return;
+        }
+        if (!clinic?.id) return;
+
+        const confirmDelete = window.confirm('Are you sure you want to remove the watermark for all prescriptions in this clinic?');
+        if (!confirmDelete) return;
+
+        setWatermarkUploading(true);
+        try {
+            const { data: list } = await supabase.storage.from('avatars').list(clinic.id);
+            const wmFiles = list?.filter(f => f.name.startsWith('clinic-watermark')) || [];
+            if (wmFiles.length > 0) {
+                await supabase.storage.from('avatars').remove(wmFiles.map(f => `${clinic.id}/${f.name}`));
+            }
+
+            try {
+                let currentMeta: any = {};
+                if (profile?.bio) {
+                    try { currentMeta = JSON.parse(profile.bio); } catch (e) {}
+                }
+                delete currentMeta.clinic_watermark;
+                await supabase.from('profiles').update({ bio: JSON.stringify(currentMeta) }).eq('user_id', user?.id);
+            } catch (e) {}
+
+            setWatermarkUrl(null);
+            setOwnerProfile((prev: any) => prev ? { ...prev, clinic_watermark: null } : null);
+            localStorage.removeItem(`prescripto_clinic_watermark_${clinic.id}`);
+
+            toast.success('Prescription watermark removed');
+            refreshAuth().catch(() => {});
+        } catch (err: any) {
+            console.error(err);
+            toast.error(err.message || 'Failed to remove watermark');
+        } finally {
+            setWatermarkUploading(false);
+        }
+    };
+
+    const handleHeaderModeChange = async (mode: 'name' | 'logo' | 'both') => {
+        if (!isClinicOwner) {
+            toast.error('Only the Clinic Owner can change the prescription header style.');
+            return;
+        }
+        setHeaderMode(mode);
+        if (clinic?.id) {
+            localStorage.setItem(`prescripto_clinic_header_mode_${clinic.id}`, mode);
+        }
+
+        try {
+            let currentMeta: any = {};
+            if (profile?.bio) {
+                try { currentMeta = JSON.parse(profile.bio); } catch (e) {}
+            }
+            const updatedMeta = {
+                ...currentMeta,
+                prescription_header_mode: mode
+            };
+            if (watermarkUrl) updatedMeta.clinic_watermark = watermarkUrl;
+            await supabase.from('profiles').update({ bio: JSON.stringify(updatedMeta) }).eq('user_id', user?.id);
+            const modeLabel = mode === 'name' ? 'Clinic Name (Text)' : mode === 'logo' ? 'Clinic Logo (Display Photo)' : 'Both (Logo & Name)';
+            toast.success(`Prescription header style updated: ${modeLabel}`);
+        } catch (e: any) {
+            console.warn('Failed to save header mode preference:', e);
         }
     };
 
@@ -1582,6 +1789,187 @@ export default function DoctorProfile() {
                                                 )}
                                             </div>
                                         )}
+                                    </div>
+                                </div>
+
+                                {/* Clinic Watermark Upload / Display Section */}
+                                <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                                    <div className="relative group/watermark shrink-0">
+                                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex items-center justify-center relative p-2">
+                                            {/* Subtle paper grid pattern behind watermark to show transparency */}
+                                            <div className="absolute inset-0 opacity-[0.04] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:8px_8px]" />
+                                            {(watermarkUrl || ownerProfile?.clinic_watermark) ? (
+                                                <img
+                                                    src={watermarkUrl || ownerProfile?.clinic_watermark}
+                                                    alt="Prescription Watermark"
+                                                    className="w-full h-full object-contain drop-shadow-xs"
+                                                />
+                                            ) : (
+                                                <div className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
+                                                    <Stamp className="w-8 h-8 opacity-60" />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {isClinicOwner && (
+                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/watermark:opacity-100 transition-opacity rounded-2xl flex items-center justify-center gap-1.5 p-1 backdrop-blur-xs">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => watermarkFileInputRef.current?.click()}
+                                                    disabled={watermarkUploading}
+                                                    className="p-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-transform hover:scale-110"
+                                                    title="Upload Watermark"
+                                                >
+                                                    {watermarkUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                                                </button>
+                                                {(watermarkUrl || ownerProfile?.clinic_watermark) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleDeleteWatermark}
+                                                        disabled={watermarkUploading}
+                                                        className="p-1.5 bg-red-500/50 hover:bg-red-500/70 text-white rounded-lg transition-transform hover:scale-110"
+                                                        title="Delete Watermark"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <input
+                                        type="file"
+                                        ref={watermarkFileInputRef}
+                                        onChange={handleWatermarkUpload}
+                                        className="hidden"
+                                        accept="image/png,image/jpeg,image/webp"
+                                    />
+
+                                    <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
+                                        <div className="flex items-center justify-center sm:justify-start gap-2">
+                                            <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                                                <Stamp className="w-4 h-4 text-primary" />
+                                                Prescription Watermark
+                                            </h4>
+                                            {(watermarkUrl || ownerProfile?.clinic_watermark) ? (
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">Active</span>
+                                            ) : (
+                                                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">None Set</span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
+                                            {isClinicOwner
+                                                ? "Subtly watermarked across all prescription pages (past & new) for this clinic. Transparent PNG recommended."
+                                                : "Watermark applied to all prescriptions in this clinic. Managed by Clinic Owner."}
+                                        </p>
+                                        {isClinicOwner && (
+                                            <div className="pt-2 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={watermarkUploading}
+                                                    onClick={() => watermarkFileInputRef.current?.click()}
+                                                    className="rounded-xl h-8 px-3 text-xs font-bold gap-1.5 border-slate-200 dark:border-slate-700 shadow-2xs"
+                                                >
+                                                    {watermarkUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                                                    {(watermarkUrl || ownerProfile?.clinic_watermark) ? 'Change Watermark' : 'Upload Watermark'}
+                                                </Button>
+                                                {(watermarkUrl || ownerProfile?.clinic_watermark) && (
+                                                    <>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => setImagePreviewUrl(watermarkUrl || ownerProfile?.clinic_watermark || null)}
+                                                            className="rounded-xl h-8 px-2.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                                        >
+                                                            <Eye className="w-3.5 h-3.5 mr-1" /> View
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            disabled={watermarkUploading}
+                                                            onClick={handleDeleteWatermark}
+                                                            className="rounded-xl h-8 px-2.5 text-xs font-bold gap-1 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900/50"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" /> Remove
+                                                        </Button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Prescription Header Display Mode Selector */}
+                                <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 space-y-3">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                        <div>
+                                            <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">Prescription Header Style</h4>
+                                            <p className="text-xs text-slate-400 dark:text-slate-500">Choose what displays in the top right header of prescriptions</p>
+                                        </div>
+                                        {!isClinicOwner && (
+                                            <Badge variant="outline" className="text-[9px] uppercase tracking-wider text-slate-500 gap-1 w-fit">
+                                                <Lock className="w-3 h-3" /> Managed by Owner
+                                            </Badge>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                                        {[
+                                            {
+                                                id: 'name',
+                                                label: 'Clinic Name (Text)',
+                                                desc: 'Displays the clinic name in large typography',
+                                                icon: Building2
+                                            },
+                                            {
+                                                id: 'logo',
+                                                label: 'Clinic Logo',
+                                                desc: 'Displays your uploaded clinic display photo',
+                                                icon: Camera
+                                            },
+                                            {
+                                                id: 'both',
+                                                label: 'Both (Logo & Name)',
+                                                desc: 'Displays logo and name side-by-side',
+                                                icon: Sliders
+                                            }
+                                        ].map((opt) => {
+                                            const isSelected = (headerMode || 'name') === opt.id;
+                                            return (
+                                                <button
+                                                    key={opt.id}
+                                                    type="button"
+                                                    disabled={!isClinicOwner}
+                                                    onClick={() => handleHeaderModeChange(opt.id as any)}
+                                                    className={cn(
+                                                        "relative p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5",
+                                                        isSelected
+                                                            ? "bg-white dark:bg-slate-800 border-primary ring-2 ring-primary/20 shadow-xs"
+                                                            : "bg-white/60 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600",
+                                                        !isClinicOwner && "cursor-not-allowed opacity-80"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center justify-between w-full">
+                                                        <div className="flex items-center gap-2">
+                                                            <opt.icon className={cn("w-4 h-4", isSelected ? "text-primary font-bold" : "text-slate-400")} />
+                                                            <span className={cn("text-xs font-bold", isSelected ? "text-slate-900 dark:text-slate-100" : "text-slate-600 dark:text-slate-400")}>
+                                                                {opt.label}
+                                                            </span>
+                                                        </div>
+                                                        {isSelected && (
+                                                            <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-snug">
+                                                        {opt.desc}
+                                                    </p>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
 

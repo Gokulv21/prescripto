@@ -70,6 +70,9 @@ interface PrescriptionTemplateProps {
     clinicName?: string;
     clinicAddress?: string;
     clinicPhone?: string;
+    clinicLogo?: string;
+    clinicWatermark?: string;
+    headerMode?: 'name' | 'logo' | 'both';
     hideBranding?: boolean;
 }
 
@@ -84,22 +87,30 @@ const PrescriptionTemplate = React.memo(({
     doctorId, prescriptionCreatedAt, hideShare = false,
     doctorName, doctorQualifications, doctorRegId,
     clinicName, clinicAddress, clinicPhone,
+    clinicLogo: propClinicLogo,
+    clinicWatermark: propClinicWatermark,
+    headerMode: propHeaderMode,
     hideBranding = false
 }: PrescriptionTemplateProps) => {
 
     const { user: authUser } = useAuth();
     const [doctorProfile, setDoctorProfile] = useState<any>(null);
     const [ownerProfile, setOwnerProfile] = useState<any>(null);
+    const [watermarkUrl, setWatermarkUrl] = useState<string | null>(propClinicWatermark || null);
+    const [clinicLogoUrl, setClinicLogoUrl] = useState<string | null>(propClinicLogo || null);
+    const [headerMode, setHeaderMode] = useState<'name' | 'logo' | 'both'>(propHeaderMode || 'name');
 
     useEffect(() => {
         const fetchProfiles = async () => {
-            // 1. Fetch Clinic Branding from clinics table
-            if (visit?.clinic_id) {
+            const targetClinicId = visit?.clinic_id || patient?.clinic_id;
+
+            // 1. Fetch Clinic Branding & Watermark from clinics table, owner bio & storage
+            if (targetClinicId) {
                 try {
                     const { data: clinicData } = await supabase
                         .from('clinics')
-                        .select('name, address, phone, owner_id')
-                        .eq('id', visit.clinic_id)
+                        .select('id, name, address, phone, owner_id')
+                        .eq('id', targetClinicId)
                         .maybeSingle();
                     
                     if (clinicData) {
@@ -108,6 +119,56 @@ const PrescriptionTemplate = React.memo(({
                             clinic_address: clinicData.address,
                             clinic_phone: clinicData.phone
                         });
+
+                        // Check localStorage cache for instant updates
+                        const cachedMode = localStorage.getItem(`prescripto_clinic_header_mode_${clinicData.id}`) as any;
+                        if (cachedMode && ['name', 'logo', 'both'].includes(cachedMode) && !propHeaderMode) {
+                            setHeaderMode(cachedMode);
+                        }
+                        const cachedWm = localStorage.getItem(`prescripto_clinic_watermark_${clinicData.id}`);
+                        if (cachedWm && !propClinicWatermark) {
+                            setWatermarkUrl(cachedWm);
+                        }
+
+                        // Fetch owner bio if available
+                        if (clinicData.owner_id) {
+                            try {
+                                const { data: ownerProf } = await supabase
+                                    .from('profiles')
+                                    .select('bio')
+                                    .eq('user_id', clinicData.owner_id)
+                                    .maybeSingle();
+                                if (ownerProf?.bio) {
+                                    const parsed = JSON.parse(ownerProf.bio);
+                                    if (parsed.prescription_header_mode && !propHeaderMode && !cachedMode) {
+                                        setHeaderMode(parsed.prescription_header_mode);
+                                    }
+                                    if (parsed.clinic_watermark && !propClinicWatermark && !cachedWm) {
+                                        setWatermarkUrl(parsed.clinic_watermark);
+                                    }
+                                    if (parsed.clinic_photo && !propClinicLogo) {
+                                        setClinicLogoUrl(parsed.clinic_photo);
+                                    }
+                                }
+                            } catch (e) {}
+                        }
+
+                        // Fetch fresh files directly from Supabase Storage avatars bucket
+                        try {
+                            const { data: list } = await supabase.storage.from('avatars').list(clinicData.id);
+                            const wmFile = list?.find(f => f.name.startsWith('clinic-watermark'));
+                            if (wmFile && !propClinicWatermark) {
+                                const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(`${clinicData.id}/${wmFile.name}`);
+                                setWatermarkUrl(`${publicUrl}?t=${new Date(wmFile.updated_at || Date.now()).getTime()}`);
+                            }
+                            const brandFile = list?.find(f => f.name.startsWith('clinic-branding'));
+                            if (brandFile && !propClinicLogo) {
+                                const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(`${clinicData.id}/${brandFile.name}`);
+                                setClinicLogoUrl(`${publicUrl}?t=${new Date(brandFile.updated_at || Date.now()).getTime()}`);
+                            }
+                        } catch (storageErr) {
+                            console.warn("Avatars storage check warning:", storageErr);
+                        }
                     }
                 } catch (err) {
                     console.error("Error fetching clinic branding:", err);
@@ -309,6 +370,8 @@ Follow the instructions carefully.
                             clinicName={clinicName || ownerProfile?.clinic_name}
                             clinicAddress={clinicAddress || ownerProfile?.clinic_address}
                             clinicPhone={clinicPhone || ownerProfile?.clinic_phone}
+                            clinicLogoUrl={clinicLogoUrl}
+                            headerMode={headerMode}
                             hideBranding={hideBranding}
                         />
                     ) : (
@@ -317,8 +380,46 @@ Follow the instructions carefully.
                                 position: 'absolute', top: '2em', right: '3em',
                                 color: '#b0cde8', fontSize: '1.4cqw', fontWeight: 800
                             }}>
-                                {!hideBranding && "GV Clinic — "}Continuation Page {idx + 1}
+                                {!hideBranding && `${clinicName || ownerProfile?.clinic_name || 'Clinic'} — `}Continuation Page {idx + 1}
                             </div>
+                        </div>
+                    )}
+
+                    {/* Clinic Watermark Overlay */}
+                    {watermarkUrl && !hideBranding && (
+                        <div
+                            className="clinic-watermark-container"
+                            style={{
+                                position: 'absolute',
+                                top: idx === 0 ? '18%' : '8%',
+                                bottom: idx === 0 ? '8%' : '8%',
+                                left: '8%',
+                                right: '8%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                pointerEvents: 'none',
+                                zIndex: 15,
+                                overflow: 'hidden',
+                                userSelect: 'none',
+                            }}
+                        >
+                            <img
+                                src={watermarkUrl}
+                                alt="Prescription Watermark"
+                                draggable={false}
+                                style={{
+                                    maxWidth: '65%',
+                                    maxHeight: '65%',
+                                    objectFit: 'contain',
+                                    opacity: 0.08,
+                                    filter: 'grayscale(60%)',
+                                    transform: 'rotate(-12deg)',
+                                    pointerEvents: 'none',
+                                    WebkitPrintColorAdjust: 'exact',
+                                    printColorAdjust: 'exact',
+                                }}
+                            />
                         </div>
                     )}
 
@@ -381,6 +482,8 @@ interface PageOneProps {
     clinicName?: string;
     clinicAddress?: string;
     clinicPhone?: string;
+    clinicLogoUrl?: string | null;
+    headerMode?: 'name' | 'logo' | 'both';
     hideBranding?: boolean;
 }
 
@@ -390,6 +493,8 @@ function PageOne({
     hideTypedDiagnosis, safeDiagnosis, safeNotes, safeAdvice, hasHandwritingInThisComponent,
     doctorName, doctorQualifications, doctorRegId,
     clinicName, clinicAddress, clinicPhone,
+    clinicLogoUrl,
+    headerMode = 'name',
     hideBranding = false
 }: PageOneProps) {
 
@@ -459,11 +564,41 @@ function PageOne({
                             </div>
                         </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontWeight: 900, color: '#7d326cff', fontSize: '3.2em', letterSpacing: '0.04em', lineHeight: 1 }}>
-                            {dispClinicName}
-                        </div>
-                        <div style={{ color: '#475569', fontSize: '0.8em', marginTop: '0.4em', letterSpacing: '0.2em', fontWeight: 800 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
+                        {headerMode === 'logo' && clinicLogoUrl ? (
+                            <img
+                                src={clinicLogoUrl}
+                                alt={dispClinicName || 'Clinic Logo'}
+                                style={{
+                                    maxHeight: '4.5em',
+                                    maxWidth: '14em',
+                                    objectFit: 'contain',
+                                    marginBottom: '0.25em',
+                                    display: 'block'
+                                }}
+                            />
+                        ) : headerMode === 'both' && clinicLogoUrl ? (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.6em', marginBottom: '0.2em' }}>
+                                <img
+                                    src={clinicLogoUrl}
+                                    alt={dispClinicName || 'Clinic Logo'}
+                                    style={{
+                                        maxHeight: '3.2em',
+                                        maxWidth: '5.5em',
+                                        objectFit: 'contain',
+                                        display: 'block'
+                                    }}
+                                />
+                                <div style={{ fontWeight: 900, color: '#7d326cff', fontSize: '2.5em', letterSpacing: '0.03em', lineHeight: 1 }}>
+                                    {dispClinicName}
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ fontWeight: 900, color: '#7d326cff', fontSize: '3.2em', letterSpacing: '0.04em', lineHeight: 1 }}>
+                                {dispClinicName}
+                            </div>
+                        )}
+                        <div style={{ color: '#475569', fontSize: '0.8em', marginTop: (headerMode === 'logo' && clinicLogoUrl) ? '0.1em' : '0.4em', letterSpacing: '0.2em', fontWeight: 800 }}>
                             24/7 Emergency · ECG · Lab
                         </div>
                         <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.2em', letterSpacing: '0.02em', fontWeight: 500 }}>
