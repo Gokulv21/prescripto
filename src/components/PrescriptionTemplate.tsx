@@ -517,6 +517,7 @@ function PageOne({
     const dispClinicName = clinicName || doctorProfile?.clinic_name || 'GV Clinic';
     const dispClinicAddress = clinicAddress || doctorProfile?.clinic_address || '742, SSR Complex, Saththanur – 606 706';
     const dispClinicPhone = clinicPhone || doctorProfile?.clinic_phone || '+91-9488017536';
+    const dispClinicCaption = clinicCaption !== null && clinicCaption !== undefined ? clinicCaption : '24/7 Emergency · ECG · Lab';
 
     return (
         <div
@@ -606,9 +607,9 @@ function PageOne({
                             <div style={{ fontWeight: 900, color: '#7d326cff', fontSize: '3.2em', letterSpacing: '0.04em', lineHeight: 1, textAlign: 'right' }}>
                                 {dispClinicName}
                             </div>
-                            {(clinicCaption !== null && clinicCaption !== undefined ? clinicCaption : (ownerProfile?.clinic_caption ?? '24/7 Emergency · ECG · Lab')) ? (
+                            {dispClinicCaption ? (
                                 <div style={{ color: '#475569', fontSize: '0.8em', marginTop: '0.4em', letterSpacing: '0.15em', fontWeight: 800, textAlign: 'right' }}>
-                                    {clinicCaption !== null && clinicCaption !== undefined ? clinicCaption : (ownerProfile?.clinic_caption ?? '24/7 Emergency · ECG · Lab')}
+                                    {dispClinicCaption}
                                 </div>
                             ) : null}
                             <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.2em', letterSpacing: '0.02em', fontWeight: 500, textAlign: 'right' }}>
