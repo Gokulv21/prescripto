@@ -83,7 +83,7 @@ CREATE POLICY "Superadmin only view nova queries"
 ON public.nova_queries
 FOR SELECT TO authenticated
 USING (
-  (auth.jwt() ->> 'email') IN ('doctor@clinic.com', 'gokie.v21@gmail.com')
+  (auth.jwt() ->> 'email') = 'doctor@clinic.com'
   OR EXISTS (
     SELECT 1 FROM public.profiles 
     WHERE user_id = auth.uid() 
@@ -96,7 +96,7 @@ CREATE POLICY "Superadmin only delete nova queries"
 ON public.nova_queries
 FOR DELETE TO authenticated
 USING (
-  (auth.jwt() ->> 'email') IN ('doctor@clinic.com', 'gokie.v21@gmail.com')
+  (auth.jwt() ->> 'email') = 'doctor@clinic.com'
   OR EXISTS (
     SELECT 1 FROM public.profiles 
     WHERE user_id = auth.uid() 
