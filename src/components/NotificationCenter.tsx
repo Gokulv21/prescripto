@@ -255,7 +255,16 @@ export default function NotificationCenter() {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        let msg = error.message;
+        try {
+          if ((error as any).context && typeof (error as any).context.json === 'function') {
+            const body = await (error as any).context.json();
+            if (body?.error) msg = body.error;
+          }
+        } catch {}
+        throw new Error(msg || 'Failed to reset password');
+      }
 
       toast.success('Password updated successfully');
       setResetModal({ open: false, request: null });

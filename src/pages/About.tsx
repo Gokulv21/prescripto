@@ -168,11 +168,14 @@ export default function About() {
                 <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/20">
                   <HeartPulse className="w-5 h-5 text-white" />
                 </div>
-                <span className="text-xs font-black uppercase tracking-[0.2em] text-blue-200">Clinic Management</span>
+                <span className="text-xs font-black uppercase tracking-[0.2em] text-blue-200">A Product of Zevox</span>
               </div>
-              <h1 className="text-4xl font-black tracking-tight">PreScripto</h1>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-4xl font-black tracking-tight">PreScripto</h1>
+                <span className="text-xs font-black px-2 py-0.5 rounded-full bg-white/20 border border-white/30 uppercase tracking-widest text-white">by Zevox</span>
+              </div>
               <p className="text-blue-200 text-sm font-bold mt-1 max-w-sm leading-relaxed">
-                A comprehensive clinical workflow platform for modern Indian outpatient practices.
+                A comprehensive clinical workflow platform engineered by Zevox for modern outpatient practices.
               </p>
             </div>
             <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl px-5 py-4 text-center min-w-[120px]">
@@ -240,10 +243,26 @@ export default function About() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="text-center py-6 space-y-1"
+          className="text-center py-6 space-y-2 border-t border-border/50"
         >
-          <p className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.2em]">PreScripto · GV Clinic · Cuddalore</p>
-          <p className="text-[10px] text-muted-foreground/60">Built with ❤️ for modern Indian clinical practice</p>
+          <p className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.2em]">PreScripto by Zevox · Enterprise Clinical Systems</p>
+          <p className="text-[10px] text-muted-foreground/80 font-medium">Built with precision for healthcare practitioners</p>
+          <div className="pt-1 flex items-center justify-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(slug ? `/${slug}/contact` : '/contact')}
+              className="rounded-xl text-xs font-bold gap-1.5 h-8"
+            >
+              Contact Zevox Support
+            </Button>
+            <a
+              href="mailto:contact.zevox@gmail.com"
+              className="text-xs font-bold text-primary hover:underline font-mono"
+            >
+              contact.zevox@gmail.com
+            </a>
+          </div>
         </motion.div>
 
       </div>

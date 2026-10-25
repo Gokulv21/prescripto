@@ -7,7 +7,7 @@ import { registerClient } from "@/lib/supabase-auth-admin";
 import {
   Building2, Plus, LogOut, ArrowRight, Loader2,
   ShieldCheck, User, Mail, Lock, Globe, Sparkles, Trash2,
-  ShieldX, History, AlertCircle
+  ShieldX, History, AlertCircle, Bot, Search, RefreshCw, Clock, MessageSquare, Filter
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -23,7 +23,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 
 export default function ClinicSelection() {
-  const { user, roles, signOut } = useAuth();
+  const { user, roles, profile, signOut } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isAddClinicOpen, setIsAddClinicOpen] = useState(false);
@@ -32,6 +32,10 @@ export default function ClinicSelection() {
   const [blockReason, setBlockReason] = useState("");
   const [historyOpen, setHistoryOpen] = useState<{ open: boolean, clinic: any | null }>({ open: false, clinic: null });
 
+  // Nova AI Chat History State (SuperAdmin Only)
+  const [novaModalOpen, setNovaModalOpen] = useState(false);
+  const [selectedClinicFilter, setSelectedClinicFilter] = useState<string>('all');
+  const [novaSearchTerm, setNovaSearchTerm] = useState('');
 
   // Form State
   const [formData, setFormData] = useState({
@@ -41,7 +45,57 @@ export default function ClinicSelection() {
     password: ""
   });
 
-  const isSuperAdmin = roles.includes('superadmin');
+  const isSuperAdmin = Boolean(
+    roles.includes('superadmin') ||
+    profile?.is_superadmin === true ||
+    profile?.role === 'superadmin' ||
+    user?.email === 'doctor@clinic.com'
+  );
+
+  // Fetch Nova queries across clinics for the last 24h (Superadmin Only)
+  const { data: novaQueries = [], isLoading: isLoadingNova, refetch: refetchNova } = useQuery({
+    queryKey: ['nova-queries-global-selection', isSuperAdmin],
+    queryFn: async () => {
+      if (!isSuperAdmin) return [];
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      try {
+        const { data, error } = await supabase
+          .from('nova_queries')
+          .select(`
+            *,
+            clinics:clinic_id (name, slug)
+          `)
+          .gte('created_at', since24h)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) {
+          console.warn('nova_queries notice:', error.message);
+          return [];
+        }
+        return data || [];
+      } catch (err) {
+        console.warn('nova_queries catch:', err);
+        return [];
+      }
+    },
+    enabled: !!isSuperAdmin,
+    refetchInterval: 15000,
+  });
+
+  const deleteNovaQueryMutation = useMutation({
+    mutationFn: async (queryId: string) => {
+      const { error } = await supabase.from('nova_queries').delete().eq('id', queryId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['nova-queries-global-selection'] });
+      toast.success('Query log deleted');
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to delete query');
+    }
+  });
 
   // Fetch block history
   const { data: blockHistory, isLoading: isLoadingHistory } = useQuery({
@@ -406,12 +460,27 @@ export default function ClinicSelection() {
           </div>
 
           {isSuperAdmin && (
-            <Dialog open={isAddClinicOpen} onOpenChange={setIsAddClinicOpen}>
-              <DialogTrigger asChild>
-                <Button className="h-14 px-8 rounded-2xl bg-slate-900 dark:bg-white dark:text-slate-900 text-white font-black uppercase text-xs tracking-widest gap-3 shadow-2xl hover:scale-105 transition-all active:scale-95">
-                  <Plus className="w-5 h-5" /> Add New Clinic
-                </Button>
-              </DialogTrigger>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                onClick={() => {
+                  setSelectedClinicFilter('all');
+                  setNovaModalOpen(true);
+                }}
+                className="h-14 px-6 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-extrabold uppercase text-xs tracking-wider gap-2.5 shadow-xl hover:scale-105 transition-all active:scale-95 border-0"
+              >
+                <Bot className="w-5 h-5 text-white" />
+                <span>Nova Chat History</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/20 text-white font-black">
+                  {novaQueries.length}
+                </span>
+              </Button>
+
+              <Dialog open={isAddClinicOpen} onOpenChange={setIsAddClinicOpen}>
+                <DialogTrigger asChild>
+                  <Button className="h-14 px-8 rounded-2xl bg-slate-900 dark:bg-white dark:text-slate-900 text-white font-black uppercase text-xs tracking-widest gap-3 shadow-2xl hover:scale-105 transition-all active:scale-95">
+                    <Plus className="w-5 h-5" /> Add New Clinic
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="max-w-md rounded-[2rem] p-8">
                 <DialogHeader>
                   <DialogTitle className="text-2xl font-black tracking-tight">Onboard New Clinic</DialogTitle>
@@ -482,8 +551,46 @@ export default function ClinicSelection() {
                 </form>
               </DialogContent>
             </Dialog>
+            </div>
           )}
         </motion.div>
+
+        {/* Quick Nova 24h Live Feed Banner for SuperAdmin */}
+        {isSuperAdmin && novaQueries.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            onClick={() => {
+              setSelectedClinicFilter('all');
+              setNovaModalOpen(true);
+            }}
+            className="p-4 rounded-2xl bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 border border-purple-500/20 hover:border-purple-500/40 cursor-pointer transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-purple-600/30">
+                <Bot className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-slate-900 dark:text-white">
+                    Nova AI Live Searches (Last 24 Hours)
+                  </span>
+                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300">
+                    {novaQueries.length} Recent Searches
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 truncate max-w-md">
+                  Latest: "{novaQueries[0]?.query}" by {novaQueries[0]?.user_name} ({novaQueries[0]?.clinics?.name || 'Clinic'})
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400 shrink-0">
+              <span>View Full Audit Log</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </div>
+          </motion.div>
+        )}
 
         {clinics && clinics.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -547,6 +654,19 @@ export default function ClinicSelection() {
 
                           {isSuperAdmin && (
                             <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title={`View Nova searches for ${clinic.name}`}
+                                className="h-8 w-8 text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-all z-20"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedClinicFilter(clinic.id);
+                                  setNovaModalOpen(true);
+                                }}
+                              >
+                                <Bot className="w-4 h-4" />
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -752,6 +872,176 @@ export default function ClinicSelection() {
              >
                 Close History
              </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Nova AI Chat History Modal for Platform Superadmin */}
+      <Dialog open={novaModalOpen} onOpenChange={setNovaModalOpen}>
+        <DialogContent className="max-w-3xl rounded-[2rem] p-0 overflow-hidden max-h-[85vh] flex flex-col">
+          <DialogHeader className="p-6 pb-4 border-b bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-md shadow-purple-600/30">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+                    Nova AI Live Inquiries
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-600 text-white">
+                      Zevox Superadmin
+                    </span>
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-slate-500 mt-0.5">
+                    Real-time searches & queries asked to Nova in the last 24 hours across clinics.
+                  </DialogDescription>
+                </div>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchNova()}
+                className="rounded-xl h-8 text-xs font-bold gap-1.5"
+              >
+                <RefreshCw className={cn("w-3.5 h-3.5", isLoadingNova && "animate-spin")} />
+                Refresh
+              </Button>
+            </div>
+
+            {/* Filter and Search Bar */}
+            <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-4">
+              <div className="relative flex-1 w-full">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input
+                  placeholder="Filter by query, user name, or clinic..."
+                  value={novaSearchTerm}
+                  onChange={(e) => setNovaSearchTerm(e.target.value)}
+                  className="pl-9 h-9 text-xs rounded-xl border-slate-200 dark:border-slate-800"
+                />
+              </div>
+
+              {/* Clinic Filter Tabs */}
+              <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto py-1">
+                <Button
+                  variant={selectedClinicFilter === 'all' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setSelectedClinicFilter('all')}
+                  className={cn(
+                    "rounded-xl h-8 text-[11px] font-bold px-3 shrink-0",
+                    selectedClinicFilter === 'all' ? "bg-purple-600 text-white" : ""
+                  )}
+                >
+                  All Clinics ({novaQueries.length})
+                </Button>
+                {clinics?.map((c: any) => {
+                  const count = novaQueries.filter((q: any) => q.clinic_id === c.id).length;
+                  return (
+                    <Button
+                      key={c.id}
+                      variant={selectedClinicFilter === c.id ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setSelectedClinicFilter(c.id)}
+                      className={cn(
+                        "rounded-xl h-8 text-[11px] font-bold px-3 shrink-0",
+                        selectedClinicFilter === c.id ? "bg-purple-600 text-white" : ""
+                      )}
+                    >
+                      {c.name} ({count})
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* Queries List */}
+          <div className="p-6 overflow-y-auto flex-1 space-y-3">
+            {(() => {
+              const filtered = novaQueries.filter((q: any) => {
+                const matchesClinic = selectedClinicFilter === 'all' || q.clinic_id === selectedClinicFilter;
+                const matchesSearch = !novaSearchTerm.trim() || 
+                  q.query?.toLowerCase().includes(novaSearchTerm.toLowerCase()) ||
+                  q.user_name?.toLowerCase().includes(novaSearchTerm.toLowerCase()) ||
+                  q.clinics?.name?.toLowerCase().includes(novaSearchTerm.toLowerCase());
+                return matchesClinic && matchesSearch;
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="py-16 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 mx-auto flex items-center justify-center">
+                      <Bot className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">No Nova queries recorded</p>
+                      <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                        Searches performed by doctors and staff in the last 24 hours will automatically show up here.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+
+              return filtered.map((item: any) => (
+                <div
+                  key={item.id}
+                  className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-2.5 transition-all hover:border-purple-300 dark:hover:border-purple-800"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-slate-900 dark:text-white">
+                        {item.user_name}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                        {item.user_role || 'staff'}
+                      </span>
+                      {item.clinics?.name && (
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                          {item.clinics.name}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {format(new Date(item.created_at), 'hh:mm a')}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deleteNovaQueryMutation.mutate(item.id)}
+                        className="h-6 w-6 text-slate-400 hover:text-red-600 rounded-md"
+                        title="Delete query record"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/80">
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-relaxed font-mono">
+                      "{item.query}"
+                    </p>
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+
+          <div className="p-4 border-t bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
+            <span className="text-[11px] text-slate-500 font-medium">
+              Confidential to Zevox Platform Superadmin • Auto-purged after 24 hours
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setNovaModalOpen(false)}
+              className="rounded-xl font-bold text-xs"
+            >
+              Close
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

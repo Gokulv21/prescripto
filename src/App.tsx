@@ -30,6 +30,7 @@ const TVDisplay = lazy(() => import("@/pages/TVDisplay"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const About = lazy(() => import("@/pages/About"));
 const Help = lazy(() => import("@/pages/Help"));
+const Contact = lazy(() => import("@/pages/Contact"));
 
 function PageLoader() {
   return (
@@ -319,6 +320,7 @@ const App = () => (
                 <Routes>
                   {/* 1. Public Routes */}
                   <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+                  <Route path="/contact" element={<Contact />} />
                   <Route path="/rx/:visitId" element={<PublicPrescription />} />
                   <Route path="/:slug/display" element={<TVDisplay />} />
 
@@ -339,6 +341,7 @@ const App = () => (
                     <Route path="users" element={<ProtectedRoute allowedRoles={['superadmin', 'owner']}><UserManagement /></ProtectedRoute>} />
                     <Route path="saas" element={<ProtectedRoute allowedRoles={['superadmin']}><SaaSManagement /></ProtectedRoute>} />
                     <Route path="about" element={<About />} />
+                    <Route path="contact" element={<Contact />} />
                   </Route>
 
                   <Route path="*" element={<NotFound />} />

@@ -4,10 +4,10 @@ import { cn } from '@/lib/utils';
 import {
   ClipboardPlus, Stethoscope, Printer, Users, Activity,
   ArrowUpRight, UserPlus, CheckCircle2, Tv, Sparkles, Clock, CalendarX,
-  Edit, Eye, Plus, ChevronRight, Loader2, CheckCircle
+  Edit, Eye, Plus, ChevronRight, Loader2, CheckCircle, Bot, MessageSquare, RefreshCw
 } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { startOfDay, endOfDay } from 'date-fns';
+import { startOfDay, endOfDay, formatDistanceToNow } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { motion } from 'framer-motion';
@@ -422,6 +422,47 @@ export default function Dashboard() {
   const stats = dashboardData.stats;
   const completedList = dashboardData.completedList;
 
+  // ── 24-Hour Ephemeral Nova Audit (Platform SuperAdmin / You ONLY - Hidden from Clinic Owners) ──
+  // Auto-purges queries older than 24h so zero long-term storage is consumed!
+  const isPlatformSuperAdmin = Boolean(
+    profile?.is_superadmin ||
+    roles.includes('superadmin') ||
+    user?.email?.toLowerCase() === 'doctor@clinic.com' ||
+    profile?.email?.toLowerCase() === 'doctor@clinic.com'
+  );
+
+  const { data: nova24hQueries, isLoading: isNova24hLoading, refetch: refetchNova24h } = useQuery({
+    queryKey: ['nova_24h_queries', clinic?.id],
+    enabled: isPlatformSuperAdmin && Boolean(clinic?.id),
+    refetchInterval: 30000,
+    queryFn: async () => {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      
+      // Auto-purge records older than 24 hours to keep database storage completely clean
+      try {
+        await supabase
+          .from('nova_queries')
+          .delete()
+          .lt('created_at', twentyFourHoursAgo);
+      } catch (err) {}
+
+      // Fetch queries from last 24 hours only
+      const { data, error } = await supabase
+        .from('nova_queries')
+        .select('*')
+        .eq('clinic_id', clinic.id)
+        .gte('created_at', twentyFourHoursAgo)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        console.warn('nova_queries notice:', error.message);
+        return [];
+      }
+      return data || [];
+    }
+  });
+
   // Realtime updates
   useEffect(() => {
     if (!clinic?.id) return;
@@ -721,6 +762,90 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Nova AI Live Inquiries (Last 24 Hours Only — Platform SuperAdmin Eyes Only) ── */}
+      {isPlatformSuperAdmin && (
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <Bot className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm tracking-tight">
+                    Nova AI Live Inquiries
+                  </h4>
+                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/20">
+                    Last 24 Hours
+                  </span>
+                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                    Zevox Admin Only
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground font-medium">
+                  Auto-purged after 24h to save storage • Strictly confidential (Hidden from clinic owners & staff)
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                refetchNova24h();
+                toast.success('Refreshed Nova inquiries');
+              }}
+              className="text-[11px] font-bold text-muted-foreground hover:text-foreground flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-muted/60 transition-all border border-border/40"
+              title="Refresh 24h inquiries"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-border/80 bg-card/60 backdrop-blur-md overflow-hidden shadow-xs">
+            {isNova24hLoading ? (
+              <div className="py-8 text-center text-xs text-muted-foreground font-medium">
+                <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-emerald-500" />
+                Checking 24-hour Nova inquiries...
+              </div>
+            ) : nova24hQueries && nova24hQueries.length > 0 ? (
+              <div className="divide-y divide-border/50 max-h-80 overflow-y-auto">
+                {nova24hQueries.map((q: any) => (
+                  <div key={q.id} className="p-3 sm:px-4 flex items-start justify-between gap-3 hover:bg-muted/30 transition-colors">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-foreground">
+                          {q.user_name || 'Clinic Member'}
+                        </span>
+                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-md bg-muted text-muted-foreground border border-border">
+                          {q.user_role || 'staff'}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-medium">
+                          {formatDistanceToNow(new Date(q.created_at), { addSuffix: true })}
+                        </span>
+                      </div>
+                      <div className="flex items-start gap-1.5 pt-0.5">
+                        <MessageSquare className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                        <p className="text-xs font-semibold text-foreground/90 font-mono bg-muted/40 px-2 py-1 rounded-md border border-border/40 break-words">
+                          "{q.query}"
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center px-4">
+                <Bot className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-xs font-bold text-foreground">No queries in the last 24 hours</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 max-w-sm mx-auto">
+                  When doctors or staff search for patients or ask questions to Nova, their queries will appear here in real time for 24 hours.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

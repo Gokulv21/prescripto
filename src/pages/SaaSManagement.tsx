@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CreditCard, Activity, ShieldAlert, Wrench, Shield, Clock, User, Fingerprint } from "lucide-react";
+import { CreditCard, Activity, ShieldAlert, Wrench, Shield, Clock, User, Fingerprint, Bot, Search, MessageSquare } from "lucide-react";
 import PageBanner from "@/components/PageBanner";
 import userMgmtBanner from "@/assets/user_mgmt_banner.png";
 import { useQuery } from "@tanstack/react-query";
@@ -14,9 +14,13 @@ import {
   TableRow 
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
+import { useState } from "react";
 
 export default function SaaSManagement() {
+  const [novaSearchTerm, setNovaSearchTerm] = useState("");
+
   const { data: logs, isLoading } = useQuery({
     queryKey: ['security_logs'],
     queryFn: async () => {
@@ -33,6 +37,36 @@ export default function SaaSManagement() {
       if (error) throw error;
       return data;
     }
+  });
+
+  const { data: novaQueries, isLoading: isNovaLoading } = useQuery({
+    queryKey: ['nova_queries_log'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('nova_queries')
+        .select(`
+          *,
+          clinic:clinics(name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      
+      if (error) {
+        console.warn('nova_queries notice:', error.message);
+        return [];
+      }
+      return data || [];
+    }
+  });
+
+  const filteredNova = (novaQueries || []).filter((q: any) => {
+    if (!novaSearchTerm.trim()) return true;
+    const term = novaSearchTerm.toLowerCase();
+    return (
+      q.query?.toLowerCase().includes(term) ||
+      q.user_name?.toLowerCase().includes(term) ||
+      q.clinic?.name?.toLowerCase().includes(term)
+    );
   });
 
   return (
@@ -56,6 +90,9 @@ export default function SaaSManagement() {
                <TabsTrigger value="usage" className="flex-1 py-3 text-xs md:text-sm font-bold gap-2 data-[state=active]:bg-purple-500/10 data-[state=active]:text-purple-600 rounded-xl">
                  <Activity className="w-4 h-4" /> Usage Limits
                </TabsTrigger>
+               <TabsTrigger value="nova" className="flex-1 py-3 text-xs md:text-sm font-bold gap-2 data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-600 rounded-xl">
+                 <Bot className="w-4 h-4" /> Nova AI Searches
+               </TabsTrigger>
                <TabsTrigger value="audit" className="flex-1 py-3 text-xs md:text-sm font-bold gap-2 data-[state=active]:bg-amber-500/10 data-[state=active]:text-amber-600 rounded-xl">
                  <ShieldAlert className="w-4 h-4" /> Audit Logs
                </TabsTrigger>
@@ -67,6 +104,87 @@ export default function SaaSManagement() {
 
             <TabsContent value="usage" className="space-y-6">
                 <DevelopmentPlaceholder title="API & Data Usage Analytics" />
+            </TabsContent>
+
+            <TabsContent value="nova" className="space-y-6">
+                <Card className="border-border rounded-[2rem] overflow-hidden bg-card/30 backdrop-blur-md">
+                    <CardHeader className="border-b border-border bg-muted/20">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                                <CardTitle className="text-xl font-black flex items-center gap-2">
+                                    <Bot className="w-5 h-5 text-emerald-500" /> Nova AI Search History
+                                </CardTitle>
+                                <CardDescription className="font-semibold text-xs mt-1">
+                                    Real-time audit of questions, clinical searches, and queries asked by clinic doctors and staff.
+                                </CardDescription>
+                            </div>
+                            <div className="relative w-full sm:w-64">
+                                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    value={novaSearchTerm}
+                                    onChange={(e) => setNovaSearchTerm(e.target.value)}
+                                    placeholder="Filter searches..."
+                                    className="pl-9 h-9 rounded-xl text-xs"
+                                />
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="bg-muted/30 hover:bg-muted/30 border-none">
+                                    <TableHead className="font-bold py-4 pl-6 text-[10px] uppercase tracking-widest w-[160px]">Time</TableHead>
+                                    <TableHead className="font-bold py-4 text-[10px] uppercase tracking-widest w-[180px]">User & Role</TableHead>
+                                    <TableHead className="font-bold py-4 text-[10px] uppercase tracking-widest w-[160px]">Clinic</TableHead>
+                                    <TableHead className="font-bold py-4 text-[10px] uppercase tracking-widest">Query Asked</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {isNovaLoading ? (
+                                    <TableRow>
+                                        <TableCell colSpan={4} className="h-24 text-center font-bold text-muted-foreground">
+                                            Loading Nova query logs...
+                                        </TableCell>
+                                    </TableRow>
+                                ) : filteredNova.length > 0 ? (
+                                    filteredNova.map((item: any) => (
+                                        <TableRow key={item.id} className="hover:bg-muted/20 border-border/40">
+                                            <TableCell className="pl-6 font-mono text-[11px] font-bold text-muted-foreground">
+                                                {format(new Date(item.created_at), 'MMM dd, HH:mm:ss')}
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="space-y-0.5">
+                                                    <p className="text-xs font-bold text-foreground">{item.user_name || 'Staff'}</p>
+                                                    <Badge variant="outline" className="text-[9px] uppercase font-black px-1.5 py-0">
+                                                        {item.user_role || 'staff'}
+                                                    </Badge>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-xs font-medium text-muted-foreground">
+                                                {item.clinic?.name || 'Clinic'}
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex items-start gap-2">
+                                                    <MessageSquare className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                                                    <span className="text-xs font-semibold text-foreground/90 font-mono bg-muted/40 px-2 py-1 rounded-md border border-border/50">
+                                                        "{item.query}"
+                                                    </span>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                ) : (
+                                    <TableRow>
+                                        <TableCell colSpan={4} className="h-28 text-center font-medium text-muted-foreground">
+                                            <Bot className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+                                            {novaSearchTerm ? "No queries matched your search filter." : "No queries recorded yet. As users interact with Nova, their questions will show here live."}
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
             </TabsContent>
 
             <TabsContent value="audit" className="space-y-6">

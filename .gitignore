@@ -42,10 +42,12 @@ dist-ssr
 *.sw?
 # Environment variables
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+*.local
 
-# Local Management Scripts
+# Local Scratch and Management Scripts
+scratch/
 manage-clinics.mjs
 delete-auth-user.mjs
 test-key.mjs

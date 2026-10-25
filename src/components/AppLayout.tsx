@@ -3,7 +3,7 @@ import { useAuth, AppRole } from '@/lib/auth';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
-  Stethoscope, ClipboardPlus, Printer, BarChart3, Users, LogOut, Home, Menu, HelpCircle, Sun, Moon, Monitor, ChevronDown, Info, Tv, User, LayoutGrid, Building2
+  Stethoscope, ClipboardPlus, Printer, BarChart3, Users, LogOut, Home, Menu, HelpCircle, Sun, Moon, Monitor, ChevronDown, Info, Tv, User, LayoutGrid, Building2, Mail
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -30,6 +30,7 @@ const navItems: NavItem[] = [
   { label: 'Profile', path: '/profile', icon: <User className="w-5 h-5" />, roles: ['doctor', 'superadmin', 'owner'] },
   { label: 'User Mgmt', path: '/users', icon: <Users className="w-5 h-5" />, roles: ['superadmin', 'owner'] },
   { label: 'TV Display', path: '/display', icon: <Tv className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
+  { label: 'Contact', path: '/contact', icon: <Mail className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
   { label: 'About', path: '/about', icon: <Info className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
   { label: 'Help', path: '/help', icon: <HelpCircle className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
 ];
@@ -212,8 +213,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   exit={{ opacity: 0, x: -8 }}
                   className="whitespace-nowrap"
                 >
-                  <h2 className="font-extrabold text-slate-900 dark:text-white text-base tracking-tight leading-none">PreScripto</h2>
-                  <p className="text-[10px] text-primary font-bold uppercase tracking-wider mt-1">{profile?.full_name}</p>
+                  <div className="flex items-center gap-1.5">
+                    <h2 className="font-extrabold text-slate-900 dark:text-white text-base tracking-tight leading-none">PreScripto</h2>
+                    <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">by Zevox</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground font-bold mt-1 truncate">{profile?.full_name}</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -339,6 +343,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <div className="shrink-0 w-5 flex justify-center"><LogOut className="w-4 h-4" /></div>
             {isSidebarExpanded && <span className="whitespace-nowrap uppercase tracking-wider text-[10px]">Sign Out</span>}
           </button>
+
+          {isSidebarExpanded && (
+            <div className="pt-1 text-center">
+              <p className="text-[9px] font-black tracking-widest uppercase text-slate-400 dark:text-slate-500">
+                A Product of Zevox
+              </p>
+            </div>
+          )}
         </div>
       </motion.aside>
 
@@ -350,11 +362,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <div className="md:hidden w-8 h-8 rounded-xl bg-white dark:bg-slate-900 shadow-xs border border-slate-200/60 dark:border-slate-800 flex items-center justify-center overflow-hidden">
               <img src={logo} className="w-6 h-6 object-contain" alt="Logo" />
             </div>
-            <span className="md:hidden font-black text-base tracking-tight text-slate-900 dark:text-white">PreScripto</span>
+            <span className="md:hidden font-black text-base tracking-tight text-slate-900 dark:text-white flex items-center gap-1.5">
+              PreScripto
+              <span className="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 uppercase tracking-wider">by Zevox</span>
+            </span>
             
             <div className="hidden md:flex items-center gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 PreScripto
+              </span>
+              <span className="text-[9px] font-black uppercase tracking-wider text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-md">
+                by Zevox
               </span>
               <span className="text-slate-300 dark:text-slate-700 font-bold">•</span>
               <span className="text-xs font-bold text-slate-600 dark:text-slate-300">

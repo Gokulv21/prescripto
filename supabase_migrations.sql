@@ -12,26 +12,97 @@ CREATE TABLE IF NOT EXISTS public.handwritten_protocols (
     raw_paths JSONB NOT NULL
 );
 
--- Enable RLS for handwritten_protocols (assuming standard policy for clinic-level access)
+-- Enable RLS for handwritten_protocols with strict clinic-level scoping
 ALTER TABLE public.handwritten_protocols ENABLE ROW LEVEL SECURITY;
 
--- Optional: Create a basic policy that allows authenticated users to read/write their clinic's protocols
-CREATE POLICY "Allow users to read handwritten protocols" 
+-- Clinic-scoped RLS policies (prevents cross-tenant access)
+CREATE POLICY "Clinic Scoped View Handwritten Protocols" 
 ON public.handwritten_protocols 
-FOR SELECT 
-USING (auth.role() = 'authenticated');
+FOR SELECT TO authenticated
+USING (
+  clinic_id IN (
+    SELECT p.clinic_id FROM public.profiles p WHERE p.user_id = auth.uid()
+  )
+  OR EXISTS (SELECT 1 FROM public.profiles WHERE user_id = auth.uid() AND is_superadmin = true)
+);
 
-CREATE POLICY "Allow users to insert handwritten protocols" 
+CREATE POLICY "Clinic Scoped Insert Handwritten Protocols" 
 ON public.handwritten_protocols 
-FOR INSERT 
-WITH CHECK (auth.role() = 'authenticated');
+FOR INSERT TO authenticated
+WITH CHECK (
+  clinic_id IN (
+    SELECT p.clinic_id FROM public.profiles p WHERE p.user_id = auth.uid()
+  )
+  OR EXISTS (SELECT 1 FROM public.profiles WHERE user_id = auth.uid() AND is_superadmin = true)
+);
 
-CREATE POLICY "Allow users to update handwritten protocols" 
+CREATE POLICY "Clinic Scoped Update Handwritten Protocols" 
 ON public.handwritten_protocols 
-FOR UPDATE 
-USING (auth.role() = 'authenticated');
+FOR UPDATE TO authenticated
+USING (
+  clinic_id IN (
+    SELECT p.clinic_id FROM public.profiles p WHERE p.user_id = auth.uid()
+  )
+  OR EXISTS (SELECT 1 FROM public.profiles WHERE user_id = auth.uid() AND is_superadmin = true)
+);
 
-CREATE POLICY "Allow users to delete handwritten protocols" 
+CREATE POLICY "Clinic Scoped Delete Handwritten Protocols" 
 ON public.handwritten_protocols 
-FOR DELETE 
-USING (auth.role() = 'authenticated');
+FOR DELETE TO authenticated
+USING (
+  clinic_id IN (
+    SELECT p.clinic_id FROM public.profiles p WHERE p.user_id = auth.uid()
+  )
+  OR EXISTS (SELECT 1 FROM public.profiles WHERE user_id = auth.uid() AND is_superadmin = true)
+);
+
+-- 3. Nova AI Query Logging (24h Ephemeral — Strictly Zevox SuperAdmin Eyes Only)
+CREATE TABLE IF NOT EXISTS public.nova_queries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    clinic_id UUID REFERENCES public.clinics(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    user_name TEXT NOT NULL DEFAULT 'Clinic Staff',
+    user_role TEXT DEFAULT 'staff',
+    query TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.nova_queries ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow authenticated users to log nova queries" ON public.nova_queries;
+DROP POLICY IF EXISTS "Allow anyone to log nova queries" ON public.nova_queries;
+CREATE POLICY "Allow anyone to log nova queries"
+ON public.nova_queries
+FOR INSERT
+WITH CHECK (true);
+
+-- STRICT: Only platform Superadmin (Zevox / Gokul) can view Nova queries.
+-- Clinic owners, doctors, and staff CANNOT view chat/search history.
+DROP POLICY IF EXISTS "Superadmin only view nova queries" ON public.nova_queries;
+CREATE POLICY "Superadmin only view nova queries"
+ON public.nova_queries
+FOR SELECT TO authenticated
+USING (
+  (auth.jwt() ->> 'email') IN ('doctor@clinic.com', 'gokie.v21@gmail.com')
+  OR EXISTS (
+    SELECT 1 FROM public.profiles 
+    WHERE user_id = auth.uid() 
+      AND (is_superadmin = true OR email = 'doctor@clinic.com')
+  )
+);
+
+DROP POLICY IF EXISTS "Superadmin only delete nova queries" ON public.nova_queries;
+CREATE POLICY "Superadmin only delete nova queries"
+ON public.nova_queries
+FOR DELETE TO authenticated
+USING (
+  (auth.jwt() ->> 'email') IN ('doctor@clinic.com', 'gokie.v21@gmail.com')
+  OR EXISTS (
+    SELECT 1 FROM public.profiles 
+    WHERE user_id = auth.uid() 
+      AND (is_superadmin = true OR email = 'doctor@clinic.com')
+  )
+);
+
+
+

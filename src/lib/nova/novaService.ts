@@ -286,6 +286,24 @@ export async function sendNovaMessage(
     return `/${slug}${p === '/' ? '/dashboard' : p}`;
   };
 
+  // Fire-and-forget query logging for audit trail & analytics
+  if (query && query.length >= 2) {
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        await supabase.from('nova_queries').insert({
+          clinic_id: clinicId || null,
+          user_id: data?.user?.id || null,
+          user_name: context.doctorName || 'Staff Member',
+          user_role: context.userRole || 'staff',
+          query: query
+        });
+      } catch (err) {
+        // silent fail
+      }
+    })();
+  }
+
   // 1. Fetch real-time live clinic statistics (visits, yesterday, queue, totals)
   const liveStats = await getClinicLiveStatsTool(clinicId);
 

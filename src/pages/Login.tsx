@@ -43,9 +43,12 @@ export default function Login() {
             <Stethoscope className="w-10 h-10 text-primary-foreground relative z-10" />
           </div>
           <div>
-            <CardTitle className="text-3xl font-heading font-bold tracking-tight">Prescripto</CardTitle>
-            <CardDescription className="text-base font-medium text-muted-foreground/80">
-              Hospital Management System
+            <div className="flex items-center justify-center gap-2">
+              <CardTitle className="text-3xl font-heading font-black tracking-tight">Prescripto</CardTitle>
+              <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">by Zevox</span>
+            </div>
+            <CardDescription className="text-sm font-semibold text-muted-foreground/80 mt-1">
+              Hospital Management System • A Product of Zevox
             </CardDescription>
           </div>
         </CardHeader>
@@ -164,9 +167,28 @@ export default function Login() {
               Sign In
             </Button>
 
-            <div className="text-center pt-2">
-               <p className="text-xs text-muted-foreground">
+            <div className="text-center pt-2 space-y-2 border-t border-border/40">
+               <p className="text-xs text-muted-foreground font-medium">
                  Administrative locked system. Request access if needed.
+               </p>
+               <div className="flex items-center justify-center gap-3 text-xs font-bold text-primary">
+                 <button
+                   type="button"
+                   onClick={() => navigate('/contact')}
+                   className="hover:underline flex items-center gap-1"
+                 >
+                   Contact Zevox Support
+                 </button>
+                 <span>•</span>
+                 <a
+                   href="mailto:contact.zevox@gmail.com"
+                   className="hover:underline font-mono text-[11px]"
+                 >
+                   contact.zevox@gmail.com
+                 </a>
+               </div>
+               <p className="text-[10px] text-muted-foreground font-semibold">
+                 © 2026 Zevox Enterprise Systems. All rights reserved.
                </p>
             </div>
           </form>
