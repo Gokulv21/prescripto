@@ -211,22 +211,19 @@ const PrescriptionTemplate = React.memo(({
                 }
             }
 
-            // Fallback: Fetch the primary/first doctor for historical records with no ID
+            // Fallback: Fetch the primary doctor ONLY within this target clinic (never from another clinic)
             try {
-                const { data: doctorRoles } = await supabase
-                    .from('user_roles')
-                    .select('user_id')
-                    .in('role', ['doctor', 'owner'])
-                    .order('created_at', { ascending: true });
-
-                if (doctorRoles && doctorRoles.length > 0) {
-                    const { data: profiles } = await supabase
+                if (targetClinicId) {
+                    const { data: clinicDoctors } = await supabase
                         .from('profiles')
                         .select('*')
-                        .in('user_id', doctorRoles.map(r => r.user_id));
+                        .eq('clinic_id', targetClinicId)
+                        .in('role', ['doctor', 'owner'])
+                        .order('created_at', { ascending: true })
+                        .limit(1);
 
-                    if (profiles && profiles.length > 0) {
-                        setDoctorProfile(profiles[0]);
+                    if (clinicDoctors && clinicDoctors.length > 0) {
+                        setDoctorProfile(clinicDoctors[0]);
                     }
                 }
             } catch (err) {
@@ -234,7 +231,7 @@ const PrescriptionTemplate = React.memo(({
             }
         };
         fetchProfiles();
-    }, [authUser, doctorId, prescriptionCreatedAt, visit?.clinic_id]);
+    }, [authUser, doctorId, prescriptionCreatedAt, visit?.clinic_id, patient?.clinic_id]);
 
 
     // Always prioritize the patient's entry registration time (visit.created_at) over the save time
@@ -255,8 +252,8 @@ const PrescriptionTemplate = React.memo(({
         }
 
         const patientName = (patient?.title ? patient.title + ' ' : '') + (patient?.name ?? 'Patient');
-        const resolvedDoctorName = doctorName || doctorProfile?.full_name || 'Dr. Gokul';
-        const resolvedClinicName = clinicName || ownerProfile?.clinic_name || doctorProfile?.clinic_name || 'GV Clinic';
+        const resolvedDoctorName = doctorName || doctorProfile?.full_name || 'Doctor';
+        const resolvedClinicName = clinicName || ownerProfile?.clinic_name || doctorProfile?.clinic_name || 'Clinic';
         const publicLink = visit?.id ? `${window.location.origin}/prescripto/rx/${visit.id}` : '';
         if (!publicLink) {
             toast.error("Visit data missing, cannot share.");
@@ -510,14 +507,15 @@ function PageOne({
     hideBranding = false
 }: PageOneProps) {
 
-    // Resolve display values with priority: Prop Override > Fetched Profile > Hardcoded Default
-    const dispDoctorName = doctorName || doctorProfile?.full_name || 'Dr V Aravind';
-    const dispQualifications = doctorQualifications || doctorProfile?.qualifications || 'MBBS., CCEBDM., (PHFI)';
-    const dispRegId = doctorRegId || doctorProfile?.registration_id || '152590';
-    const dispClinicName = clinicName || doctorProfile?.clinic_name || 'GV Clinic';
-    const dispClinicAddress = clinicAddress || doctorProfile?.clinic_address || '742, SSR Complex, Saththanur – 606 706';
-    const dispClinicPhone = clinicPhone || doctorProfile?.clinic_phone || '+91-9488017536';
-    const dispClinicCaption = clinicCaption !== null && clinicCaption !== undefined ? clinicCaption : '24/7 Emergency · ECG · Lab';
+    // Resolve display values with priority: Prop Override > Fetched Profile > Blank
+    const dispDoctorName = doctorName || doctorProfile?.full_name || '';
+    const dispQualifications = doctorQualifications || doctorProfile?.qualifications || '';
+    const dispRegId = doctorRegId || doctorProfile?.registration_id || '';
+    const dispSpecialization = (doctorProfile as any)?.specialization || '';
+    const dispClinicName = clinicName || doctorProfile?.clinic_name || '';
+    const dispClinicAddress = clinicAddress || doctorProfile?.clinic_address || '';
+    const dispClinicPhone = clinicPhone || doctorProfile?.clinic_phone || '';
+    const dispClinicCaption = clinicCaption !== null && clinicCaption !== undefined ? clinicCaption : '';
 
     return (
         <div
@@ -563,18 +561,26 @@ function PageOne({
                         </div>
 
                         <div>
-                            <div style={{ fontWeight: 800, color: '#334155', fontSize: '2em', lineHeight: 1, letterSpacing: '0.01em' }}>
-                                {dispDoctorName}
-                            </div>
-                            <div style={{ color: '#475569', fontSize: '0.9em', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: '0.3em' }}>
-                                {dispQualifications}
-                            </div>
-                            <div style={{ color: '#475569', fontSize: '0.85em', fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                                {dispRegId ? `Reg. No: ${dispRegId}` : 'Reg. No: 152590'}
-                            </div>
-                            <div style={{ color: '#64748b', fontSize: '0.8em', fontWeight: 600, marginTop: '0.1em' }}>
-                                பொதுநலம் மற்றும் சர்க்கரை நோய் நிபுணர்
-                            </div>
+                            {dispDoctorName && (
+                                <div style={{ fontWeight: 800, color: '#334155', fontSize: '2em', lineHeight: 1, letterSpacing: '0.01em' }}>
+                                    {dispDoctorName.toLowerCase().startsWith('dr') ? dispDoctorName : `Dr. ${dispDoctorName}`}
+                                </div>
+                            )}
+                            {dispQualifications && (
+                                <div style={{ color: '#475569', fontSize: '0.9em', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: '0.3em' }}>
+                                    {dispQualifications}
+                                </div>
+                            )}
+                            {dispRegId && (
+                                <div style={{ color: '#475569', fontSize: '0.85em', fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                                    Reg. No: {dispRegId}
+                                </div>
+                            )}
+                            {dispSpecialization && (
+                                <div style={{ color: '#64748b', fontSize: '0.8em', fontWeight: 600, marginTop: '0.1em' }}>
+                                    {dispSpecialization}
+                                </div>
+                            )}
                         </div>
                     </div>
                     {/* RIGHT — Clinic Branding & Info (Clinic Name is ALWAYS ON; Dedicated slot for Logo before Name) */}
@@ -604,20 +610,26 @@ function PageOne({
                             </div>
                         )}
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
-                            <div style={{ fontWeight: 900, color: '#7d326cff', fontSize: '3.2em', letterSpacing: '0.04em', lineHeight: 1, textAlign: 'right' }}>
-                                {dispClinicName}
-                            </div>
+                            {dispClinicName && (
+                                <div style={{ fontWeight: 900, color: '#7d326cff', fontSize: '3.2em', letterSpacing: '0.04em', lineHeight: 1, textAlign: 'right' }}>
+                                    {dispClinicName}
+                                </div>
+                            )}
                             {dispClinicCaption ? (
                                 <div style={{ color: '#475569', fontSize: '0.8em', marginTop: '0.4em', letterSpacing: '0.15em', fontWeight: 800, textAlign: 'right' }}>
                                     {dispClinicCaption}
                                 </div>
                             ) : null}
-                            <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.2em', letterSpacing: '0.02em', fontWeight: 500, textAlign: 'right' }}>
-                                {dispClinicAddress}
-                            </div>
-                            <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.2em', letterSpacing: '0.02em', fontWeight: 500, textAlign: 'right' }}>
-                                {dispClinicPhone}
-                            </div>
+                            {dispClinicAddress && (
+                                <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.2em', letterSpacing: '0.02em', fontWeight: 500, textAlign: 'right' }}>
+                                    {dispClinicAddress}
+                                </div>
+                            )}
+                            {dispClinicPhone && (
+                                <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.2em', letterSpacing: '0.02em', fontWeight: 500, textAlign: 'right' }}>
+                                    {dispClinicPhone}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

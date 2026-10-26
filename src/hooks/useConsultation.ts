@@ -411,6 +411,18 @@ export function useConsultation(clinic: any) {
   // Save Prescription
   const savePrescription = async () => {
     if (!selectedVisit || !patient) return;
+
+    // Mandatory Clinical Identity Guardrail: Check clinic & doctor details
+    const docName = (myProfile?.full_name || profile?.full_name || '').trim();
+    const docReg = (myProfile?.registration_id || profile?.registration_id || '').trim();
+    const clinicName = (clinic?.name || '').trim();
+    const clinicAddress = (clinic?.address || '').trim();
+
+    if (!docName || !docReg || !clinicName || !clinicAddress) {
+      toast.error('Cannot issue prescription: Clinic Name, Address, Doctor Name, and Registration ID are mandatory before consulting.', { duration: 5000 });
+      return;
+    }
+
     const isWriting = lastInputWay === 'writing';
 
     const pendingDiagnosis = diagnosis.trim().toUpperCase();

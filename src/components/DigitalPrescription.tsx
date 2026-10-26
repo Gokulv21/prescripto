@@ -1597,7 +1597,7 @@ export default function DigitalPrescription({ patient, visit, initialPaths = [],
                                 color: '#cbd5e1', fontSize: '1.5cqw', fontWeight: 800,
                                 zIndex: 5
                             }}>
-                                GV CLINIC — PAGE {currentPageIndex + 1}
+                                {(clinicName || 'CLINIC').toUpperCase()} — PAGE {currentPageIndex + 1}
                             </div>
                         )}
                     </div>

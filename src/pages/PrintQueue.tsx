@@ -166,6 +166,9 @@ export default function PrintQueue() {
                 isPrint={true}
                 doctorId={printData.doctor_id}
                 prescriptionCreatedAt={printData.visits?.created_at || printData.created_at}
+                clinicName={clinic?.name}
+                clinicAddress={clinic?.address}
+                clinicPhone={clinic?.phone}
               />
             );
           })()}

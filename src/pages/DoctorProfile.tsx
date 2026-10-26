@@ -1902,7 +1902,7 @@ export default function DoctorProfile() {
                                                             {profile?.qualifications || 'MBBS, MD'}
                                                         </p>
                                                         <p className="text-[9px] font-semibold text-slate-500">
-                                                            Reg No: {profile?.registration_id || '152590'}
+                                                            Reg No: {profile?.registration_id || 'Not set'}
                                                         </p>
                                                     </div>
 

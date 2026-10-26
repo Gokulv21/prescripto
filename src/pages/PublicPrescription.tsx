@@ -112,9 +112,9 @@ const PublicPrescription = () => {
                 </button>
 
                 <div className="flex flex-col items-center gap-4">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Generated via GV Clinic Portal</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Generated via {data?.clinics?.name || 'Clinic'} Portal</p>
                     <div className="flex items-center gap-4 text-[11px] font-bold text-slate-500">
-                        <a href="mailto:support@gvclinic.com" className="flex items-center gap-1.5 hover:text-blue-600 transition-colors">
+                        <a href="mailto:contact.zevox@gmail.com" className="flex items-center gap-1.5 hover:text-blue-600 transition-colors">
                             <HelpCircle className="w-4 h-4" />
                             Contact Support
                         </a>

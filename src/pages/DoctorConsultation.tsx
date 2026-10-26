@@ -158,15 +158,26 @@ export default function DoctorConsultation() {
     setShowChangelog(false);
   };
 
-  // Doctor Qualification Enforcement Redirect
-  useEffect(() => {
-    if (myProfile && hasRole('doctor')) {
-      if (!myProfile.qualifications || !myProfile.registration_id) {
-        toast.error('Please complete your professional identity to start consultations.', { duration: 5000 });
-        navigate(slug ? `/${slug}/profile?tab=settings` : '/profile?tab=settings');
-      }
+  // Mandatory Credentials Validation
+  const activeDocName = (myProfile?.full_name || profile?.full_name || '').trim();
+  const activeDocReg = (myProfile?.registration_id || profile?.registration_id || '').trim();
+  const activeClinicName = (clinic?.name || '').trim();
+  const activeClinicAddress = (clinic?.address || '').trim();
+
+  const isClinicNameMissing = !activeClinicName;
+  const isClinicAddressMissing = !activeClinicAddress;
+  const isDoctorNameMissing = !activeDocName;
+  const isDoctorRegMissing = !activeDocReg;
+
+  const isConsultationBlocked = isClinicNameMissing || isClinicAddressMissing || isDoctorNameMissing || isDoctorRegMissing;
+
+  const handleSelectVisit = (v: any) => {
+    if (isConsultationBlocked) {
+      toast.error('Consultation Blocked: Clinic Name, Address, Doctor Name, and Registration ID must be filled in Profile before consulting in this ID.', { duration: 5000 });
+      return;
     }
-  }, [myProfile, hasRole, navigate, slug]);
+    selectVisit(v, true);
+  };
 
   const handlePrescriptionSave = (data: string | string[] | null, pages: any[][]) => {
     setPrescriptionImage(Array.isArray(data) ? JSON.stringify(data) : data);
@@ -184,8 +195,8 @@ export default function DoctorConsultation() {
     if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
 
     const patientName = (patientData.title ? patientData.title + ' ' : '') + (patientData.name ?? 'Patient');
-    const resolvedDoctorName = user?.user_metadata?.full_name || 'Dr. V Aravind';
-    const resolvedClinicName = clinic?.name || 'GV Clinic';
+    const resolvedDoctorName = activeDocName || user?.user_metadata?.full_name || 'Doctor';
+    const resolvedClinicName = activeClinicName || 'Clinic';
     const publicLink = `${window.location.origin}/prescripto/rx/${visitData.id}`;
 
     const message = `Hello ${patientName},  
@@ -297,7 +308,7 @@ Wishing you a quick recovery!
                 key={v.id}
                 variant={selectedVisit.id === v.id ? "default" : "ghost"}
                 size="icon"
-                onClick={() => selectVisit(v, true)}
+                onClick={() => handleSelectVisit(v)}
                 className={cn(
                   "w-12 h-12 rounded-2xl font-black text-sm transition-all",
                   selectedVisit.id === v.id 
@@ -328,14 +339,56 @@ Wishing you a quick recovery!
           isLoadingQueue={isLoadingQueue}
           refetchQueue={refetchQueue}
           selectedVisit={selectedVisit}
-          selectVisit={selectVisit}
+          selectVisit={handleSelectVisit}
           onCallPatient={handleCallPatient}
         />
       </div>
 
       {/* ── Active Consultation Area ── */}
       <div className={cn("flex-1 overflow-auto bg-muted/10 h-full", !selectedVisit ? "hidden md:block" : "block")}>
-        {!selectedVisit ? (
+        {isConsultationBlocked ? (
+          <div className="flex items-center justify-center h-full p-4 sm:p-6">
+            <div className="max-w-xl w-full bg-card border-2 border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 text-center backdrop-blur-md">
+              <div className="w-16 h-16 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center mx-auto border border-amber-500/20 shadow-inner">
+                <ShieldCheck className="w-8 h-8 text-amber-500" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
+                  Consultation Blocked: Mandatory Identity Incomplete
+                </h2>
+                <p className="text-xs sm:text-sm text-muted-foreground font-medium">
+                  By medical regulations, a doctor cannot start consultation or issue prescriptions in this clinic ID until all 4 core identity fields are completed.
+                </p>
+              </div>
+
+              <div className="bg-muted/50 rounded-2xl p-4 sm:p-5 text-left space-y-3 border border-border/60 text-xs sm:text-sm font-semibold">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">1. Clinic Name:</span>
+                  {activeClinicName ? <span className="text-emerald-600 dark:text-emerald-400 font-bold">✓ {activeClinicName}</span> : <span className="text-red-500 font-bold">✗ Incomplete</span>}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">2. Clinic Address:</span>
+                  {activeClinicAddress ? <span className="text-emerald-600 dark:text-emerald-400 font-bold">✓ {activeClinicAddress}</span> : <span className="text-red-500 font-bold">✗ Incomplete</span>}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">3. Doctor Full Name:</span>
+                  {activeDocName ? <span className="text-emerald-600 dark:text-emerald-400 font-bold">✓ Dr. {activeDocName}</span> : <span className="text-red-500 font-bold">✗ Incomplete</span>}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">4. Medical Reg. No:</span>
+                  {activeDocReg ? <span className="text-emerald-600 dark:text-emerald-400 font-bold">✓ Reg. {activeDocReg}</span> : <span className="text-red-500 font-bold">✗ Incomplete</span>}
+                </div>
+              </div>
+
+              <Button 
+                onClick={() => navigate(slug ? `/${slug}/profile` : '/profile')}
+                className="w-full py-6 rounded-2xl font-black text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/20 gap-2"
+              >
+                Complete Clinic & Doctor Profile Now
+              </Button>
+            </div>
+          </div>
+        ) : !selectedVisit ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <div className="text-center p-6 space-y-4">
               <Stethoscope className="w-16 h-16 mx-auto mb-4 opacity-10 animate-pulse text-primary" />
@@ -567,9 +620,9 @@ Wishing you a quick recovery!
                doctorName={myProfile?.full_name}
                doctorQualifications={myProfile?.qualifications}
                doctorRegId={myProfile?.registration_id}
-               clinicName={myProfile?.clinic_name}
-               clinicAddress={myProfile?.clinic_address}
-               clinicPhone={myProfile?.clinic_phone}
+               clinicName={clinic?.name || myProfile?.clinic_name}
+               clinicAddress={clinic?.address || myProfile?.clinic_address}
+               clinicPhone={clinic?.phone || myProfile?.clinic_phone}
                hideBranding={printOnStationery}
              />
           </div>
@@ -606,9 +659,9 @@ Wishing you a quick recovery!
                   doctorName={myProfile?.full_name}
                   doctorQualifications={myProfile?.qualifications}
                   doctorRegId={myProfile?.registration_id}
-                  clinicName={myProfile?.clinic_name}
-                  clinicAddress={myProfile?.clinic_address}
-                  clinicPhone={myProfile?.clinic_phone}
+                  clinicName={clinic?.name || myProfile?.clinic_name}
+                  clinicAddress={clinic?.address || myProfile?.clinic_address}
+                  clinicPhone={clinic?.phone || myProfile?.clinic_phone}
                   hideBranding={printOnStationery}
                 />
               )

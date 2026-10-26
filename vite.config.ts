@@ -50,6 +50,7 @@ export default defineConfig(({ mode }) => ({
   build: {
     chunkSizeWarningLimit: 1000,
     emptyOutDir: true,
+    sourcemap: false,
   },
   resolve: {
     alias: {

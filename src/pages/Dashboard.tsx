@@ -1224,6 +1224,9 @@ export default function Dashboard() {
                     isWritingMode={currentRx?.is_writing_mode ?? (!!currentRx?.advice_image && String(currentRx.advice_image).startsWith('data:image'))}
                     doctorId={currentRx?.doctor_id || viewingRx.assigned_doctor_id}
                     prescriptionCreatedAt={viewingRx?.created_at || currentRx?.created_at}
+                    clinicName={clinic?.name}
+                    clinicAddress={clinic?.address}
+                    clinicPhone={clinic?.phone}
                   />
                 )}
               </div>

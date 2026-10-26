@@ -266,6 +266,11 @@ async function callGeminiAI(
   return null;
 }
 
+// Security Guardrails: Client-side query rate limiter to prevent budget drain & spam
+const recentQueryTimestamps: number[] = [];
+const MAX_QUERIES_PER_MINUTE = 15;
+const MAX_QUERY_LENGTH = 500;
+
 /**
  * Main function to process incoming staff/doctor queries
  */
@@ -285,6 +290,35 @@ export async function sendNovaMessage(
     if (!slug || p.startsWith(`/${slug}`)) return p;
     return `/${slug}${p === '/' ? '/dashboard' : p}`;
   };
+
+  // 0. Security Guardrail: Input length cap (prevent token exhaustion & massive payload abuse)
+  if (query.length > MAX_QUERY_LENGTH) {
+    return {
+      id: `msg-${Date.now()}`,
+      sender: 'assistant',
+      text: prefersTamil
+        ? 'கேள்வி மிகவும் நீளமாக உள்ளது (அதிகபட்சம் 500 எழுத்துக்கள்). தயவுசெய்து சுருக்கமாக கேட்கவும்.'
+        : 'Query exceeds the maximum allowed limit of 500 characters. Please provide a concise question.',
+      timestamp: new Date()
+    };
+  }
+
+  // 0. Security Guardrail: Rate limiter (prevent abuse & API budget draining)
+  const now = Date.now();
+  while (recentQueryTimestamps.length > 0 && recentQueryTimestamps[0] < now - 60000) {
+    recentQueryTimestamps.shift();
+  }
+  if (recentQueryTimestamps.length >= MAX_QUERIES_PER_MINUTE) {
+    return {
+      id: `msg-${Date.now()}`,
+      sender: 'assistant',
+      text: prefersTamil
+        ? 'வினாக்கள் மிக வேகமாக கேட்கப்படுகின்றன (Rate limit). தயவுசெய்து ஒரு நிமிடம் கழித்து முயற்சிக்கவும்.'
+        : 'Rate limit notice: Please wait a moment before sending more queries to protect clinic AI resources.',
+      timestamp: new Date()
+    };
+  }
+  recentQueryTimestamps.push(now);
 
   // Fire-and-forget query logging for audit trail & analytics
   if (query && query.length >= 2) {
