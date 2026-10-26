@@ -1,0 +1,150 @@
+# PreScripto Daily Digital Marketing Social Copy & Posts (7-Day Rollout)
+═════════════════════════════════════════════════════════════════════════════════════
+
+Use these ready-to-post captions with each respective video and poster image!
+
+─────────────────────────────────────────────────────────────────────────────────────
+## DAY 0: The Big Launch / Product Intro
+📁 Video: IntroForPrescripto.mp4
+🖼️ Poster: IntroForPrescripto.jpg
+
+[X / Twitter]:
+Clinic management is fundamentally broken. Long queues, paper chaos, and clunky 15-year-old software. 
+
+We built PreScripto: the zero-lag clinical operating system. 🩺⚡
+
+Digitized stylus prescriptions, smart waiting TV chimes, instant printing & bilingual AI.
+
+Built for clinics that move fast. 🚀
+
+#Healthcare #React #WebDev #BuildInPublic #HealthTech
+
+[LinkedIn / Instagram]:
+Clinic management is fundamentally broken. Long queues, delayed printouts, manual paper prescriptions, and staff yelling patient names across waiting halls.
+
+We built PreScripto to change that. 🩺⚡
+
+PreScripto is a Clinical Operating System engineered for zero latency and absolute clinical isolation:
+• ✍️ Doctor Stylus Rx Pad: Handwrite or pick medications with real-time digital signature.
+• 📺 Smart Waiting Room Display: TV screen view featuring real-time token tracking & automated audio chimes.
+• 🖨️ Instant Thermal & A4 Printing: Sub-0.2s print dispatch queue for receipts and prescriptions.
+• 🧠 Nova AI Clinical Copilot: Bilingual (Tamil/English) clinical assistant that digests patient footfalls & analytics.
+• 🔒 Enterprise Multi-Clinic Isolation: Row-Level Security, strict RBAC, and zero cross-tenant leaks.
+
+Check out the launch overview video above! 🏥✨
+
+#HealthTech #SaaS #ReactJS #FullStack #StartupJourney #HealthcareInnovation
+
+─────────────────────────────────────────────────────────────────────────────────────
+## DAY 1: Feature 1 — Digital Stylus Prescription Pad
+📁 Video: DigitalStylusPrescription.mp4
+🖼️ Poster: DigitalStylusPrescription.jpg
+
+[Caption]:
+Doctors hate clicking through 20 dropdowns just to prescribe a simple antibiotic. 
+
+Meet PreScripto’s Digital Stylus Prescription Pad. 🩺✍️
+
+✨ Key highlights:
+• Write naturally on touchscreens and tablets using a digital stylus
+• Rapid smart autocomplete for medicines, dosages (1-0-1, SOS), and food instructions
+• Real-time patient vitals monitor (BP, Pulse, SpO2) right inside the consultation desk
+• Encrypted cryptographic digital signature stamp with SHA-256 verification
+
+Prescribe faster. Treat more patients. Zero paper clutter.
+
+#DigitalHealth #DoctorLife #HealthTech #MedicalSoftware #PaperlessClinic
+
+─────────────────────────────────────────────────────────────────────────────────────
+## DAY 2: Feature 2 — Smart Waiting Room TV Display with Audio Chimes
+📁 Video: SmartWaitingRoomTVDisplay.mp4
+🖼️ Poster: SmartWaitingRoomTVDisplay.jpg
+
+[Caption]:
+No more crowded reception chaos or nurses shouting patient names across the waiting hall. 📢❌
+
+PreScripto turns any smart TV or monitor into an intelligent waiting room queue. 📺✨
+
+🔔 Automated Two-Tone Audio Bell Chimes play the second a doctor clicks 'Next Patient'.
+🔢 Giant live token numbers & patient callouts guide patients to their exact doctor cabin.
+🏥 Multi-cabin routing keeps patient flow orderly, calm, and dignified.
+
+Calm clinic. Happy patients. Effortless front desk.
+
+#ClinicManagement #PatientExperience #SmartClinic #WaitingRoom #HealthTech
+
+─────────────────────────────────────────────────────────────────────────────────────
+## DAY 3: Feature 3 — Sub-Second Thermal & A4 Print Queue
+📁 Video: InstantThermalPrintQueue.mp4
+🖼️ Poster: InstantThermalPrintQueue.jpg
+
+[Caption]:
+Why do outpatient counters always get stuck? Because Windows print dialogs take 5 to 10 seconds to spool! 🐢
+
+We fixed that with PreScripto’s Sub-Second Hardware Print Engine. ⚡🖨️
+
+• < 0.2s dispatch latency directly to 3-inch POS thermal printers
+• Instant receipt generation with barcode & token tracking
+• Official A4 clinical prescription letterheads with QR verification for patient smartphone access
+• Zero counter bottlenecks during morning peak rush hours
+
+Print fast. Clear queues. Move on.
+
+#HealthTech #POSPrinting #ThermalPrint #Pharmacy #OutpatientCare
+
+─────────────────────────────────────────────────────────────────────────────────────
+## DAY 4: Feature 4 — Nova AI Clinical Copilot & Practice Analytics
+📁 Video: NovaAIClinicalCopilot.mp4
+🖼️ Poster: NovaAIClinicalCopilot.jpg
+
+[Caption]:
+What if your clinic had an AI assistant that understands your clinical workflow? 🧠✨
+
+Meet Nova AI: the bilingual clinical intelligence copilot built into PreScripto. 
+
+Ask questions naturally in English or Tamil:
+💬 "Yesterday patient footfall summary & peak hours?"
+💬 "Show this week's outpatient revenue breakdown"
+
+Nova AI queries clinic data in real-time and serves instant executive summaries, wait-time analysis, and peak hour trends so practice owners can make smarter decisions without digging through spreadsheets.
+
+#ArtificialIntelligence #HealthAI #AIInHealthcare #BilingualAI #SaaS
+
+─────────────────────────────────────────────────────────────────────────────────────
+## DAY 5: Feature 5 — Rapid Nurse Triage Desk (30s Check-In)
+📁 Video: NurseTriageDesk.mp4
+🖼️ Poster: NurseTriageDesk.jpg
+
+[Caption]:
+Morning rush at your clinic front desk? 🏃‍♂️💨
+
+PreScripto’s Nurse Triage Desk lets front-desk staff register walk-in patients and capture complete vital signs in under 30 seconds.
+
+⚡ Features:
+• Instant sequential token assignment (Cabin & Doctor routing)
+• Fast recording: Blood Pressure, Pulse, Body Temp, Height & Weight
+• Automated real-time BMI calculator (Underweight, Normal, Overweight flags)
+• Doctor desk receives patient vitals before the patient even walks into the consultation room
+
+Streamline patient intake from the very first minute.
+
+#Nursing #FrontDesk #ClinicWorkflow #Triage #PatientIntake
+
+─────────────────────────────────────────────────────────────────────────────────────
+## DAY 6: Feature 6 — Multi-Clinic Tenancy & Enterprise Security
+📁 Video: MultiClinicDataIsolation.mp4
+🖼️ Poster: MultiClinicDataIsolation.jpg
+
+[Caption]:
+Running multiple clinic branches or hospital campuses? 🏥🏥
+
+Managing multiple locations often leads to messy databases and dangerous patient privacy leaks. 
+
+PreScripto is built on enterprise multi-tenant infrastructure:
+🔒 PostgreSQL Row-Level Security (RLS) ensures clinic data is physically isolated at the database tier.
+🏢 One-click zero-reload branch switching for doctors practicing across multiple locations.
+🛡️ Strict Role-Based Access Control (RBAC): SuperAdmin, Doctor, and Staff permissions.
+
+Your clinical records remain completely isolated, secure, and compliance-ready.
+
+#CyberSecurity #DatabaseSecurity #PostgreSQL #MultiTenant #HealthTechCloud

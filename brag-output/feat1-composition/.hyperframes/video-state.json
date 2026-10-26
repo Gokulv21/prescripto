@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "historyId": "bb2d851e-8fc3-4083-8ba1-36ebef3c1c61",
+  "currentRevision": "f7a280b6-a138-4738-a88b-332c9a40e9fd",
+  "pendingChanges": false,
+  "files": {
+    "assets/logo.png": {
+      "hash": "3a3a72f2b84f96e9bd608f015e7eb8ba2a886c473a1eb0fff859fb3954947d94",
+      "content": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\3a\\3a3a72f2b84f96e9bd608f015e7eb8ba2a886c473a1eb0fff859fb3954947d94"
+    },
+    "assets/sfx/click_002.ogg": {
+      "hash": "adcd1f4adc35f1b41bc1b5bbefeff7aa44f2f3f0d96d3199b544140c7c1e761c",
+      "content": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\ad\\adcd1f4adc35f1b41bc1b5bbefeff7aa44f2f3f0d96d3199b544140c7c1e761c"
+    },
+    "assets/sfx/drop_001.ogg": {
+      "hash": "692ee3a6f1821402ca649ff735bee9591dc4846c8098fc7d6a90fd15fa57c1af",
+      "content": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\69\\692ee3a6f1821402ca649ff735bee9591dc4846c8098fc7d6a90fd15fa57c1af"
+    },
+    "assets/sfx/select_008.ogg": {
+      "hash": "f703b6b1c62dae1c246a46d5c2442802588f68be2df4d17e0d65cf7e0dbfc826",
+      "content": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\f7\\f703b6b1c62dae1c246a46d5c2442802588f68be2df4d17e0d65cf7e0dbfc826"
+    },
+    "assets/sfx/switch_001.ogg": {
+      "hash": "3b74efad87f1e69dbd1d05c5ad952ab90859b5a3d11da6ec5bd79b4f03b42afa",
+      "content": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\3b\\3b74efad87f1e69dbd1d05c5ad952ab90859b5a3d11da6ec5bd79b4f03b42afa"
+    },
+    "assets/voice/voice.mp3": {
+      "hash": "397141063bc64c55e55dd96fe05ea2aa082476962ada38f5affe65b1cb7f07c8",
+      "content": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\39\\397141063bc64c55e55dd96fe05ea2aa082476962ada38f5affe65b1cb7f07c8"
+    },
+    "hyperframes.json": {
+      "hash": "53dbce1e19aa713cbb12ee0bc4d206143b45ab15e6ffbfcaa8f69572d4d24d50",
+      "content": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\53\\53dbce1e19aa713cbb12ee0bc4d206143b45ab15e6ffbfcaa8f69572d4d24d50"
+    },
+    "index.html": {
+      "hash": "bf6cfd5bfe965cef8a5b879bb808b3a687ef7f65cf8bb7f7c5bf1bc1a314c454",
+      "content": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\bf\\bf6cfd5bfe965cef8a5b879bb808b3a687ef7f65cf8bb7f7c5bf1bc1a314c454"
+    },
+    "meta.json": {
+      "hash": "dcece0c39245723929833a1985b5ed765837b2bc7eb3b83242887c018c83db7d",
+      "content": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\dc\\dcece0c39245723929833a1985b5ed765837b2bc7eb3b83242887c018c83db7d"
+    },
+    "render.cmd": {
+      "hash": "042bacf104609c1a113acdfa7a11449f3ce161fbf55eb0a6decf10c4f9db3448",
+      "content": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\04\\042bacf104609c1a113acdfa7a11449f3ce161fbf55eb0a6decf10c4f9db3448"
+    },
+    "assets/music/track.mp3": {
+      "hash": "f9912f2c962ada1e579f5ccc5a7d854d67e5e81ee96a7dd8c885a8480ae58d09",
+      "content": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\f9\\f9912f2c962ada1e579f5ccc5a7d854d67e5e81ee96a7dd8c885a8480ae58d09"
+    }
+  },
+  "revisions": {
+    "f7a280b6-a138-4738-a88b-332c9a40e9fd": {
+      "actor": {
+        "kind": "outside",
+        "name": "Outside"
+      },
+      "label": "Changed outside the app",
+      "startedAt": 1793019371533,
+      "endedAt": 1793019371538,
+      "files": {
+        "index.html": {
+          "before": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\ac\\acdd3ad85087962f9161b9e0b3433ee0070499ac98bdeeee99e1d12423228495",
+          "after": "C:\\Users\\gokie\\.cache\\hyperframes\\history\\bb2d851e-8fc3-4083-8ba1-36ebef3c1c61\\blobs\\bf\\bf6cfd5bfe965cef8a5b879bb808b3a687ef7f65cf8bb7f7c5bf1bc1a314c454"
+        }
+      }
+    }
+  },
+  "checks": {
+    "latest": {
+      "revision": "f7a280b6-a138-4738-a88b-332c9a40e9fd",
+      "id": "3bdf8119-7165-4b2a-a2fb-79b07986d63d"
+    },
+    "revisions": {
+      "f7a280b6-a138-4738-a88b-332c9a40e9fd": [
+        {
+          "id": "3bdf8119-7165-4b2a-a2fb-79b07986d63d",
+          "scope": "project",
+          "report": "F:\\My projects (leisure)\\My portfolio\\Prescripto\\brag-output\\feat1-composition\\.hyperframes\\artifacts\\checks\\3bdf8119-7165-4b2a-a2fb-79b07986d63d.json",
+          "metadata": {
+            "ok": true,
+            "browserSkipped": false,
+            "options": {
+              "samples": 9,
+              "atTransitions": false,
+              "maxIssues": 80,
+              "collapseStatic": true,
+              "tolerance": 2,
+              "timeout": 3000,
+              "contrast": true,
+              "strict": false,
+              "snapshots": false,
+              "browserGpuMode": "auto"
+            }
+          },
+          "createdAt": 1793019394640,
+          "contentHash": "860775331b5ce7822642d9442c566b4003ad186a2d975bad10948f9a90562b75",
+          "revision": "f7a280b6-a138-4738-a88b-332c9a40e9fd",
+          "inputFingerprint": "584c784c99fa1990a1f70c3db56eb9ba221567ad9dbd1a663b6eca469252d90b",
+          "inputScope": "local-project-files",
+          "attribution": "recorded-revision"
+        }
+      ]
+    },
+    "unversioned": [
+      {
+        "id": "ca68d127-797e-4355-87de-ae9ee026e6d4",
+        "scope": "project",
+        "report": "F:\\My projects (leisure)\\My portfolio\\Prescripto\\brag-output\\feat1-composition\\.hyperframes\\artifacts\\checks\\ca68d127-797e-4355-87de-ae9ee026e6d4.json",
+        "metadata": {
+          "ok": false,
+          "browserSkipped": true,
+          "options": {
+            "samples": 9,
+            "atTransitions": false,
+            "maxIssues": 80,
+            "collapseStatic": true,
+            "tolerance": 2,
+            "timeout": 3000,
+            "contrast": true,
+            "strict": false,
+            "snapshots": false,
+            "browserGpuMode": "auto"
+          }
+        },
+        "createdAt": 1793019347209,
+        "contentHash": "2744564165385871d71263744713a6829f7ccc23cad28caa421b8f8c952e556c",
+        "revision": null,
+        "inputFingerprint": "2ff1424713757f13b5f4582db806b1ccf39912965067d92ad7c4fc2558aacbfc",
+        "inputScope": "local-project-files",
+        "attribution": "unversioned"
+      }
+    ]
+  },
+  "snapshots": {
+    "latest": null,
+    "revisions": {},
+    "unversioned": []
+  },
+  "renders": {
+    "latest": {
+      "id": "c06552e8-f702-4890-8660-eb1d6d06dc1b",
+      "completedAt": 1793019524343,
+      "output": "F:\\My projects (leisure)\\My portfolio\\Prescripto\\brag-output\\DigitalStylusPrescription.mp4",
+      "status": "completed",
+      "revision": "f7a280b6-a138-4738-a88b-332c9a40e9fd"
+    },
+    "retainedRevisions": [
+      "f7a280b6-a138-4738-a88b-332c9a40e9fd"
+    ]
+  },
+  "pendingArtifactCleanup": []
+}

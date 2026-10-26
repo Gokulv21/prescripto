@@ -1,0 +1,358 @@
+{
+  "ok": true,
+  "strict": false,
+  "browserSkipped": false,
+  "lint": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 5,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<section id=\"scene-1\"> is a timeline element that contains nested <div id=\"s1-tag\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-1",
+        "dataAttributes": {},
+        "sourceFile": "F:\\My projects (leisure)\\My portfolio\\Prescripto\\brag-output\\feat1-composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <section id=\"scene-1\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<section id=\"scene-2\"> is a timeline element that contains nested <div id=\"s2-desk\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-2",
+        "dataAttributes": {},
+        "sourceFile": "F:\\My projects (leisure)\\My portfolio\\Prescripto\\brag-output\\feat1-composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <section id=\"scene-2\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<section id=\"scene-3\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-3",
+        "dataAttributes": {},
+        "sourceFile": "F:\\My projects (leisure)\\My portfolio\\Prescripto\\brag-output\\feat1-composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <section id=\"scene-3\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<section id=\"scene-4\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-4",
+        "dataAttributes": {},
+        "sourceFile": "F:\\My projects (leisure)\\My portfolio\\Prescripto\\brag-output\\feat1-composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <section id=\"scene-4\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<section id=\"scene-5\"> is a timeline element that contains nested <img id=\"s5-logo\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-5",
+        "dataAttributes": {},
+        "sourceFile": "F:\\My projects (leisure)\\My portfolio\\Prescripto\\brag-output\\feat1-composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <section id=\"scene-5\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      }
+    ],
+    "filesScanned": 1
+  },
+  "runtime": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": []
+  },
+  "layout": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "duration": 20.4,
+    "samples": [
+      1.133,
+      3.4,
+      5.667,
+      7.933,
+      10.2,
+      12.467,
+      14.733,
+      17,
+      19.267
+    ],
+    "transitionSamples": [],
+    "transitionSamplesDropped": 0,
+    "tolerance": 2,
+    "totalIssueCount": 0,
+    "truncated": false
+  },
+  "motion": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": false,
+    "samples": 0
+  },
+  "contrast": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": true,
+    "samples": [
+      1.133,
+      5.667,
+      10.2,
+      14.733,
+      19.267
+    ],
+    "checked": 25,
+    "passed": 25
+  },
+  "craft": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 5,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "text_below_floor",
+        "severity": "warning",
+        "message": "Type floor is 28 px (2.6% of the 1080 px short side, what a phone can read) and 11 text elements stay under it for 0.5 s or more, the smallest \"⚡ Zero-Lag Stylus Mode Activated\" at 20 px: set reading text to at least 28 px, or put data-layout-ignore on text that is texture rather than reading; see references/look.md.",
+        "text": "⚡ Zero-Lag Stylus Mode Activated",
+        "selector": "#s2-desk > div:nth-of-type(2) > span:nth-of-type(1)",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 389,
+          "y": 606.82,
+          "width": 345.53,
+          "height": 25
+        },
+        "time": 4.478,
+        "times": [
+          0,
+          4.478,
+          4.478,
+          4.478,
+          4.478,
+          4.478,
+          10.2,
+          10.573,
+          11.444,
+          12.19,
+          19.28
+        ],
+        "fontPx": 20,
+        "floorPx": 28,
+        "seconds": 5.348,
+        "elements": [
+          {
+            "selector": "#s2-desk > div:nth-of-type(2) > span:nth-of-type(1)",
+            "text": "⚡ Zero-Lag Stylus Mode Activated",
+            "fontPx": 20,
+            "time": 4.478,
+            "seconds": 5.348
+          },
+          {
+            "selector": "#s5-cta",
+            "text": "Upgrade Your Clinic Practice",
+            "fontPx": 20.88,
+            "time": 19.28,
+            "seconds": 1.12
+          },
+          {
+            "selector": "div.vitals-strip > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "120/80",
+            "fontPx": 22,
+            "time": 4.478,
+            "seconds": 5.348
+          },
+          {
+            "selector": "div.vitals-strip > div:nth-of-type(2) > div:nth-of-type(1)",
+            "text": "74 bpm",
+            "fontPx": 22,
+            "time": 4.478,
+            "seconds": 5.348
+          },
+          {
+            "selector": "div.vitals-strip > div:nth-of-type(3) > div:nth-of-type(1)",
+            "text": "99%",
+            "fontPx": 22,
+            "time": 4.478,
+            "seconds": 5.348
+          },
+          {
+            "selector": "div.vitals-strip > div:nth-of-type(4) > div:nth-of-type(1)",
+            "text": "70 kg",
+            "fontPx": 22,
+            "time": 4.478,
+            "seconds": 5.348
+          },
+          {
+            "selector": "#s3-m1 > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "Tab. Amoxicillin 500mg",
+            "fontPx": 22,
+            "time": 10.573,
+            "seconds": 4.478
+          },
+          {
+            "selector": "#s3-m2 > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "Tab. Paracetamol 650mg",
+            "fontPx": 22,
+            "time": 11.444,
+            "seconds": 3.607
+          },
+          {
+            "selector": "#s3-m3 > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "Cap. Pantoprazole 40mg",
+            "fontPx": 22,
+            "time": 12.19,
+            "seconds": 2.861
+          },
+          {
+            "selector": "span.brand-title",
+            "text": "PreScripto",
+            "fontPx": 24,
+            "time": 0,
+            "seconds": 20.4
+          },
+          {
+            "selector": "div.desk-container > div:nth-of-type(1) > h3:nth-of-type(1)",
+            "text": "Prescribed Medications",
+            "fontPx": 26,
+            "time": 10.2,
+            "seconds": 4.851
+          }
+        ]
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 4.73 s (4.98–9.70 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 4.976,
+        "seconds": 4.726,
+        "floorSeconds": 3,
+        "until": 9.702
+      },
+      {
+        "code": "line_unread",
+        "severity": "warning",
+        "message": "The film's last line \"PreScripto\" (1 word) is on screen 1.77 s (±0.01 s), under the 2.00 s a closing line needs: hold it about 0.5 s + 0.3 s a word and at least 2 s before the film ends; see references/motion.md.",
+        "text": "PreScripto",
+        "selector": "#s5-title",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 725.52,
+          "y": 487.39,
+          "width": 468.96000000000004,
+          "height": 121
+        },
+        "time": 18.636,
+        "words": 1,
+        "seconds": 1.768,
+        "floorSeconds": 2
+      },
+      {
+        "code": "line_unread",
+        "severity": "warning",
+        "message": "The film's last line \"Digital Stylus Prescription Pad\" (4 words) is on screen 1.50 s (±0.01 s), under the 2.00 s a closing line needs: hold it about 0.5 s + 0.3 s a word and at least 2 s before the film ends; see references/motion.md.",
+        "text": "Digital Stylus Prescription Pad",
+        "selector": "#s5-sub",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 742.5,
+          "y": 607.5,
+          "width": 434.98,
+          "height": 38
+        },
+        "time": 18.907,
+        "words": 4,
+        "seconds": 1.497,
+        "floorSeconds": 2
+      },
+      {
+        "code": "line_unread",
+        "severity": "warning",
+        "message": "The film's last line \"Upgrade Your Clinic Practice\" (4 words) is on screen 1.07 s (±0.01 s), under the 2.00 s a closing line needs: hold it about 0.5 s + 0.3 s a word and at least 2 s before the film ends; see references/motion.md.",
+        "text": "Upgrade Your Clinic Practice",
+        "selector": "#s5-cta",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 787.2,
+          "y": 703.65,
+          "width": 345.5799999999999,
+          "height": 30.700000000000045
+        },
+        "time": 19.335,
+        "words": 4,
+        "seconds": 1.069,
+        "floorSeconds": 2
+      }
+    ],
+    "enabled": true,
+    "step": 0.12400000000000055,
+    "samples": 164
+  },
+  "hdr": {
+    "autoPromotion": null,
+    "inspection": "available"
+  },
+  "snapshots": {
+    "enabled": false,
+    "files": [],
+    "times": [],
+    "findingFiles": []
+  }
+}
