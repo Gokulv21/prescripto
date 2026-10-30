@@ -179,13 +179,6 @@ export default function Login() {
                  >
                    Contact Zevox Support
                  </button>
-                 <span>•</span>
-                 <a
-                   href="mailto:contact.zevox@gmail.com"
-                   className="hover:underline font-mono text-[11px]"
-                 >
-                   contact.zevox@gmail.com
-                 </a>
                </div>
                <p className="text-[10px] text-muted-foreground font-semibold">
                  © 2026 Zevox Enterprise Systems. All rights reserved.

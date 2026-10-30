@@ -1,0 +1,348 @@
+/* From Uiverse.io by zanina-yassine - Mobile Responsive & Theme Friendly */
+.feedback-comments-wrapper {
+  width: 100%;
+}
+
+.feedback-comments-wrapper .card {
+  width: 450px;
+  max-width: 100%;
+  height: fit-content;
+  background-color: white;
+  box-shadow: 0px 187px 75px rgba(0, 0, 0, 0.01), 0px 105px 63px rgba(0, 0, 0, 0.05), 0px 47px 47px rgba(0, 0, 0, 0.09), 0px 12px 26px rgba(0, 0, 0, 0.1), 0px 0px 0px rgba(0, 0, 0, 0.1);
+  border-radius: 17px 17px 27px 27px;
+  overflow: hidden;
+  border: 1px solid #f1f1f1;
+  transition: all 0.3s ease;
+}
+
+.feedback-comments-wrapper .title {
+  width: 100%;
+  height: 50px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-left: 20px;
+  border-bottom: 1px solid #f1f1f1;
+  font-weight: 700;
+  font-size: 13px;
+  color: #47484b;
+}
+
+.feedback-comments-wrapper .title::after {
+  content: '';
+  width: 8ch;
+  height: 1px;
+  position: absolute;
+  bottom: -1px;
+  left: 20px;
+  background-color: #47484b;
+}
+
+.feedback-comments-wrapper .comments {
+  display: grid;
+  grid-template-columns: 35px 1fr;
+  gap: 16px;
+  padding: 16px;
+}
+
+.feedback-comments-wrapper .comment-react {
+  width: 35px;
+  height: fit-content;
+  display: grid;
+  grid-template-columns: auto;
+  margin: 0;
+  background-color: #f1f1f1;
+  border-radius: 6px;
+}
+
+.feedback-comments-wrapper .comment-react button {
+  width: 35px;
+  height: 35px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  border: 0;
+  outline: none;
+  cursor: pointer;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.feedback-comments-wrapper .comment-react button:after {
+  content: '';
+  width: 40px;
+  height: 40px;
+  position: absolute;
+  left: -2.5px;
+  top: -2.5px;
+  background-color: #f5356e;
+  border-radius: 50%;
+  z-index: 0;
+  transform: scale(0);
+}
+
+.feedback-comments-wrapper .comment-react button svg {
+  position: relative;
+  z-index: 9;
+  transition: transform 0.2s ease;
+}
+
+.feedback-comments-wrapper .comment-react button:hover:after {
+  animation: ripple 0.6s ease-in-out forwards;
+}
+
+.feedback-comments-wrapper .comment-react button:hover svg,
+.feedback-comments-wrapper .comment-react button.liked svg {
+  fill: #f5356e;
+}
+
+.feedback-comments-wrapper .comment-react button:hover svg path,
+.feedback-comments-wrapper .comment-react button.liked svg path {
+  stroke: #f5356e;
+  fill: #f5356e;
+}
+
+.feedback-comments-wrapper .comment-react hr {
+  width: 80%;
+  height: 1px;
+  background-color: #dfe1e6;
+  margin: auto;
+  border: 0;
+}
+
+.feedback-comments-wrapper .comment-react span {
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: #707277;
+}
+
+.feedback-comments-wrapper .comment-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  min-width: 0; /* Prevents flex children from overflowing on mobile */
+}
+
+.feedback-comments-wrapper .comment-container .user {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.feedback-comments-wrapper .comment-container .user .user-pic {
+  width: 36px;
+  height: 36px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f1f1f1;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.feedback-comments-wrapper .comment-container .user .user-pic:after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  position: absolute;
+  right: 0px;
+  bottom: 0px;
+  border-radius: 50%;
+  background-color: #0fc45a;
+  border: 2px solid #ffffff;
+}
+
+.feedback-comments-wrapper .comment-container .user .user-info {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.feedback-comments-wrapper .comment-container .user .user-info span {
+  font-weight: 700;
+  font-size: 12px;
+  color: #47484b;
+}
+
+.feedback-comments-wrapper .comment-container .user .user-info p {
+  font-weight: 500;
+  font-size: 10px;
+  color: #acaeb4;
+}
+
+.feedback-comments-wrapper .comment-container .comment-content {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: #5f6064;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.feedback-comments-wrapper .text-box {
+  width: 100%;
+  height: fit-content;
+  background-color: #f1f1f1;
+  padding: 8px;
+}
+
+.feedback-comments-wrapper .text-box .box-container {
+  background-color: #ffffff;
+  border-radius: 8px 8px 21px 21px;
+  padding: 8px;
+}
+
+.feedback-comments-wrapper .text-box textarea {
+  width: 100%;
+  min-height: 48px;
+  max-height: 120px;
+  resize: vertical;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+  caret-color: #0a84ff;
+  color: #333333;
+  background-color: transparent;
+  box-sizing: border-box;
+}
+
+.feedback-comments-wrapper .text-box textarea::placeholder {
+  color: #9ca3af;
+}
+
+.feedback-comments-wrapper .text-box .formatting {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.feedback-comments-wrapper .text-box .formatting button {
+  width: 28px;
+  height: 28px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  border-radius: 50%;
+  border: 0;
+  outline: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.feedback-comments-wrapper .text-box .formatting button:hover {
+  background-color: #f1f1f1;
+}
+
+.feedback-comments-wrapper .text-box .formatting .send {
+  width: 32px;
+  height: 32px;
+  background-color: #0a84ff;
+  margin-left: auto;
+  border-radius: 50%;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  flex-shrink: 0;
+}
+
+.feedback-comments-wrapper .text-box .formatting .send:hover {
+  background-color: #026eda;
+  transform: scale(1.05);
+}
+
+.feedback-comments-wrapper .text-box .formatting .send:active {
+  transform: scale(0.95);
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.6;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* ── Mobile Responsive Adjustments (Screens < 480px) ── */
+@media (max-width: 480px) {
+  .feedback-comments-wrapper .card {
+    border-radius: 16px;
+    width: 100%;
+  }
+
+  .feedback-comments-wrapper .comments {
+    grid-template-columns: 32px 1fr;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .feedback-comments-wrapper .comment-react {
+    width: 32px;
+  }
+
+  .feedback-comments-wrapper .comment-react button {
+    width: 32px;
+    height: 32px;
+  }
+
+  .feedback-comments-wrapper .comment-react span {
+    font-size: 11px;
+    height: 28px;
+  }
+
+  .feedback-comments-wrapper .comment-container .user {
+    grid-template-columns: 32px 1fr;
+    gap: 8px;
+  }
+
+  .feedback-comments-wrapper .comment-container .user .user-pic {
+    width: 32px;
+    height: 32px;
+  }
+
+  .feedback-comments-wrapper .text-box {
+    padding: 6px;
+  }
+
+  .feedback-comments-wrapper .text-box .box-container {
+    padding: 6px;
+    border-radius: 8px 8px 16px 16px;
+  }
+
+  .feedback-comments-wrapper .text-box textarea {
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+
+  .feedback-comments-wrapper .text-box .formatting button {
+    width: 26px;
+    height: 26px;
+  }
+
+  .feedback-comments-wrapper .text-box .formatting .send {
+    width: 28px;
+    height: 28px;
+  }
+}

@@ -3,7 +3,7 @@ import { useAuth, AppRole } from '@/lib/auth';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
-  Stethoscope, ClipboardPlus, Printer, BarChart3, Users, LogOut, Home, Menu, HelpCircle, Sun, Moon, Monitor, ChevronDown, Info, Tv, User, LayoutGrid, Building2, Mail
+  Stethoscope, ClipboardPlus, Printer, BarChart3, Users, LogOut, Home, Menu, HelpCircle, Sun, Moon, Monitor, ChevronDown, Info, Tv, User, LayoutGrid, Building2, Mail, MessageSquare
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -33,6 +33,7 @@ const navItems: NavItem[] = [
   { label: 'Contact', path: '/contact', icon: <Mail className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
   { label: 'About', path: '/about', icon: <Info className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
   { label: 'Help', path: '/help', icon: <HelpCircle className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
+  { label: 'Comments', path: '/comments', icon: <MessageSquare className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {

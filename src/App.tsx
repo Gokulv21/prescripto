@@ -31,6 +31,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const About = lazy(() => import("@/pages/About"));
 const Help = lazy(() => import("@/pages/Help"));
 const Contact = lazy(() => import("@/pages/Contact"));
+const Comments = lazy(() => import("@/pages/Comments"));
 
 function PageLoader() {
   return (
@@ -342,6 +343,7 @@ const App = () => (
                     <Route path="saas" element={<ProtectedRoute allowedRoles={['superadmin']}><SaaSManagement /></ProtectedRoute>} />
                     <Route path="about" element={<About />} />
                     <Route path="contact" element={<Contact />} />
+                    <Route path="comments" element={<Comments />} />
                   </Route>
 
                   <Route path="*" element={<NotFound />} />
