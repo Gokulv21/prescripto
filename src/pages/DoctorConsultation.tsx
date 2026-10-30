@@ -159,17 +159,21 @@ export default function DoctorConsultation() {
   };
 
   // Mandatory Credentials Validation
-  const activeDocName = (myProfile?.full_name || profile?.full_name || '').trim();
-  const activeDocReg = (myProfile?.registration_id || profile?.registration_id || '').trim();
-  const activeClinicName = (clinic?.name || '').trim();
-  const activeClinicAddress = (clinic?.address || '').trim();
+  const activeDocName = (myProfile?.full_name || profile?.full_name || user?.user_metadata?.full_name || '').trim();
+  const activeDocReg = (myProfile?.registration_id || (profile as any)?.registration_id || '').trim();
+  const activeDocQual = (myProfile?.qualifications || (profile as any)?.qualifications || '').trim();
+  const activeClinicName = (clinic?.name || myProfile?.clinic_name || '').trim();
+  const activeClinicAddress = (clinic?.address || myProfile?.clinic_address || '').trim();
+  const activeClinicPhone = (clinic?.phone || myProfile?.clinic_phone || '').trim();
 
-  const isClinicNameMissing = !activeClinicName;
-  const isClinicAddressMissing = !activeClinicAddress;
-  const isDoctorNameMissing = !activeDocName;
-  const isDoctorRegMissing = !activeDocReg;
+  // Guard against false blocking while initial profile is still resolving
+  const isProfileLoading = !profile && !myProfile;
+  const isClinicNameMissing = !isProfileLoading && !activeClinicName;
+  const isClinicAddressMissing = !isProfileLoading && !activeClinicAddress;
+  const isDoctorNameMissing = !isProfileLoading && !activeDocName;
+  const isDoctorRegMissing = !isProfileLoading && !activeDocReg;
 
-  const isConsultationBlocked = isClinicNameMissing || isClinicAddressMissing || isDoctorNameMissing || isDoctorRegMissing;
+  const isConsultationBlocked = !isProfileLoading && (isClinicNameMissing || isClinicAddressMissing || isDoctorNameMissing || isDoctorRegMissing);
 
   const handleSelectVisit = (v: any) => {
     if (isConsultationBlocked) {
@@ -575,6 +579,13 @@ Wishing you a quick recovery!
             setLastInputWay('writing');
           }}
           onClose={() => setShowDigitalRx(false)}
+          doctorId={user?.id}
+          doctorName={activeDocName}
+          doctorQualifications={activeDocQual}
+          doctorRegId={activeDocReg}
+          clinicName={activeClinicName}
+          clinicAddress={activeClinicAddress}
+          clinicPhone={activeClinicPhone}
         />
       )}
 
@@ -617,12 +628,12 @@ Wishing you a quick recovery!
                isPrint={true}
                doctorId={user?.id}
                prescriptionCreatedAt={selectedVisit?.created_at || new Date().toISOString()}
-               doctorName={myProfile?.full_name}
-               doctorQualifications={myProfile?.qualifications}
-               doctorRegId={myProfile?.registration_id}
-               clinicName={clinic?.name || myProfile?.clinic_name}
-               clinicAddress={clinic?.address || myProfile?.clinic_address}
-               clinicPhone={clinic?.phone || myProfile?.clinic_phone}
+               doctorName={activeDocName}
+               doctorQualifications={activeDocQual}
+               doctorRegId={activeDocReg}
+               clinicName={activeClinicName}
+               clinicAddress={activeClinicAddress}
+               clinicPhone={activeClinicPhone}
                hideBranding={printOnStationery}
              />
           </div>
@@ -656,12 +667,12 @@ Wishing you a quick recovery!
                   isPrint={true}
                   doctorId={currentHistoryRx.doctor_id}
                   prescriptionCreatedAt={viewingHistoryRx?.created_at || currentHistoryRx.created_at}
-                  doctorName={myProfile?.full_name}
-                  doctorQualifications={myProfile?.qualifications}
-                  doctorRegId={myProfile?.registration_id}
-                  clinicName={clinic?.name || myProfile?.clinic_name}
-                  clinicAddress={clinic?.address || myProfile?.clinic_address}
-                  clinicPhone={clinic?.phone || myProfile?.clinic_phone}
+                  doctorName={currentHistoryRx.doctor_id === user?.id ? activeDocName : undefined}
+                  doctorQualifications={currentHistoryRx.doctor_id === user?.id ? activeDocQual : undefined}
+                  doctorRegId={currentHistoryRx.doctor_id === user?.id ? activeDocReg : undefined}
+                  clinicName={activeClinicName}
+                  clinicAddress={activeClinicAddress}
+                  clinicPhone={activeClinicPhone}
                   hideBranding={printOnStationery}
                 />
               )

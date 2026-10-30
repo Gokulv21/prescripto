@@ -51,9 +51,40 @@ interface DigitalPrescriptionProps {
     onSave: (imageData: string | string[] | null, pages: any[][]) => void;
     onPathsChange?: (pages: any[][]) => void;
     onClose: () => void;
+    // Doctor & Clinic Identity Props
+    doctorId?: string;
+    doctorName?: string;
+    doctorQualifications?: string;
+    doctorRegId?: string;
+    clinicName?: string;
+    clinicAddress?: string;
+    clinicPhone?: string;
+    clinicLogo?: string | null;
+    clinicWatermark?: string | null;
+    clinicCaption?: string | null;
+    headerMode?: 'name' | 'logo' | 'both';
 }
 
-export default function DigitalPrescription({ patient, visit, initialPaths = [], initialPages, onSave, onPathsChange, onClose }: DigitalPrescriptionProps) {
+export default function DigitalPrescription({
+    patient,
+    visit,
+    initialPaths = [],
+    initialPages,
+    onSave,
+    onPathsChange,
+    onClose,
+    doctorId,
+    doctorName,
+    doctorQualifications,
+    doctorRegId,
+    clinicName,
+    clinicAddress,
+    clinicPhone,
+    clinicLogo,
+    clinicWatermark,
+    clinicCaption,
+    headerMode
+}: DigitalPrescriptionProps) {
     const [mounted, setMounted] = React.useState(false);
     React.useEffect(() => {
         setMounted(true);
@@ -146,7 +177,7 @@ export default function DigitalPrescription({ patient, visit, initialPaths = [],
     const [isSavingSnippet, setIsSavingSnippet] = useState(false);
 
     const clinicId = visit?.clinic_id;
-    const doctorId = visit?.assigned_doctor_id;
+    const effectiveDoctorId = doctorId || visit?.assigned_doctor_id;
 
     // Load & sync snippets from Supabase and merge with localStorage
     useEffect(() => {
@@ -897,7 +928,7 @@ export default function DigitalPrescription({ patient, visit, initialPaths = [],
                 name,
                 paths: clonedPaths,
                 clinic_id: clinicId || null,
-                doctor_id: doctorId || null,
+                doctor_id: effectiveDoctorId || null,
                 created_at: new Date().toISOString()
             };
 
@@ -1584,6 +1615,17 @@ export default function DigitalPrescription({ patient, visit, initialPaths = [],
                             visit={visit}
                             prescriptionCreatedAt={visit?.created_at}
                             handwrittenImage={null}
+                            doctorId={doctorId}
+                            doctorName={doctorName}
+                            doctorQualifications={doctorQualifications}
+                            doctorRegId={doctorRegId}
+                            clinicName={clinicName}
+                            clinicAddress={clinicAddress}
+                            clinicPhone={clinicPhone}
+                            clinicLogo={clinicLogo}
+                            clinicWatermark={clinicWatermark}
+                            clinicCaption={clinicCaption}
+                            headerMode={headerMode}
                         // Only show template on first page
                         />
                         {/* Background for continuation pages */}

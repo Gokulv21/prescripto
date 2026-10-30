@@ -77,6 +77,23 @@ interface PrescriptionTemplateProps {
     hideBranding?: boolean;
 }
 
+// In-memory module-level caches for zero-latency instant rendering
+interface ClinicCacheItem {
+    clinic_name: string;
+    clinic_address: string;
+    clinic_phone: string;
+    owner_id?: string;
+    clinic_photo?: string | null;
+    clinic_watermark?: string | null;
+    clinic_caption?: string | null;
+    prescription_header_mode?: 'name' | 'logo' | 'both';
+}
+
+const clinicCache = new Map<string, ClinicCacheItem>();
+const profileCache = new Map<string, any>();
+const inFlightClinicPromises = new Map<string, Promise<any>>();
+const inFlightProfilePromises = new Map<string, Promise<any>>();
+
 // Filter out invalid image data to prevent broken image icons
 const isValidImage = (src: any): src is string =>
     typeof src === 'string' && src.length > 5 && (src.startsWith('data:image') || src.startsWith('http'));
@@ -96,124 +113,185 @@ const PrescriptionTemplate = React.memo(({
 }: PrescriptionTemplateProps) => {
 
     const { user: authUser } = useAuth();
-    const [doctorProfile, setDoctorProfile] = useState<any>(null);
-    const [ownerProfile, setOwnerProfile] = useState<any>(null);
-    const [watermarkUrl, setWatermarkUrl] = useState<string | null>(propClinicWatermark || null);
-    const [clinicLogoUrl, setClinicLogoUrl] = useState<string | null>(propClinicLogo || null);
-    const [clinicCaption, setClinicCaption] = useState<string | null>(propClinicCaption ?? null);
-    const [headerMode, setHeaderMode] = useState<'name' | 'logo' | 'both'>(propHeaderMode || 'name');
+    const targetClinicId = visit?.clinic_id || patient?.clinic_id;
+    let targetDocId = doctorId || visit?.doctor_id;
+    if (!targetDocId && authUser?.id) {
+        targetDocId = authUser.id;
+    }
+
+    // Synchronous Cache Lookup for 0ms initial render
+    const cachedClinic = targetClinicId ? clinicCache.get(targetClinicId) : undefined;
+    const cachedDoc = targetDocId ? profileCache.get(targetDocId) : undefined;
+
+    const [doctorProfile, setDoctorProfile] = useState<any>(() => cachedDoc || null);
+    const [ownerProfile, setOwnerProfile] = useState<any>(() => {
+        if (cachedClinic) {
+            return {
+                clinic_name: cachedClinic.clinic_name,
+                clinic_address: cachedClinic.clinic_address,
+                clinic_phone: cachedClinic.clinic_phone
+            };
+        }
+        return null;
+    });
+
+    const [watermarkUrl, setWatermarkUrl] = useState<string | null>(() => {
+        if (propClinicWatermark) return propClinicWatermark;
+        if (cachedClinic?.clinic_watermark) return cachedClinic.clinic_watermark;
+        if (targetClinicId) {
+            return localStorage.getItem(`prescripto_clinic_watermark_${targetClinicId}`);
+        }
+        return null;
+    });
+
+    const [clinicLogoUrl, setClinicLogoUrl] = useState<string | null>(() => {
+        if (propClinicLogo) return propClinicLogo;
+        if (cachedClinic?.clinic_photo) return cachedClinic.clinic_photo;
+        if (targetClinicId) {
+            return localStorage.getItem(`prescripto_clinic_logo_${targetClinicId}`);
+        }
+        return null;
+    });
+
+    const [clinicCaption, setClinicCaption] = useState<string | null>(() => {
+        if (propClinicCaption !== undefined) return propClinicCaption;
+        if (cachedClinic?.clinic_caption !== undefined) return cachedClinic.clinic_caption;
+        if (targetClinicId) {
+            return localStorage.getItem(`prescripto_clinic_caption_${targetClinicId}`);
+        }
+        return null;
+    });
+
+    const [headerMode, setHeaderMode] = useState<'name' | 'logo' | 'both'>(() => {
+        if (propHeaderMode) return propHeaderMode;
+        if (cachedClinic?.prescription_header_mode) return cachedClinic.prescription_header_mode;
+        if (targetClinicId) {
+            const cached = localStorage.getItem(`prescripto_clinic_header_mode_${targetClinicId}`) as any;
+            if (['name', 'logo', 'both'].includes(cached)) return cached;
+        }
+        return 'name';
+    });
 
     useEffect(() => {
-        const fetchProfiles = async () => {
-            const targetClinicId = visit?.clinic_id || patient?.clinic_id;
+        let isMounted = true;
 
-            // 1. Fetch Clinic Branding & Watermark from clinics table, owner bio & storage
+        const loadMetadata = async () => {
+            const promises: Promise<any>[] = [];
+
+            // 1. Resolve Clinic Branding in parallel
             if (targetClinicId) {
-                try {
-                    const { data: clinicData } = await supabase
-                        .from('clinics')
-                        .select('id, name, address, phone, owner_id')
-                        .eq('id', targetClinicId)
-                        .maybeSingle();
-                    
-                    if (clinicData) {
+                if (clinicCache.has(targetClinicId)) {
+                    const c = clinicCache.get(targetClinicId)!;
+                    if (isMounted) {
                         setOwnerProfile({
-                            clinic_name: clinicData.name,
-                            clinic_address: clinicData.address,
-                            clinic_phone: clinicData.phone
+                            clinic_name: c.clinic_name,
+                            clinic_address: c.clinic_address,
+                            clinic_phone: c.clinic_phone
                         });
+                        if (c.clinic_watermark && !propClinicWatermark) setWatermarkUrl(c.clinic_watermark);
+                        if (c.clinic_photo && !propClinicLogo) setClinicLogoUrl(c.clinic_photo);
+                        if (c.clinic_caption !== undefined && propClinicCaption === undefined) setClinicCaption(c.clinic_caption);
+                        if (c.prescription_header_mode && !propHeaderMode) setHeaderMode(c.prescription_header_mode);
+                    }
+                } else {
+                    let clinicPromise = inFlightClinicPromises.get(targetClinicId);
+                    if (!clinicPromise) {
+                        clinicPromise = (async () => {
+                            const { data: clinicData } = await supabase
+                                .from('clinics')
+                                .select('id, name, address, phone, owner_id')
+                                .eq('id', targetClinicId)
+                                .maybeSingle();
 
-                        // Check localStorage cache for instant updates
-                        const cachedMode = localStorage.getItem(`prescripto_clinic_header_mode_${clinicData.id}`) as any;
-                        if (cachedMode && ['name', 'logo', 'both'].includes(cachedMode) && !propHeaderMode) {
-                            setHeaderMode(cachedMode);
-                        }
-                        const cachedWm = localStorage.getItem(`prescripto_clinic_watermark_${clinicData.id}`);
-                        if (cachedWm && !propClinicWatermark) {
-                            setWatermarkUrl(cachedWm);
-                        }
-                        const cachedCaption = localStorage.getItem(`prescripto_clinic_caption_${clinicData.id}`);
-                        if (cachedCaption !== null && propClinicCaption === undefined) {
-                            setClinicCaption(cachedCaption);
-                        }
+                            if (!clinicData) return null;
 
-                        // Fetch owner bio if available
-                        if (clinicData.owner_id) {
-                            try {
+                            let bioMeta: any = {};
+                            if (clinicData.owner_id) {
                                 const { data: ownerProf } = await supabase
                                     .from('profiles')
                                     .select('bio')
                                     .eq('user_id', clinicData.owner_id)
                                     .maybeSingle();
                                 if (ownerProf?.bio) {
-                                    const parsed = JSON.parse(ownerProf.bio);
-                                    if (parsed.prescription_header_mode && !propHeaderMode && !cachedMode) {
-                                        setHeaderMode(parsed.prescription_header_mode);
-                                    }
-                                    if (parsed.clinic_watermark && !propClinicWatermark && !cachedWm) {
-                                        setWatermarkUrl(parsed.clinic_watermark);
-                                    }
-                                    if (parsed.clinic_photo && !propClinicLogo) {
-                                        setClinicLogoUrl(parsed.clinic_photo);
-                                    }
-                                    if (parsed.clinic_caption !== undefined && propClinicCaption === undefined && cachedCaption === null) {
-                                        setClinicCaption(parsed.clinic_caption);
-                                    }
+                                    try { bioMeta = JSON.parse(ownerProf.bio); } catch {}
                                 }
-                            } catch (e) {}
-                        }
+                            }
 
-                        // Fetch fresh files directly from Supabase Storage avatars bucket
-                        try {
-                            const { data: list } = await supabase.storage.from('avatars').list(clinicData.id);
-                            const wmFile = list?.find(f => f.name.startsWith('clinic-watermark'));
-                            if (wmFile && !propClinicWatermark) {
-                                const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(`${clinicData.id}/${wmFile.name}`);
-                                setWatermarkUrl(`${publicUrl}?t=${new Date(wmFile.updated_at || Date.now()).getTime()}`);
-                            }
-                            const brandFile = list?.find(f => f.name.startsWith('clinic-branding'));
-                            if (brandFile && !propClinicLogo) {
-                                const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(`${clinicData.id}/${brandFile.name}`);
-                                setClinicLogoUrl(`${publicUrl}?t=${new Date(brandFile.updated_at || Date.now()).getTime()}`);
-                            }
-                        } catch (storageErr) {
-                            console.warn("Avatars storage check warning:", storageErr);
-                        }
+                            const cachedMode = localStorage.getItem(`prescripto_clinic_header_mode_${clinicData.id}`) as any;
+                            const cachedWm = localStorage.getItem(`prescripto_clinic_watermark_${clinicData.id}`);
+                            const cachedCaption = localStorage.getItem(`prescripto_clinic_caption_${clinicData.id}`);
+                            const cachedLogo = localStorage.getItem(`prescripto_clinic_logo_${clinicData.id}`);
+
+                            const item: ClinicCacheItem = {
+                                clinic_name: clinicData.name || '',
+                                clinic_address: clinicData.address || '',
+                                clinic_phone: clinicData.phone || '',
+                                owner_id: clinicData.owner_id,
+                                clinic_photo: bioMeta.clinic_photo || cachedLogo || null,
+                                clinic_watermark: bioMeta.clinic_watermark || cachedWm || null,
+                                clinic_caption: bioMeta.clinic_caption !== undefined ? bioMeta.clinic_caption : (cachedCaption ?? null),
+                                prescription_header_mode: (['name', 'logo', 'both'].includes(cachedMode) ? cachedMode : bioMeta.prescription_header_mode) || 'name'
+                            };
+
+                            clinicCache.set(targetClinicId, item);
+                            return item;
+                        })().finally(() => {
+                            inFlightClinicPromises.delete(targetClinicId);
+                        });
+                        inFlightClinicPromises.set(targetClinicId, clinicPromise);
                     }
-                } catch (err) {
-                    console.error("Error fetching clinic branding:", err);
+
+                    promises.push(clinicPromise.then((item) => {
+                        if (isMounted && item) {
+                            setOwnerProfile({
+                                clinic_name: item.clinic_name,
+                                clinic_address: item.clinic_address,
+                                clinic_phone: item.clinic_phone
+                            });
+                            if (item.clinic_watermark && !propClinicWatermark) setWatermarkUrl(item.clinic_watermark);
+                            if (item.clinic_photo && !propClinicLogo) setClinicLogoUrl(item.clinic_photo);
+                            if (item.clinic_caption !== undefined && propClinicCaption === undefined) setClinicCaption(item.clinic_caption);
+                            if (item.prescription_header_mode && !propHeaderMode) setHeaderMode(item.prescription_header_mode);
+                        }
+                    }));
                 }
             }
 
-            // 2. Fetch Doctor Profile for Identity
-            let targetId = doctorId || visit?.doctor_id;
-            const isSavedRecord = !!(prescriptionCreatedAt || visit?.created_at);
-
-            if (!targetId && !isSavedRecord) {
-                targetId = authUser?.id;
+            // 2. Resolve Doctor Profile in parallel
+            let effectiveDocId = doctorId || visit?.doctor_id;
+            if (!effectiveDocId && authUser?.id) {
+                effectiveDocId = authUser.id;
             }
 
-            if (targetId) {
-                try {
-                    // Fetch the specific profile
-                    const { data: profile } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('user_id', targetId)
-                        .maybeSingle();
-
-                    if (profile) {
-                        setDoctorProfile(profile);
-                        return;
+            if (effectiveDocId) {
+                if (profileCache.has(effectiveDocId)) {
+                    if (isMounted) setDoctorProfile(profileCache.get(effectiveDocId));
+                } else {
+                    let docPromise = inFlightProfilePromises.get(effectiveDocId);
+                    if (!docPromise) {
+                        docPromise = (async () => {
+                            const { data: prof } = await supabase
+                                .from('profiles')
+                                .select('*')
+                                .eq('user_id', effectiveDocId)
+                                .maybeSingle();
+                            if (prof) {
+                                profileCache.set(effectiveDocId, prof);
+                            }
+                            return prof;
+                        })().finally(() => {
+                            inFlightProfilePromises.delete(effectiveDocId);
+                        });
+                        inFlightProfilePromises.set(effectiveDocId, docPromise);
                     }
-                } catch (err) {
-                    console.error("Error fetching specific doctor profile:", err);
-                }
-            }
 
-            // Fallback: Fetch the primary doctor ONLY within this target clinic (never from another clinic)
-            try {
-                if (targetClinicId) {
+                    promises.push(docPromise.then((prof) => {
+                        if (isMounted && prof) setDoctorProfile(prof);
+                    }));
+                }
+            } else if (targetClinicId) {
+                // Fallback for historic prescriptions where doctor_id was not saved: fetch primary doctor of clinic
+                promises.push((async () => {
                     const { data: clinicDoctors } = await supabase
                         .from('profiles')
                         .select('*')
@@ -221,17 +299,22 @@ const PrescriptionTemplate = React.memo(({
                         .in('role', ['doctor', 'owner'])
                         .order('created_at', { ascending: true })
                         .limit(1);
-
-                    if (clinicDoctors && clinicDoctors.length > 0) {
+                    if (isMounted && clinicDoctors && clinicDoctors.length > 0) {
+                        profileCache.set(clinicDoctors[0].user_id, clinicDoctors[0]);
                         setDoctorProfile(clinicDoctors[0]);
                     }
-                }
-            } catch (err) {
-                console.error("Error fetching fallback doctor profile:", err);
+                })());
             }
+
+            await Promise.all(promises);
         };
-        fetchProfiles();
-    }, [authUser, doctorId, prescriptionCreatedAt, visit?.clinic_id, patient?.clinic_id]);
+
+        loadMetadata();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [authUser?.id, doctorId, visit?.doctor_id, visit?.clinic_id, patient?.clinic_id, propClinicWatermark, propClinicLogo, propClinicCaption, propHeaderMode]);
 
 
     // Always prioritize the patient's entry registration time (visit.created_at) over the save time
@@ -381,6 +464,7 @@ Follow the instructions carefully.
                             clinicCaption={clinicCaption}
                             headerMode={headerMode}
                             hideBranding={hideBranding}
+                            ownerProfile={ownerProfile}
                         />
                     ) : (
                         <div style={{ position: 'absolute', inset: 0, background: '#fff' }}>
@@ -475,6 +559,7 @@ interface PageOneProps {
     advice?: string;
     hasTyped: boolean;
     doctorProfile: any;
+    ownerProfile?: any;
     vitals: { label: string; value: any; unit: string }[];
     isWritingMode: boolean;
     hideTypedDiagnosis: boolean;
@@ -497,7 +582,7 @@ interface PageOneProps {
 
 function PageOne({
     patient, visit, today, time, displayDate, clinicalNotes, diagnosis, medicines, advice,
-    hasTyped, vitals, doctorProfile, isWritingMode,
+    hasTyped, vitals, doctorProfile, ownerProfile, isWritingMode,
     hideTypedDiagnosis, safeDiagnosis, safeNotes, safeAdvice, hasHandwritingInThisComponent,
     doctorName, doctorQualifications, doctorRegId,
     clinicName, clinicAddress, clinicPhone,
@@ -507,15 +592,15 @@ function PageOne({
     hideBranding = false
 }: PageOneProps) {
 
-    // Resolve display values with priority: Prop Override > Fetched Profile > Blank
-    const dispDoctorName = doctorName || doctorProfile?.full_name || '';
-    const dispQualifications = doctorQualifications || doctorProfile?.qualifications || '';
-    const dispRegId = doctorRegId || doctorProfile?.registration_id || '';
-    const dispSpecialization = (doctorProfile as any)?.specialization || '';
-    const dispClinicName = clinicName || doctorProfile?.clinic_name || '';
-    const dispClinicAddress = clinicAddress || doctorProfile?.clinic_address || '';
-    const dispClinicPhone = clinicPhone || doctorProfile?.clinic_phone || '';
-    const dispClinicCaption = clinicCaption !== null && clinicCaption !== undefined ? clinicCaption : '';
+    // Resolve display values with priority: Prop Override > Owner Profile / Doctor Profile > Blank
+    const dispDoctorName = (doctorName || doctorProfile?.full_name || '').trim();
+    const dispQualifications = (doctorQualifications || doctorProfile?.qualifications || '').trim();
+    const dispRegId = (doctorRegId || doctorProfile?.registration_id || '').trim();
+    const dispSpecialization = ((doctorProfile as any)?.specialization || '').trim();
+    const dispClinicName = (clinicName || ownerProfile?.clinic_name || doctorProfile?.clinic_name || '').trim();
+    const dispClinicAddress = (clinicAddress || ownerProfile?.clinic_address || doctorProfile?.clinic_address || '').trim();
+    const dispClinicPhone = (clinicPhone || ownerProfile?.clinic_phone || doctorProfile?.clinic_phone || '').trim();
+    const dispClinicCaption = (clinicCaption !== null && clinicCaption !== undefined ? clinicCaption : (ownerProfile?.clinic_caption || '')).trim();
 
     return (
         <div
