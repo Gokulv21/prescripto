@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PageBanner from '@/components/PageBanner';
-import printQueueBanner from '@/assets/print_queue_banner.png';
 import { Printer, CheckCircle, Clock, RefreshCw, BellRing } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';

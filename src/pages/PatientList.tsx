@@ -4,7 +4,6 @@ import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { useQuery } from '@tanstack/react-query';
 import PageBanner from "@/components/PageBanner";
-import patientListBanner from "@/assets/patient_list_banner.png";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

@@ -2,7 +2,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CreditCard, Activity, ShieldAlert, Wrench, Shield, Clock, User, Fingerprint, Bot, Search, MessageSquare } from "lucide-react";
 import PageBanner from "@/components/PageBanner";
-import userMgmtBanner from "@/assets/user_mgmt_banner.png";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { 
@@ -74,7 +73,6 @@ export default function SaaSManagement() {
       <PageBanner
         title="SaaS Management"
         description="Manage your clinic's subscription tier, billing, API usage, and administrative audit trails."
-        imageSrc={userMgmtBanner}
       >
         <div className="w-24 h-24 flex items-center justify-center bg-white/20 rounded-2xl backdrop-blur-sm -ml-4 border border-white/30 text-white shadow-xl">
            <Wrench className="w-10 h-10" />

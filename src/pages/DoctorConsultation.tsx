@@ -22,7 +22,6 @@ import PrescriptionTemplate from '@/components/PrescriptionTemplate';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { printPrescription } from '@/lib/printPrescription';
 import PageBanner from '@/components/PageBanner';
-import consultationBanner from '@/assets/consultation_banner.png';
 import consultationImg from '@/assets/Consultation.png';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { useConsultation } from '@/hooks/useConsultation';

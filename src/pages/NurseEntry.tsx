@@ -3,7 +3,6 @@ import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from '@/lib/auth';
 
 import PageBanner from "@/components/PageBanner";
-import patientEntryBanner from "@/assets/patient_entry_banner.png";
 import { formatAge, calculateDobFromAge, getPatientCurrentAge } from '@/lib/utils';
 import { buildPatientSearchFilter, rankPatientSearchResults } from '@/lib/patientSearch';
 import { supabase } from '@/integrations/supabase/client';
