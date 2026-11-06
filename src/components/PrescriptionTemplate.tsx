@@ -67,6 +67,7 @@ interface PrescriptionTemplateProps {
     doctorName?: string;
     doctorQualifications?: string;
     doctorRegId?: string;
+    doctorSignature?: string;
     clinicName?: string;
     clinicAddress?: string;
     clinicPhone?: string;
@@ -74,7 +75,11 @@ interface PrescriptionTemplateProps {
     clinicWatermark?: string;
     clinicCaption?: string | null;
     headerMode?: 'name' | 'logo' | 'both';
+    brandingOption?: 'both' | 'logo_only' | 'watermark_only' | 'none';
     hideBranding?: boolean;
+    templateId?: 'classic' | 'modern' | 'minimal';
+    primaryColor?: string;
+    showVitalsSidebar?: boolean;
 }
 
 // In-memory module-level caches for zero-latency instant rendering
@@ -87,6 +92,9 @@ interface ClinicCacheItem {
     clinic_watermark?: string | null;
     clinic_caption?: string | null;
     prescription_header_mode?: 'name' | 'logo' | 'both';
+    template_id?: 'classic' | 'modern' | 'minimal';
+    primary_color?: string;
+    show_vitals_sidebar?: boolean;
 }
 
 const clinicCache = new Map<string, ClinicCacheItem>();
@@ -103,13 +111,17 @@ const PrescriptionTemplate = React.memo(({
     diagnosis, clinicalNotes, medicines = [], advice, isPrint = false,
     isWritingMode = false,
     doctorId, prescriptionCreatedAt, hideShare = false,
-    doctorName, doctorQualifications, doctorRegId,
+    doctorName, doctorQualifications, doctorRegId, doctorSignature,
     clinicName, clinicAddress, clinicPhone,
     clinicLogo: propClinicLogo,
     clinicWatermark: propClinicWatermark,
     clinicCaption: propClinicCaption,
     headerMode: propHeaderMode,
-    hideBranding = false
+    brandingOption: propBrandingOption,
+    hideBranding = false,
+    templateId: propTemplateId,
+    primaryColor: propPrimaryColor,
+    showVitalsSidebar: propShowVitalsSidebar
 }: PrescriptionTemplateProps) => {
 
     const { user: authUser } = useAuth();
@@ -133,6 +145,36 @@ const PrescriptionTemplate = React.memo(({
             };
         }
         return null;
+    });
+
+    const [templateId, setTemplateId] = useState<'classic' | 'modern' | 'minimal'>(() => {
+        if (propTemplateId) return propTemplateId;
+        if (cachedClinic?.template_id) return cachedClinic.template_id;
+        if (targetClinicId) {
+            const cached = localStorage.getItem(`prescripto_clinic_template_${targetClinicId}`);
+            if (cached === 'modern' || cached === 'minimal' || cached === 'classic') return cached;
+        }
+        return 'classic';
+    });
+
+    const [primaryColor, setPrimaryColor] = useState<string>(() => {
+        if (propPrimaryColor) return propPrimaryColor;
+        if (cachedClinic?.primary_color) return cachedClinic.primary_color;
+        if (targetClinicId) {
+            const cached = localStorage.getItem(`prescripto_clinic_color_${targetClinicId}`);
+            if (cached) return cached;
+        }
+        return '#7d326c';
+    });
+
+    const [showVitalsSidebar, setShowVitalsSidebar] = useState<boolean>(() => {
+        if (propShowVitalsSidebar !== undefined) return propShowVitalsSidebar;
+        if (cachedClinic?.show_vitals_sidebar !== undefined) return cachedClinic.show_vitals_sidebar;
+        if (targetClinicId) {
+            const cached = localStorage.getItem(`prescripto_clinic_vitals_${targetClinicId}`);
+            if (cached !== null) return cached === 'true';
+        }
+        return true;
     });
 
     const [watermarkUrl, setWatermarkUrl] = useState<string | null>(() => {
@@ -171,6 +213,16 @@ const PrescriptionTemplate = React.memo(({
         }
         return 'name';
     });
+
+    useEffect(() => {
+        if (propTemplateId) setTemplateId(propTemplateId);
+        if (propPrimaryColor) setPrimaryColor(propPrimaryColor);
+        if (propShowVitalsSidebar !== undefined) setShowVitalsSidebar(propShowVitalsSidebar);
+        if (propClinicWatermark !== undefined) setWatermarkUrl(propClinicWatermark);
+        if (propClinicLogo !== undefined) setClinicLogoUrl(propClinicLogo);
+        if (propClinicCaption !== undefined) setClinicCaption(propClinicCaption);
+        if (propHeaderMode) setHeaderMode(propHeaderMode);
+    }, [propTemplateId, propPrimaryColor, propShowVitalsSidebar, propClinicWatermark, propClinicLogo, propClinicCaption, propHeaderMode]);
 
     useEffect(() => {
         let isMounted = true;
@@ -221,6 +273,9 @@ const PrescriptionTemplate = React.memo(({
                             const cachedWm = localStorage.getItem(`prescripto_clinic_watermark_${clinicData.id}`);
                             const cachedCaption = localStorage.getItem(`prescripto_clinic_caption_${clinicData.id}`);
                             const cachedLogo = localStorage.getItem(`prescripto_clinic_logo_${clinicData.id}`);
+                            const cachedTemplate = localStorage.getItem(`prescripto_clinic_template_${clinicData.id}`) as any;
+                            const cachedColor = localStorage.getItem(`prescripto_clinic_color_${clinicData.id}`);
+                            const cachedVitals = localStorage.getItem(`prescripto_clinic_vitals_${clinicData.id}`);
 
                             const item: ClinicCacheItem = {
                                 clinic_name: clinicData.name || '',
@@ -230,7 +285,10 @@ const PrescriptionTemplate = React.memo(({
                                 clinic_photo: bioMeta.clinic_photo || cachedLogo || null,
                                 clinic_watermark: bioMeta.clinic_watermark || cachedWm || null,
                                 clinic_caption: bioMeta.clinic_caption !== undefined ? bioMeta.clinic_caption : (cachedCaption ?? null),
-                                prescription_header_mode: (['name', 'logo', 'both'].includes(cachedMode) ? cachedMode : bioMeta.prescription_header_mode) || 'name'
+                                prescription_header_mode: (['name', 'logo', 'both'].includes(cachedMode) ? cachedMode : bioMeta.prescription_header_mode) || 'name',
+                                template_id: (['classic', 'modern', 'minimal'].includes(cachedTemplate) ? cachedTemplate : bioMeta.template_id) || 'classic',
+                                primary_color: cachedColor || bioMeta.primary_color || '#7d326c',
+                                show_vitals_sidebar: cachedVitals !== null ? cachedVitals === 'true' : (bioMeta.show_vitals_sidebar ?? true)
                             };
 
                             clinicCache.set(targetClinicId, item);
@@ -392,6 +450,12 @@ Follow the instructions carefully.
     const images = rawImages.filter(isValidImage);
     const hasHandwritingInThisComponent = images.length > 0;
     
+    // Branding mode resolution (both / logo_only / watermark_only / none)
+    const effectiveBrandingOption = propBrandingOption || (targetClinicId ? (localStorage.getItem(`prescripto_clinic_branding_option_${targetClinicId}`) as any) : 'both') || 'both';
+    const effectiveWatermark = (effectiveBrandingOption === 'both' || effectiveBrandingOption === 'watermark_only') ? watermarkUrl : null;
+    const effectiveLogo = (effectiveBrandingOption === 'both' || effectiveBrandingOption === 'logo_only') ? clinicLogoUrl : null;
+    const effectiveHeaderMode = (effectiveBrandingOption === 'watermark_only' || effectiveBrandingOption === 'none') ? 'name' : headerMode;
+
     // Normalize text content
     const safeDiagnosis = (diagnosis || (typeof visit?.diagnosis === 'string' ? visit.diagnosis : '') || '').trim();
     const safeNotes = (clinicalNotes || '').trim();
@@ -457,14 +521,18 @@ Follow the instructions carefully.
                             doctorName={doctorName}
                             doctorQualifications={doctorQualifications}
                             doctorRegId={doctorRegId}
+                            doctorSignature={doctorSignature}
                             clinicName={clinicName || ownerProfile?.clinic_name}
                             clinicAddress={clinicAddress || ownerProfile?.clinic_address}
                             clinicPhone={clinicPhone || ownerProfile?.clinic_phone}
-                            clinicLogoUrl={clinicLogoUrl}
+                            clinicLogoUrl={effectiveLogo}
                             clinicCaption={clinicCaption}
-                            headerMode={headerMode}
+                            headerMode={effectiveHeaderMode}
                             hideBranding={hideBranding}
                             ownerProfile={ownerProfile}
+                            templateId={templateId}
+                            primaryColor={primaryColor}
+                            showVitalsSidebar={showVitalsSidebar}
                         />
                     ) : (
                         <div style={{ position: 'absolute', inset: 0, background: '#fff' }}>
@@ -478,7 +546,7 @@ Follow the instructions carefully.
                     )}
 
                     {/* Clinic Watermark Overlay */}
-                    {watermarkUrl && !hideBranding && (
+                    {effectiveWatermark && !hideBranding && (
                         <div
                             className="clinic-watermark-container"
                             style={{
@@ -497,7 +565,7 @@ Follow the instructions carefully.
                             }}
                         >
                             <img
-                                src={watermarkUrl}
+                                src={effectiveWatermark}
                                 alt="Prescription Watermark"
                                 draggable={false}
                                 style={{
@@ -571,25 +639,33 @@ interface PageOneProps {
     doctorName?: string;
     doctorQualifications?: string;
     doctorRegId?: string;
+    doctorSignature?: string;
     clinicName?: string;
     clinicAddress?: string;
     clinicPhone?: string;
     clinicLogoUrl?: string | null;
     clinicCaption?: string | null;
     headerMode?: 'name' | 'logo' | 'both';
+    brandingOption?: 'both' | 'logo_only' | 'watermark_only' | 'none';
     hideBranding?: boolean;
+    templateId?: 'classic' | 'modern' | 'minimal';
+    primaryColor?: string;
+    showVitalsSidebar?: boolean;
 }
 
 function PageOne({
     patient, visit, today, time, displayDate, clinicalNotes, diagnosis, medicines, advice,
     hasTyped, vitals, doctorProfile, ownerProfile, isWritingMode,
     hideTypedDiagnosis, safeDiagnosis, safeNotes, safeAdvice, hasHandwritingInThisComponent,
-    doctorName, doctorQualifications, doctorRegId,
+    doctorName, doctorQualifications, doctorRegId, doctorSignature,
     clinicName, clinicAddress, clinicPhone,
     clinicLogoUrl,
     clinicCaption,
     headerMode = 'name',
-    hideBranding = false
+    hideBranding = false,
+    templateId = 'classic',
+    primaryColor = '#7d326c',
+    showVitalsSidebar = true
 }: PageOneProps) {
 
     // Resolve display values with priority: Prop Override > Owner Profile / Doctor Profile > Blank
@@ -620,7 +696,124 @@ function PageOne({
             {/* ── HEADER ─────────────────────────────────────── */}
             {hideBranding ? (
                 <div style={{ height: '72mm', flexShrink: 0, background: '#fff', borderBottom: '1px solid #e2e8f0' }} />
+            ) : templateId === 'modern' ? (
+                /* ── THEME 2: MODERN HOSPITAL (Vibrant Accent Header & Polished Framing) ── */
+                <div style={{
+                    background: `linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)`,
+                    padding: '1.4em 2em',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    position: 'relative', overflow: 'hidden', flexShrink: 0,
+                    borderBottom: `3px solid ${primaryColor || '#7d326c'}`,
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8em' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+                            <img
+                                src={prescriptionLogo}
+                                alt="Doctor Emblem"
+                                style={{
+                                    height: '5em',
+                                    width: 'auto',
+                                    objectFit: 'contain',
+                                    flexShrink: 0,
+                                    display: 'block',
+                                    filter: 'brightness(0) saturate(100%) invert(18%) sepia(85%) saturate(3000%) hue-rotate(210deg)'
+                                }}
+                            />
+                        </div>
+
+                        <div>
+                            {dispDoctorName && (
+                                <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '2.1em', lineHeight: 1, letterSpacing: '0.01em' }}>
+                                    {dispDoctorName.toLowerCase().startsWith('dr') ? dispDoctorName : `Dr. ${dispDoctorName}`}
+                                </div>
+                            )}
+                            {dispQualifications && (
+                                <div style={{ color: primaryColor || '#7d326c', fontSize: '0.9em', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: '0.3em' }}>
+                                    {dispQualifications}
+                                </div>
+                            )}
+                            {dispRegId && (
+                                <div style={{ color: '#64748b', fontSize: '0.85em', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                                    Reg. No: {dispRegId}
+                                </div>
+                            )}
+                            {dispSpecialization && (
+                                <div style={{ color: '#475569', fontSize: '0.8em', fontWeight: 600, marginTop: '0.1em' }}>
+                                    {dispSpecialization}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '1.2em' }}>
+                        {clinicLogoUrl && headerMode !== 'name' && (
+                            <div style={{ height: '5.2em', maxWidth: '7em', minWidth: '4.2em', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <img src={clinicLogoUrl} alt={dispClinicName || 'Clinic Logo'} style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+                            </div>
+                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
+                            {dispClinicName && (
+                                <div style={{ fontWeight: 900, color: primaryColor || '#7d326c', fontSize: '3.4em', letterSpacing: '0.02em', lineHeight: 1, textAlign: 'right' }}>
+                                    {dispClinicName}
+                                </div>
+                            )}
+                            {dispClinicCaption && (
+                                <div style={{ color: '#ffffff', backgroundColor: primaryColor || '#7d326c', padding: '0.2em 0.8em', borderRadius: '0.4em', fontSize: '0.75em', marginTop: '0.4em', letterSpacing: '0.1em', fontWeight: 800, textAlign: 'right' }}>
+                                    {dispClinicCaption}
+                                </div>
+                            )}
+                            {dispClinicAddress && (
+                                <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.25em', fontWeight: 600, textAlign: 'right' }}>
+                                    {dispClinicAddress}
+                                </div>
+                            )}
+                            {dispClinicPhone && (
+                                <div style={{ color: '#64748b', fontSize: '0.75em', marginTop: '0.15em', fontWeight: 700, textAlign: 'right' }}>
+                                    Ph: {dispClinicPhone}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            ) : templateId === 'minimal' ? (
+                /* ── THEME 3: COMPACT MINIMAL (Maximum writing surface, light borders) ── */
+                <div style={{
+                    background: '#fff',
+                    padding: '1em 2em',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    position: 'relative', overflow: 'hidden', flexShrink: 0,
+                    borderBottom: '1px solid #cbd5e1',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6em' }}>
+                        <div>
+                            {dispDoctorName && (
+                                <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.8em', lineHeight: 1 }}>
+                                    {dispDoctorName.toLowerCase().startsWith('dr') ? dispDoctorName : `Dr. ${dispDoctorName}`}
+                                </div>
+                            )}
+                            <div style={{ display: 'flex', gap: '0.8em', marginTop: '0.2em', fontSize: '0.8em', color: '#64748b', fontWeight: 600 }}>
+                                {dispQualifications && <span>{dispQualifications}</span>}
+                                {dispRegId && <span>· Reg: {dispRegId}</span>}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1em' }}>
+                        {clinicLogoUrl && headerMode !== 'name' && (
+                            <img src={clinicLogoUrl} alt="Logo" style={{ height: '3.6em', width: 'auto', objectFit: 'contain' }} />
+                        )}
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: 800, color: primaryColor || '#0f172a', fontSize: '2.4em', lineHeight: 1 }}>
+                                {dispClinicName}
+                            </div>
+                            <div style={{ fontSize: '0.7em', color: '#64748b', marginTop: '0.2em' }}>
+                                {dispClinicAddress} {dispClinicPhone ? `· ${dispClinicPhone}` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             ) : (
+                /* ── THEME 1: CLASSIC CLINICAL (Original Proven Layout) ── */
                 <div style={{
                     background: '#fff',
                     padding: '1.4em 2em',
@@ -632,14 +825,13 @@ function PageOne({
                         <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
                             <img
                                 src={prescriptionLogo}
-                                alt="Clinic Logo"
+                                alt="Doctor Emblem"
                                 style={{
                                     height: '5.2em', // Precisely tuned to match text block height
                                     width: 'auto',
                                     objectFit: 'contain',
                                     flexShrink: 0,
                                     display: 'block',
-                                    // This filter approximates #0f172a (Slate 900) for a black logo
                                     filter: 'brightness(0) saturate(100%) invert(8%) sepia(21%) saturate(2853%) hue-rotate(191deg) brightness(91%) contrast(94%)'
                                 }}
                             />
@@ -696,7 +888,7 @@ function PageOne({
                         )}
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
                             {dispClinicName && (
-                                <div style={{ fontWeight: 900, color: '#7d326cff', fontSize: '3.2em', letterSpacing: '0.04em', lineHeight: 1, textAlign: 'right' }}>
+                                <div style={{ fontWeight: 900, color: primaryColor || '#7d326c', fontSize: '3.2em', letterSpacing: '0.04em', lineHeight: 1, textAlign: 'right' }}>
                                     {dispClinicName}
                                 </div>
                             )}
@@ -831,17 +1023,19 @@ function PageOne({
                 </div>
 
                 {/* RIGHT — Vitals sidebar (Compact/Opulent) */}
-                <div style={{ width: '24%', flexShrink: 0, backgroundColor: '#fff', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderLeft: '1px solid #e2e8f0' }}>
-                    <div style={{ color: '#0f172a', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', fontSize: '0.85em', textAlign: 'center', padding: '1em 0', borderBottom: '2px solid #0f172a', flexShrink: 0 }}>Clinical Vitals</div>
-                    {vitals.map(({ label, value, unit }, i) => (
-                        <div key={label} style={{ display: 'flex', alignItems: 'stretch', height: '3.2em', flexShrink: 0, borderBottom: `1px solid #f1f5f9` }}>
-                            <div style={{ width: '50%', padding: '0 1em', fontWeight: 700, color: '#64748b', fontSize: '0.8em', borderRight: '1px solid #f1f5f9', display: 'flex', alignItems: 'center' }}>{label}</div>
-                            <div style={{ flex: 1, padding: '0 0.8em', fontSize: '1.05em', fontWeight: 800, color: value != null && value !== '' ? '#0f172a' : '#cbd5e1', display: 'flex', alignItems: 'center' }}>
-                                {value != null && value !== '' ? `${value}${unit}` : '–'}
+                {showVitalsSidebar && (
+                    <div style={{ width: '24%', flexShrink: 0, backgroundColor: '#fff', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderLeft: '1px solid #e2e8f0' }}>
+                        <div style={{ color: '#0f172a', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', fontSize: '0.85em', textAlign: 'center', padding: '1em 0', borderBottom: '2px solid #0f172a', flexShrink: 0 }}>Clinical Vitals</div>
+                        {vitals.map(({ label, value, unit }, i) => (
+                            <div key={label} style={{ display: 'flex', alignItems: 'stretch', height: '3.2em', flexShrink: 0, borderBottom: `1px solid #f1f5f9` }}>
+                                <div style={{ width: '50%', padding: '0 1em', fontWeight: 700, color: '#64748b', fontSize: '0.8em', borderRight: '1px solid #f1f5f9', display: 'flex', alignItems: 'center' }}>{label}</div>
+                                <div style={{ flex: 1, padding: '0 0.8em', fontSize: '1.05em', fontWeight: 800, color: value != null && value !== '' ? '#0f172a' : '#cbd5e1', display: 'flex', alignItems: 'center' }}>
+                                    {value != null && value !== '' ? `${value}${unit}` : '–'}
+                                </div>
                             </div>
-                        </div>
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* ── FOOTER ──────────────────────────────────────── */}
@@ -849,9 +1043,9 @@ function PageOne({
                 <div style={{ height: '22mm', flexShrink: 0, background: '#fff' }} />
             ) : (
                 <div style={{ background: '#fff', borderTop: '2px solid #0f172a', padding: '1em 2em', display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, position: 'relative' }}>
-                    {doctorProfile?.signature_data && !isWritingMode && (
+                    {(doctorSignature || doctorProfile?.signature_data) && !isWritingMode && (
                         <div style={{ position: 'absolute', right: '3.5em', bottom: '4.5em', textAlign: 'center' }}>
-                            <img src={doctorProfile.signature_data} alt="Signature" style={{ maxHeight: '10em', width: 'auto', marginBottom: '0.3em', mixBlendMode: 'multiply' }} />
+                            <img src={doctorSignature || doctorProfile?.signature_data} alt="Signature" style={{ maxHeight: '10em', width: 'auto', marginBottom: '0.3em', mixBlendMode: 'multiply' }} />
                             <div style={{ fontSize: '0.75em', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Digital Signature</div>
                         </div>
                     )}

@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { printPrescription } from '@/lib/printPrescription';
 import PageBanner from '@/components/PageBanner';
 import consultationBanner from '@/assets/consultation_banner.png';
+import consultationImg from '@/assets/Consultation.png';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { useConsultation } from '@/hooks/useConsultation';
 import QueuePanel from '@/components/consultation/QueuePanel';
@@ -175,9 +176,28 @@ export default function DoctorConsultation() {
 
   const isConsultationBlocked = !isProfileLoading && (isClinicNameMissing || isClinicAddressMissing || isDoctorNameMissing || isDoctorRegMissing);
 
+  const [setupPromptOpen, setSetupPromptOpen] = useState(false);
+  const [missingFieldsList, setMissingFieldsList] = useState<string[]>([]);
+
+  // Show setup guidance popup on mount if profile details are incomplete
+  useEffect(() => {
+    if (!isProfileLoading) {
+      const missing: string[] = [];
+      if (isClinicNameMissing) missing.push("Clinic Name");
+      if (isClinicAddressMissing) missing.push("Clinic Address");
+      if (isDoctorNameMissing) missing.push("Doctor Name");
+      if (isDoctorRegMissing) missing.push("Doctor Medical Registration ID");
+
+      if (missing.length > 0) {
+        setMissingFieldsList(missing);
+        setSetupPromptOpen(true);
+      }
+    }
+  }, [isProfileLoading, isClinicNameMissing, isClinicAddressMissing, isDoctorNameMissing, isDoctorRegMissing]);
+
   const handleSelectVisit = (v: any) => {
     if (isConsultationBlocked) {
-      toast.error('Consultation Blocked: Clinic Name, Address, Doctor Name, and Registration ID must be filled in Profile before consulting in this ID.', { duration: 5000 });
+      setSetupPromptOpen(true);
       return;
     }
     selectVisit(v, true);
@@ -393,11 +413,53 @@ Wishing you a quick recovery!
             </div>
           </div>
         ) : !selectedVisit ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            <div className="text-center p-6 space-y-4">
-              <Stethoscope className="w-16 h-16 mx-auto mb-4 opacity-10 animate-pulse text-primary" />
-              <p className="text-lg font-medium opacity-50">Select a patient from the queue to start consultation</p>
-            </div>
+          <div className="flex items-center justify-center h-full text-muted-foreground p-6 sm:p-10">
+            {queue.length === 0 ? (
+              <motion.div
+                initial={{ scale: 0.6, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 350, damping: 22 }}
+                className="text-center space-y-5 max-w-md mx-auto"
+              >
+                <div className="flex justify-center">
+                  <img 
+                    src={consultationImg} 
+                    alt="Doctor Consultation" 
+                    className="w-full max-w-[260px] sm:max-w-xs md:max-w-sm h-auto object-contain drop-shadow-sm select-none pointer-events-none" 
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[11px] font-black uppercase tracking-wider border border-emerald-200 dark:border-emerald-800">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    Queue is Clear
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
+                    Boom! All Caught Up
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-400 font-medium leading-relaxed max-w-sm mx-auto">
+                    No patients currently waiting in consultation queue. When reception admits a patient, their token will instantly appear on your left queue.
+                  </p>
+                </div>
+              </motion.div>
+            ) : (
+              <div className="text-center space-y-4 max-w-sm mx-auto">
+                <div className="flex justify-center">
+                  <img 
+                    src={consultationImg} 
+                    alt="Doctor Consultation" 
+                    className="w-full max-w-[240px] sm:max-w-[280px] h-auto opacity-90 object-contain drop-shadow-sm select-none pointer-events-none" 
+                  />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 tracking-tight">
+                    Select a Patient to Begin
+                  </h3>
+                  <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                    <b>{queue.length}</b> patient(s) waiting in your clinic queue. Tap any token on the left queue panel to open their clinical charting pad.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6 animate-in fade-in slide-in-from-bottom-6 duration-300 pb-40">
@@ -591,90 +653,101 @@ Wishing you a quick recovery!
 
       {/* 2. Prescription Preview Dialogue */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-[900px] w-[95vw] p-0 overflow-hidden bg-background">
-          <DialogHeader className="bg-muted/50 p-3 sm:p-4 pr-12 border-b relative flex flex-row items-center justify-between">
+        <DialogContent className="max-w-[950px] w-[96vw] max-h-[94vh] p-0 flex flex-col overflow-hidden bg-slate-900 border-none shadow-2xl">
+          <DialogHeader className="bg-white dark:bg-slate-900 p-3 sm:p-4 px-5 border-b border-slate-200 dark:border-slate-800 relative flex flex-row items-center justify-between shrink-0 z-20">
             <div className="flex items-center gap-2 z-10 flex-wrap">
-              <Button variant="outline" size="sm" onClick={() => printPrescription('#consultation-print-preview')} className="gap-2 h-9 text-xs font-bold">
+              <Button size="sm" onClick={() => printPrescription('#consultation-print-preview')} className="gap-2 h-9 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-sm">
                 <Printer className="w-4 h-4" /> Print PDF
               </Button>
-              <Button variant="outline" size="sm" onClick={() => shareToWhatsApp(selectedVisit, patient)} className="gap-2 border-green-500/30 text-green-600 hover:bg-green-50 h-9 text-xs font-bold">
+              <Button variant="outline" size="sm" onClick={() => shareToWhatsApp(selectedVisit, patient)} className="gap-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 h-9 text-xs font-bold rounded-xl">
                 <MessageCircle className="w-4 h-4" /> WhatsApp
               </Button>
               
-              <label className="text-xs font-bold text-slate-500 cursor-pointer select-none flex items-center gap-1.5 bg-background border border-border px-2.5 py-1.5 rounded-lg shadow-sm h-9">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-xl shadow-xs h-9">
                 <input
                   type="checkbox"
                   checked={printOnStationery}
                   onChange={(e) => setPrintOnStationery(e.target.checked)}
-                  className="h-3.5 w-3.5 text-blue-600 rounded cursor-pointer animate-none"
+                  className="h-3.5 w-3.5 text-blue-600 rounded cursor-pointer"
                 />
                 <span className="truncate">Print on letterhead</span>
               </label>
             </div>
-            <DialogTitle className="hidden sm:block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-sm font-black uppercase tracking-widest text-slate-400">
-              Prescription Preview
+            <DialogTitle className="hidden sm:block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-xs font-black uppercase tracking-widest text-slate-400">
+              Live Prescription Preview
             </DialogTitle>
           </DialogHeader>
-          <div className="p-4 md:p-8 overflow-auto max-h-[85vh] bg-muted min-h-[500px]" id="consultation-print-preview">
-            <PrescriptionTemplate
-               patient={patient}
-               visit={selectedVisit}
-               handwrittenImage={prescriptionImage}
-               clinicalNotes={clinicalNotes}
-               diagnosis={diagnoses.length > 0 ? diagnoses.join(' / ') : diagnosis}
-               medicines={medicines.filter(m => m.name.trim())}
-               advice={advice}
-               isWritingMode={lastInputWay === 'writing'}
-               isPrint={true}
-               doctorId={user?.id}
-               prescriptionCreatedAt={selectedVisit?.created_at || new Date().toISOString()}
-               doctorName={activeDocName}
-               doctorQualifications={activeDocQual}
-               doctorRegId={activeDocReg}
-               clinicName={activeClinicName}
-               clinicAddress={activeClinicAddress}
-               clinicPhone={activeClinicPhone}
-               hideBranding={printOnStationery}
-             />
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-slate-100 dark:bg-slate-950/80 flex justify-center items-start" id="consultation-print-preview">
+            <div className="w-full max-w-[850px] bg-white shadow-xl rounded-lg overflow-hidden">
+              <PrescriptionTemplate
+                 patient={patient}
+                 visit={selectedVisit}
+                 handwrittenImage={prescriptionImage}
+                 clinicalNotes={clinicalNotes}
+                 diagnosis={diagnoses.length > 0 ? diagnoses.join(' / ') : diagnosis}
+                 medicines={medicines.filter(m => m.name.trim())}
+                 advice={advice}
+                 isWritingMode={lastInputWay === 'writing'}
+                 isPrint={true}
+                 doctorId={user?.id}
+                 prescriptionCreatedAt={selectedVisit?.created_at || new Date().toISOString()}
+                 doctorName={activeDocName}
+                 doctorQualifications={activeDocQual}
+                 doctorRegId={activeDocReg}
+                 doctorSignature={(profile as any)?.signature_data}
+                 clinicName={activeClinicName}
+                 clinicAddress={activeClinicAddress}
+                 clinicPhone={activeClinicPhone}
+                 hideBranding={printOnStationery}
+               />
+            </div>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* 3. Past Visit Rx Preview Dialogue */}
       <Dialog open={!!viewingHistoryRx} onOpenChange={open => !open && setViewingHistoryRx(null)}>
-        <DialogContent className="max-w-[800px] w-[95vw] p-0 overflow-hidden bg-background">
-          <DialogHeader className="p-4 border-b bg-muted/30">
-            <DialogTitle className="text-sm font-bold text-center">
+        <DialogContent className="max-w-[950px] w-[96vw] max-h-[94vh] p-0 flex flex-col overflow-hidden bg-slate-900 border-none shadow-2xl">
+          <DialogHeader className="p-4 px-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-row items-center justify-between shrink-0 z-20">
+            <DialogTitle className="text-sm font-bold text-slate-900 dark:text-white">
               Visit Details — {viewingHistoryRx && new Date(viewingHistoryRx.created_at).toLocaleDateString()}
             </DialogTitle>
+            <div className="flex items-center gap-2 pr-6">
+              <Button size="sm" onClick={() => printPrescription('.print-container')} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold h-9 px-4 rounded-xl shadow-sm">
+                <Printer className="w-4 h-4" /> <span>Print</span>
+              </Button>
+            </div>
           </DialogHeader>
-          <div className="p-4 md:p-8 overflow-auto max-h-[75vh] bg-slate-100">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-slate-100 dark:bg-slate-950/80 flex justify-center items-start">
             {loadingHistoryRx ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
               </div>
             ) : (
               currentHistoryRx && (
-                <PrescriptionTemplate
-                  patient={patient}
-                  visit={viewingHistoryRx}
-                  handwrittenImage={currentHistoryRx.advice_image}
-                  clinicalNotes={currentHistoryRx.clinical_notes}
-                  diagnosis={currentHistoryRx.diagnosis}
-                  medicines={currentHistoryRx.medicines || []}
-                  advice={currentHistoryRx.advice_image && !currentHistoryRx.advice_image.startsWith('data:image') && !currentHistoryRx.advice_image.startsWith('[') ? currentHistoryRx.advice_image : ''}
-                  isWritingMode={currentHistoryRx.is_writing_mode}
-                  isPrint={true}
-                  doctorId={currentHistoryRx.doctor_id}
-                  prescriptionCreatedAt={viewingHistoryRx?.created_at || currentHistoryRx.created_at}
-                  doctorName={currentHistoryRx.doctor_id === user?.id ? activeDocName : undefined}
-                  doctorQualifications={currentHistoryRx.doctor_id === user?.id ? activeDocQual : undefined}
-                  doctorRegId={currentHistoryRx.doctor_id === user?.id ? activeDocReg : undefined}
-                  clinicName={activeClinicName}
-                  clinicAddress={activeClinicAddress}
-                  clinicPhone={activeClinicPhone}
-                  hideBranding={printOnStationery}
-                />
+                <div className="w-full max-w-[850px] bg-white shadow-xl rounded-lg overflow-hidden">
+                  <PrescriptionTemplate
+                    patient={patient}
+                    visit={viewingHistoryRx}
+                    handwrittenImage={currentHistoryRx.advice_image}
+                    clinicalNotes={currentHistoryRx.clinical_notes}
+                    diagnosis={currentHistoryRx.diagnosis}
+                    medicines={currentHistoryRx.medicines || []}
+                    advice={currentHistoryRx.advice_image && !currentHistoryRx.advice_image.startsWith('data:image') && !currentHistoryRx.advice_image.startsWith('[') ? currentHistoryRx.advice_image : ''}
+                    isWritingMode={currentHistoryRx.is_writing_mode}
+                    isPrint={true}
+                    doctorId={currentHistoryRx.doctor_id}
+                    prescriptionCreatedAt={viewingHistoryRx?.created_at || currentHistoryRx.created_at}
+                    doctorName={currentHistoryRx.doctor_id === user?.id ? activeDocName : undefined}
+                    doctorQualifications={currentHistoryRx.doctor_id === user?.id ? activeDocQual : undefined}
+                    doctorRegId={currentHistoryRx.doctor_id === user?.id ? activeDocReg : undefined}
+                    doctorSignature={currentHistoryRx.doctor_id === user?.id ? (profile as any)?.signature_data : undefined}
+                    clinicName={activeClinicName}
+                    clinicAddress={activeClinicAddress}
+                    clinicPhone={activeClinicPhone}
+                    hideBranding={printOnStationery}
+                  />
+                </div>
               )
             )}
           </div>
@@ -833,6 +906,53 @@ Wishing you a quick recovery!
           <Sparkles className="w-3.5 h-3.5 text-yellow-300 animate-pulse" /> What's New (v2.2)
         </Button>
       </div>
+
+      {/* Setup Profile Prompt Dialog for New Clinics */}
+      <Dialog open={setupPromptOpen} onOpenChange={setSetupPromptOpen}>
+        <DialogContent className="max-w-[480px] w-[95vw] rounded-[2rem] p-6 border-none shadow-2xl bg-card">
+          <DialogHeader className="space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-xl font-black text-slate-900 dark:text-white">
+              Complete Prescription Setup
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 leading-relaxed font-medium">
+              Medical regulations require verified doctor & clinic details on every prescription before starting patient consultations.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="my-4 p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 space-y-2">
+            <p className="text-[11px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
+              Required to Unlock Consultation:
+            </p>
+            <ul className="text-xs font-semibold text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside">
+              {missingFieldsList.map((item, idx) => (
+                <li key={idx} className="text-amber-900 dark:text-amber-200">{item}</li>
+              ))}
+            </ul>
+          </div>
+
+          <DialogFooter className="flex gap-2.5 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setSetupPromptOpen(false)}
+              className="flex-1 rounded-xl font-bold text-xs"
+            >
+              Remind Later
+            </Button>
+            <Button
+              onClick={() => {
+                setSetupPromptOpen(false);
+                navigate(slug ? `/${slug}/settings` : '/settings');
+              }}
+              className="flex-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider shadow-md shadow-blue-500/20"
+            >
+              Go to Settings
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 5. What's New / Changelog Dialogue */}
       <Dialog open={showChangelog} onOpenChange={setShowChangelog}>

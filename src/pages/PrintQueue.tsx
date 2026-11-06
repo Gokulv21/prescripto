@@ -15,6 +15,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import PrescriptionTemplate from '@/components/PrescriptionTemplate';
 import { printPrescription as renderAndPrintPrescription } from '@/lib/printPrescription';
 import type { Clinic } from '@/types/clinic';
+import { PrinterPrescriptionAnimatedIllustration } from '@/components/illustrations/PageIllustrations';
+import printQueueImg from '@/assets/PrintQueue.png';
 
 export default function PrintQueue() {
   const { clinic } = useOutletContext<{ clinic: Clinic }>();
@@ -116,12 +118,17 @@ export default function PrintQueue() {
 
 
   return (
-    <div className="max-w-[1600px] mx-auto animate-in fade-in duration-500 pb-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 font-jakarta-sans pb-12 animate-in fade-in duration-500">
       <PageBanner
         title="Pharmacy Print Queue"
         description="Monitor and process prescription print requests in real-time for efficient patient service."
-        imageSrc={printQueueBanner}
-      />
+      >
+        <img 
+          src={printQueueImg} 
+          alt="Pharmacy Print Queue" 
+          className="h-24 sm:h-32 md:h-36 lg:h-40 w-auto object-contain select-none pointer-events-none drop-shadow-sm" 
+        />
+      </PageBanner>
 
       {/* Missed Updates Banner */}
       <AnimatePresence>
@@ -229,12 +236,14 @@ export default function PrintQueue() {
             </Card>
           ))}
           {prescriptions.length === 0 && !isLoading && (
-            <div className="text-center py-20 bg-card/50 rounded-3xl border-2 border-dashed border-border">
-              <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle className="w-10 h-10 text-emerald-500" />
+            <div className="text-center py-10 px-4 space-y-4">
+              <div className="flex justify-center">
+                <PrinterPrescriptionAnimatedIllustration className="w-44 sm:w-52 h-auto drop-shadow-sm" />
               </div>
-              <h3 className="text-xl font-bold text-foreground">All Caught Up!</h3>
-              <p className="text-muted-foreground mt-1">There are no prescriptions waiting in the queue.</p>
+              <div className="space-y-1">
+                <h3 className="text-xl font-black text-slate-800 dark:text-slate-100">All Prescriptions Dispatched!</h3>
+                <p className="text-xs sm:text-sm text-slate-400 font-medium max-w-sm mx-auto">No pending print jobs in pharmacy queue. When doctors finish writing, prescriptions appear here immediately.</p>
+              </div>
             </div>
           )}
         </div>

@@ -3,7 +3,7 @@ import { useAuth, AppRole } from '@/lib/auth';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
-  Stethoscope, ClipboardPlus, Printer, BarChart3, Users, LogOut, Home, Menu, HelpCircle, Sun, Moon, Monitor, ChevronDown, Info, Tv, User, LayoutGrid, Building2, Mail, MessageSquare
+  Stethoscope, ClipboardPlus, Printer, BarChart3, Users, LogOut, Home, Menu, HelpCircle, Sun, Moon, Monitor, ChevronDown, Info, Tv, User, LayoutGrid, Building2, Mail, Settings
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -28,12 +28,11 @@ const navItems: NavItem[] = [
   { label: 'Patients', path: '/patients', icon: <Users className="w-5 h-5" />, roles: ['doctor', 'staff', 'superadmin', 'owner'] },
   { label: 'Analytics', path: '/analytics', icon: <BarChart3 className="w-5 h-5" />, roles: ['doctor', 'superadmin', 'owner'] },
   { label: 'Profile', path: '/profile', icon: <User className="w-5 h-5" />, roles: ['doctor', 'superadmin', 'owner'] },
+  { label: 'Settings', path: '/settings', icon: <Settings className="w-5 h-5" />, roles: ['doctor', 'superadmin', 'owner'] },
   { label: 'User Mgmt', path: '/users', icon: <Users className="w-5 h-5" />, roles: ['superadmin', 'owner'] },
   { label: 'TV Display', path: '/display', icon: <Tv className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
-  { label: 'Contact', path: '/contact', icon: <Mail className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
   { label: 'About', path: '/about', icon: <Info className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
   { label: 'Help', path: '/help', icon: <HelpCircle className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
-  { label: 'Comments', path: '/comments', icon: <MessageSquare className="w-5 h-5" />, roles: ['staff', 'doctor', 'superadmin', 'owner'] },
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -58,7 +57,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { slug } = useParams();
 
   const getFullPath = (itemPath: string) => {
-    if (!slug || itemPath === '/help') return itemPath;
+    if (!slug) return itemPath;
     if (itemPath === '/') return `/${slug}/dashboard`;
     return `/${slug}${itemPath}`;
   };
@@ -266,7 +265,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             return (
               <button
                 key={item.path}
-                onMouseEnter={() => setHoveredItem(item.path)}
+                onMouseEnter={() => {
+                  setHoveredItem(item.path);
+                  if (item.path === '/analytics') {
+                    import('@/pages/Analytics').catch(() => {});
+                  }
+                }}
                 onMouseLeave={() => setHoveredItem(null)}
                 onClick={() => navigateTab(item.path)}
                 className={cn(
@@ -363,21 +367,21 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <div className="md:hidden w-8 h-8 rounded-xl bg-white dark:bg-slate-900 shadow-xs border border-slate-200/60 dark:border-slate-800 flex items-center justify-center overflow-hidden">
               <img src={logo} className="w-6 h-6 object-contain" alt="Logo" />
             </div>
-            <span className="md:hidden font-black text-base tracking-tight text-slate-900 dark:text-white flex items-center gap-1.5">
-              PreScripto
-              <span className="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 uppercase tracking-wider">by Zevox</span>
-            </span>
+            <div className="md:hidden flex items-center gap-1.5 shrink-0">
+              <span className="font-black text-base tracking-tight text-slate-900 dark:text-white">
+                PreScripto
+              </span>
+              <span className="text-[8.5px] font-black px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 uppercase tracking-wider whitespace-nowrap leading-none inline-flex items-center">
+                by Zevox
+              </span>
+            </div>
             
             <div className="hidden md:flex items-center gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 PreScripto
               </span>
-              <span className="text-[9px] font-black uppercase tracking-wider text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-md">
+              <span className="text-[9px] font-black uppercase tracking-wider text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-md whitespace-nowrap leading-none inline-flex items-center">
                 by Zevox
-              </span>
-              <span className="text-slate-300 dark:text-slate-700 font-bold">•</span>
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
-                Clinical Suite
               </span>
             </div>
           </div>

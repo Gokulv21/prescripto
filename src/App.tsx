@@ -27,11 +27,10 @@ const ClinicSelection = lazy(() => import("@/pages/ClinicSelection"));
 const SaaSManagement = lazy(() => import("@/pages/SaaSManagement"));
 const PublicPrescription = lazy(() => import("@/pages/PublicPrescription"));
 const TVDisplay = lazy(() => import("@/pages/TVDisplay"));
+const ClinicSettings = lazy(() => import("@/pages/ClinicSettings"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const About = lazy(() => import("@/pages/About"));
 const Help = lazy(() => import("@/pages/Help"));
-const Contact = lazy(() => import("@/pages/Contact"));
-const Comments = lazy(() => import("@/pages/Comments"));
 
 function PageLoader() {
   return (
@@ -321,7 +320,6 @@ const App = () => (
                 <Routes>
                   {/* 1. Public Routes */}
                   <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-                  <Route path="/contact" element={<Contact />} />
                   <Route path="/rx/:visitId" element={<PublicPrescription />} />
                   <Route path="/:slug/display" element={<TVDisplay />} />
 
@@ -339,11 +337,11 @@ const App = () => (
                     <Route path="patients" element={<ProtectedRoute allowedRoles={['staff', 'doctor', 'superadmin', 'owner']}><PatientList /></ProtectedRoute>} />
                     <Route path="analytics" element={<ProtectedRoute allowedRoles={['doctor', 'superadmin', 'owner']}><Analytics /></ProtectedRoute>} />
                     <Route path="profile" element={<ProtectedRoute allowedRoles={['doctor', 'superadmin', 'owner']}><DoctorProfile /></ProtectedRoute>} />
+                    <Route path="settings" element={<ProtectedRoute allowedRoles={['doctor', 'superadmin', 'owner']}><ClinicSettings /></ProtectedRoute>} />
                     <Route path="users" element={<ProtectedRoute allowedRoles={['superadmin', 'owner']}><UserManagement /></ProtectedRoute>} />
                     <Route path="saas" element={<ProtectedRoute allowedRoles={['superadmin']}><SaaSManagement /></ProtectedRoute>} />
                     <Route path="about" element={<About />} />
-                    <Route path="contact" element={<Contact />} />
-                    <Route path="comments" element={<Comments />} />
+                    <Route path="help" element={<Help />} />
                   </Route>
 
                   <Route path="*" element={<NotFound />} />

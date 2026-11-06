@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/pagination";
 
 import type { Clinic } from '@/types/clinic';
+import consultationImg from '@/assets/Consultation.png';
 
 interface VitalsForm {
   weight: string;
@@ -135,6 +136,7 @@ export default function PatientList() {
   const doctorOptions = useMemo(() => {
     const seen = new Set<string>();
     return (doctors || [])
+      .filter((d: any) => d.email?.toLowerCase() !== 'doctor@clinic.com' && d.role !== 'superadmin')
       .map((doctor: any) => {
         const assignId = doctor?.id || doctor?.user_id || '';
         return { ...doctor, assignId: String(assignId) };
@@ -384,12 +386,17 @@ export default function PatientList() {
   };
 
   return (
-    <div className="max-w-[1600px] mx-auto animate-in fade-in duration-500 pb-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 font-jakarta-sans animate-in fade-in duration-500 pb-12">
       <PageBanner
         title="Patient Directory"
         description="Manage patient records, access visit history, and review past digital prescriptions."
-        imageSrc={patientListBanner}
-      />
+      >
+        <img 
+          src={consultationImg} 
+          alt="Patient Directory" 
+          className="h-24 sm:h-32 md:h-36 lg:h-40 w-auto object-contain select-none pointer-events-none drop-shadow-sm" 
+        />
+      </PageBanner>
 
       <div className="px-4 md:px-8 space-y-6">
         <div className="relative">
@@ -775,24 +782,32 @@ export default function PatientList() {
 
       {/* Prescription Preview Dialog */}
       <Dialog open={!!viewingRx} onOpenChange={open => !open && setViewingRx(null)}>
-        <DialogContent className="max-w-[800px] p-0 overflow-hidden bg-muted">
-          <div className="bg-card p-4 pr-12 border-b border-border flex items-center justify-between sticky top-0 z-20">
-            <h3 className="font-bold text-foreground">Prescription History</h3>
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={() => printPrescription('.print-container')} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
-                <Printer className="w-4 h-4" /> <span className="hidden sm:inline">Print</span>
+        <DialogContent className="max-w-[950px] w-[96vw] max-h-[94vh] p-0 flex flex-col overflow-hidden bg-slate-900 border-none shadow-2xl">
+          <div className="bg-white dark:bg-slate-900 px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 z-20">
+            <div className="flex items-center gap-3">
+              <h3 className="font-black text-slate-900 dark:text-white text-base tracking-tight flex items-center gap-2">
+                <span>Prescription History</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
+                  {selectedPatient?.name}
+                </span>
+              </h3>
+            </div>
+            <div className="flex items-center gap-2 pr-6">
+              <Button size="sm" onClick={() => printPrescription('.print-container')} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold h-9 px-4 rounded-xl shadow-sm">
+                <Printer className="w-4 h-4" /> <span>Print</span>
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setViewingRx(null)} className="gap-1 border-muted-foreground/20 text-muted-foreground hover:bg-red-50 hover:text-red-600 hover:border-red-200">
-                <span className="hidden sm:inline">Close</span>
+              <Button size="sm" variant="ghost" onClick={() => setViewingRx(null)} className="h-9 px-3 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <X className="w-4 h-4" />
               </Button>
             </div>
           </div>
-          <div className="p-4 md:p-8 overflow-y-auto max-h-[85vh] scrollbar-thin scrollbar-thumb-muted-foreground/20 min-h-[500px]">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-slate-100 dark:bg-slate-950/80 flex justify-center items-start">
             {viewingRx && (
-                <div className="relative min-h-[400px]">
+                <div className="w-full max-w-[850px] bg-white shadow-xl rounded-lg overflow-hidden relative min-h-[400px]">
                   {loadingRx ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/50 z-50">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-slate-900/80 z-50">
+                      <Loader2 className="animate-spin w-8 h-8 text-blue-600 mb-2" />
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Loading Clinical Record...</p>
                     </div>
                   ) : (
                     <PrescriptionTemplate

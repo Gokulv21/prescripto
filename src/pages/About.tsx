@@ -1,63 +1,129 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sparkles, HeartPulse, Star, GripVertical, Activity, Info, Printer, Droplet, Stethoscope, ArrowLeft, CheckCircle2, Clock, Move, Zap, LayoutGrid, Smartphone, Volume2, ShieldCheck } from 'lucide-react';
+import { 
+  Sparkles, HeartPulse, Star, GripVertical, Activity, Info, Printer, 
+  Droplet, Stethoscope, ArrowLeft, CheckCircle2, Clock, Move, Zap, 
+  LayoutGrid, Smartphone, Volume2, ShieldCheck, Mail, Palette, FileSignature, BrainCircuit 
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
+import aboutImg from '@/assets/About.png';
 
-const CURRENT_VERSION = '1.4';
+const CURRENT_VERSION = '1.5';
 
 const versionHistory = [
   {
-    version: '1.4',
-    date: 'September 2026',
-    label: 'Current Release',
+    version: '1.5',
+    date: 'November 2026',
+    label: 'AI Integration',
     accent: 'from-blue-600 via-indigo-600 to-purple-600',
     textAccent: 'text-blue-600 dark:text-blue-400',
     bgAccent: 'bg-blue-50 dark:bg-blue-950/30',
     borderAccent: 'border-blue-200 dark:border-blue-800/50',
     updates: [
       {
+        icon: BrainCircuit,
+        iconColor: 'text-amber-500',
+        iconBg: 'bg-amber-500/15',
+        title: 'Nova Clinical AI Copilot (Built-in Assistant)',
+        desc: 'All-new floating AI copilot integrated across the entire platform. Instant access to clinical calculations, drug interactions, disease guidance, and query logs with clinic-level analytics.'
+      },
+      {
+        icon: Palette,
+        iconColor: 'text-purple-500',
+        iconBg: 'bg-purple-500/15',
+        title: 'Themes & Custom HEX Color Wheel Picker',
+        desc: 'Brand personalization engine with live RGB/HEX palette wheel, preset themes (Dark, Light, System), and real-time illuminated glow across all buttons and active controls.'
+      },
+      {
+        icon: ShieldCheck,
+        iconColor: 'text-emerald-500',
+        iconBg: 'bg-emerald-500/15',
+        title: 'Strict Multi-Clinic RBAC & Security Isolation',
+        desc: 'Rigorous multi-tenant isolation guaranteeing clinic owner sovereignty over branding, logos, and letterheads. Platform admin accounts are strictly quarantined from individual clinic rosters.'
+      },
+      {
+        icon: FileSignature,
+        iconColor: 'text-blue-500',
+        iconBg: 'bg-blue-500/15',
+        title: 'Duty Doctor Dynamic Identity & NMC Digital Signature',
+        desc: 'Automatic detection of the active consulting physician. Attending doctor qualifications, NMC registration number, and digital signature dynamically stamped on printed prescriptions.'
+      },
+      {
         icon: Move,
         iconColor: 'text-sky-500',
         iconBg: 'bg-sky-500/15',
         title: 'VisionOS Floating Glass Dock (Freely Draggable)',
-        desc: 'Sleek iOS/VisionOS-inspired floating mobile navigation bar that users can freely drag and reposition anywhere on screen. Automatically remembers coordinates across sessions.'
+        desc: 'Sleek iOS/VisionOS-inspired floating mobile navigation dock that users can freely drag and reposition anywhere on screen. Automatically remembers coordinates across sessions.'
+      },
+      {
+        icon: Volume2,
+        iconColor: 'text-rose-500',
+        iconBg: 'bg-rose-500/15',
+        title: 'TV Queue Display & Audio Calling Chime',
+        desc: 'Real-time big-screen token display for patient waiting lounges with default Web Audio chime alerts and responsive layout across TV, tablet, and mobile.'
+      },
+      {
+        icon: Printer,
+        iconColor: 'text-indigo-500',
+        iconBg: 'bg-indigo-500/15',
+        title: 'Pharmacy Print Queue Real-Time Spooler',
+        desc: 'Dedicated dispensary print queue module with live WebSocket auto-refresh, silent printing triggers, and opulent A4 PDF layout rendering.'
+      },
+      {
+        icon: Activity,
+        iconColor: 'text-teal-500',
+        iconBg: 'bg-teal-500/15',
+        title: 'Predictive Clinical Intelligence & Analytics Engine',
+        desc: 'Real-time patient flow dynamics, peak hour forecasting, demographic distributions, and diagnostic trend graphs.'
+      },
+      {
+        icon: Smartphone,
+        iconColor: 'text-cyan-500',
+        iconBg: 'bg-cyan-500/15',
+        title: 'Universal Responsive Engine & Seamless Visual Assets',
+        desc: '100% fluid mobile, tablet, and desktop adaptation with unboxed, transparent high-resolution clinical illustrations.'
+      }
+    ]
+  },
+  {
+    version: '1.4',
+    date: 'September 2026',
+    label: 'Feature Pack',
+    accent: 'from-indigo-600 to-purple-600',
+    textAccent: 'text-indigo-600 dark:text-indigo-400',
+    bgAccent: 'bg-indigo-50 dark:bg-indigo-950/30',
+    borderAccent: 'border-indigo-200 dark:border-indigo-800/50',
+    updates: [
+      {
+        icon: Move,
+        iconColor: 'text-sky-500',
+        iconBg: 'bg-sky-500/15',
+        title: 'VisionOS Dock Optimization',
+        desc: 'Initial prototype for floating navigation bar with session coordinate storage.'
       },
       {
         icon: Zap,
         iconColor: 'text-amber-500',
         iconBg: 'bg-amber-500/15',
         title: 'Zero-Lag Navigation & Borderless Dock',
-        desc: 'Eliminated route-switching stutter with instantaneous micro-transitions. Removed bulky box outlines in favor of clean illuminated accent dots.'
+        desc: 'Eliminated route-switching stutter with instantaneous micro-transitions. Removed bulky box outlines.'
       },
       {
         icon: LayoutGrid,
         iconColor: 'text-purple-500',
         iconBg: 'bg-purple-500/15',
-        title: 'Ultra-Compact "All Modules" Launcher (Zero Scroll)',
-        desc: 'Redesigned the quick modules bottom sheet into a streamlined 4-column compact grid that fits 100% on any mobile viewport with zero scrolling required.'
+        title: 'Ultra-Compact All Modules Launcher',
+        desc: 'Streamlined 4-column compact launcher grid fitting mobile viewports.'
       },
       {
         icon: Smartphone,
         iconColor: 'text-emerald-500',
         iconBg: 'bg-emerald-500/15',
         title: 'Ergonomic Top Header & Profile Swap',
-        desc: 'Doctor avatar profile and quick settings relocated to the sticky mobile top header, reserving the bottom floating dock strictly for core clinical workflows.'
-      },
-      {
-        icon: Volume2,
-        iconColor: 'text-rose-500',
-        iconBg: 'bg-rose-500/15',
-        title: 'TV Queue Display Default Audio Chime',
-        desc: 'Token calling chime now activates by default with automatic Web Audio context unlocking, paired with responsive layout support for TV, tablet, and mobile screens.'
-      },
-      {
-        icon: ShieldCheck,
-        iconColor: 'text-indigo-500',
-        iconBg: 'bg-indigo-500/15',
-        title: 'Clinic Branding & Superadmin Security Isolation',
-        desc: 'Clinic branding, name customization, and photo uploads are locked exclusively to clinic owners and doctors, preventing superadmin cross-clinic interference.'
-      },
+        desc: 'Doctor avatar profile relocated to sticky mobile top header.'
+      }
     ]
   },
   {
@@ -151,91 +217,132 @@ export default function About() {
           </Button>
         </motion.div>
 
-        {/* Hero Card */}
+        {/* Minimal Professional Hero Section */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 p-8 text-white shadow-2xl shadow-blue-500/30"
+          transition={{ duration: 0.4 }}
+          className="relative text-center space-y-4 pt-2 pb-4"
         >
-          {/* decorative circles */}
-          <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/5 rounded-full" />
-          <div className="absolute -bottom-8 -left-8 w-36 h-36 bg-white/5 rounded-full" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48 bg-blue-500/10 blur-[80px] -z-10 rounded-full" />
 
-          <div className="relative z-10 flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/20">
-                  <HeartPulse className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-xs font-black uppercase tracking-[0.2em] text-blue-200">A Product of Zevox</span>
-              </div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-4xl font-black tracking-tight">PreScripto</h1>
-                <span className="text-xs font-black px-2 py-0.5 rounded-full bg-white/20 border border-white/30 uppercase tracking-widest text-white">by Zevox</span>
-              </div>
-              <p className="text-blue-200 text-sm font-bold mt-1 max-w-sm leading-relaxed">
-                A comprehensive clinical workflow platform engineered by Zevox for modern outpatient practices.
-              </p>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] font-black uppercase tracking-widest border border-blue-100 dark:border-blue-800">
+            <Sparkles className="w-3.5 h-3.5 text-blue-500" /> A Product of Zevox
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-slate-800 dark:text-slate-100 leading-tight">
+              About <span className="text-blue-600">PreScripto</span>
+            </h1>
+            <p className="text-muted-foreground text-sm sm:text-base max-w-xl mx-auto font-medium leading-relaxed">
+              A comprehensive clinical workflow platform engineered for modern outpatient practices with zero-latency digital charting.
+            </p>
+          </div>
+
+          {/* Seamless unboxed About Illustration */}
+          <div className="flex justify-center pt-1 pb-1">
+            <img
+              src={aboutImg}
+              alt="About PreScripto"
+              className="h-28 sm:h-36 md:h-44 w-auto object-contain select-none pointer-events-none drop-shadow-sm"
+            />
+          </div>
+
+          {/* Minimal Version Pill */}
+          <div className="inline-flex items-center gap-3 px-4 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                Release v{CURRENT_VERSION}
+              </span>
             </div>
-            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl px-5 py-4 text-center min-w-[120px]">
-              <p className="text-[10px] font-black uppercase tracking-widest text-blue-200 mb-1">Current Version</p>
-              <p className="text-3xl font-black text-white">v{CURRENT_VERSION}</p>
-              <div className="mt-1.5 flex items-center justify-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[10px] font-bold text-emerald-300">Live</span>
-              </div>
-            </div>
+            <span className="text-slate-300 dark:text-slate-700">|</span>
+            <span className="text-xs font-semibold text-muted-foreground">Production Stable</span>
           </div>
         </motion.div>
 
-        {/* Version Timeline */}
-        <div className="space-y-2">
-          <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1">Version History</h2>
-
-          <div className="space-y-4">
-            {versionHistory.map((release, ri) => (
-              <motion.div
-                key={release.version}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: ri * 0.07 }}
-                className={cn(
-                  'rounded-[1.5rem] border bg-card/80 backdrop-blur-sm overflow-hidden shadow-sm',
-                  ri === 0 ? 'border-blue-200 dark:border-blue-800/60 shadow-blue-500/10 shadow-lg' : 'border-border'
-                )}
-              >
-                {/* Version header */}
-                <div className={cn('px-6 py-4 flex items-center justify-between', ri === 0 ? `bg-gradient-to-r ${release.accent} text-white` : 'bg-muted/30')}>
-                  <div className="flex items-center gap-3">
-                    <span className={cn('text-2xl font-black', ri === 0 ? 'text-white' : release.textAccent)}>v{release.version}</span>
-                    <div>
-                      <span className={cn(
-                        'text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full',
-                        ri === 0 ? 'bg-white/20 text-white' : `${release.bgAccent} ${release.textAccent} border ${release.borderAccent}`
-                      )}>{release.label}</span>
-                    </div>
-                  </div>
-                  <span className={cn('text-xs font-bold', ri === 0 ? 'text-white/70' : 'text-muted-foreground')}>{release.date}</span>
-                </div>
-
-                {/* Updates list */}
-                <div className="p-4 space-y-2">
-                  {release.updates.map((update, ui) => (
-                    <div key={ui} className={cn('flex gap-3 p-3 rounded-2xl border', ri === 0 ? `${release.bgAccent} ${release.borderAccent}` : 'bg-muted/20 border-border/50')}>
-                      <div className={cn('p-1.5 rounded-lg shrink-0 mt-0.5', ri === 0 ? (update.iconBg ?? 'bg-white/30') : release.bgAccent)}>
-                        <update.icon className={cn('w-3.5 h-3.5', ri === 0 ? (update.iconColor ?? 'text-white') : release.textAccent)} />
-                      </div>
-                      <div>
-                        <p className={cn('font-extrabold text-[12px]', ri === 0 ? 'text-slate-900 dark:text-slate-100' : 'text-foreground')}>{update.title}</p>
-                        <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">{update.desc}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            ))}
+        {/* Expandable Version Timeline */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-muted-foreground">Version History & Changelog</h2>
+            <span className="text-[10px] font-bold text-slate-400">Tap version to expand</span>
           </div>
+
+          <Accordion type="multiple" defaultValue={['version-1.5']} className="w-full space-y-3.5">
+            {versionHistory.map((release) => {
+              const isCurrent = release.version === CURRENT_VERSION;
+              return (
+                <AccordionItem
+                  key={release.version}
+                  value={`version-${release.version}`}
+                  className={cn(
+                    'rounded-[1.5rem] border bg-card/80 backdrop-blur-sm overflow-hidden shadow-sm transition-all',
+                    isCurrent
+                      ? 'border-blue-200 dark:border-blue-800/60 shadow-blue-500/10 shadow-lg'
+                      : 'border-border'
+                  )}
+                >
+                  <AccordionTrigger className={cn(
+                    'px-6 py-4 flex items-center justify-between hover:no-underline transition-colors group',
+                    isCurrent ? `bg-gradient-to-r ${release.accent} text-white` : 'bg-muted/30 hover:bg-muted/50'
+                  )}>
+                    <div className="flex items-center gap-3 text-left">
+                      <span className={cn('text-2xl font-black tracking-tight', isCurrent ? 'text-white' : release.textAccent)}>
+                        v{release.version}
+                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={cn(
+                          'text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full',
+                          isCurrent
+                            ? 'bg-white/20 text-white'
+                            : `${release.bgAccent} ${release.textAccent} border ${release.borderAccent}`
+                        )}>
+                          {release.label}
+                        </span>
+                        {isCurrent && (
+                          <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-400 text-slate-900 shadow-xs">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className={cn('text-xs font-bold mr-2 shrink-0', isCurrent ? 'text-white/80' : 'text-muted-foreground')}>
+                      {release.date}
+                    </span>
+                  </AccordionTrigger>
+
+                  <AccordionContent className="p-4 space-y-2.5 border-t border-border/40">
+                    {release.updates.map((update, ui) => (
+                      <div
+                        key={ui}
+                        className={cn(
+                          'flex gap-3.5 p-3.5 rounded-2xl border transition-all',
+                          isCurrent ? `${release.bgAccent} ${release.borderAccent}` : 'bg-muted/20 border-border/50'
+                        )}
+                      >
+                        <div className={cn('p-2 rounded-xl shrink-0 mt-0.5', isCurrent ? (update.iconBg ?? 'bg-white/30') : release.bgAccent)}>
+                          <update.icon className={cn('w-4 h-4', isCurrent ? (update.iconColor ?? 'text-white') : release.textAccent)} />
+                        </div>
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <p className={cn('font-black text-xs', isCurrent ? 'text-slate-900 dark:text-slate-100' : 'text-foreground')}>
+                              {update.title}
+                            </p>
+                            {isCurrent && (
+                              <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-blue-600 text-white">
+                                NEW
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed font-medium">{update.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </AccordionContent>
+                </AccordionItem>
+              );
+            })}
+          </Accordion>
         </div>
 
         {/* Footer */}
@@ -247,20 +354,13 @@ export default function About() {
         >
           <p className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.2em]">PreScripto by Zevox · Enterprise Clinical Systems</p>
           <p className="text-[10px] text-muted-foreground/80 font-medium">Built with precision for healthcare practitioners</p>
-          <div className="pt-1 flex items-center justify-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(slug ? `/${slug}/contact` : '/contact')}
-              className="rounded-xl text-xs font-bold gap-1.5 h-8"
-            >
-              Contact Zevox Support
-            </Button>
+          <div className="pt-2 flex items-center justify-center">
             <a
               href="mailto:contact.zevox@gmail.com"
-              className="text-xs font-bold text-primary hover:underline font-mono"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/80 dark:border-blue-800 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shadow-xs"
             >
-              contact.zevox@gmail.com
+              <Mail className="w-3.5 h-3.5" />
+              <span>contact.zevox@gmail.com</span>
             </a>
           </div>
         </motion.div>

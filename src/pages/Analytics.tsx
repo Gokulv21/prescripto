@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useOutletContext, useParams } from 'react-router-dom';
 import { 
   startOfDay, endOfDay, isWithinInterval, startOfHour, endOfHour, 
@@ -27,9 +27,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import PageBanner from '@/components/PageBanner';
-import analyticsBanner from '@/assets/analytics.jpg';
-import Lottie from "lottie-react";
-import analyticsAnimation from "@/assets/animations/analytics.json";
+import analyticsImg from '@/assets/Analytics.png';
 import { ChartContainer, CustomTooltip, MetricCard } from '@/components/AnalyticsComponents';
 
 type FlowTimeRange = 'today' | '7d' | '30d' | '90d' | '1y' | 'custom';
@@ -163,19 +161,25 @@ export default function Analytics() {
     return () => { document.title = 'Prescripto'; };
   }, [clinic?.name]);
 
+  const isMountedRef = useRef(false);
+
   useEffect(() => {
     if (clinic?.id) {
-      fetchAllData();
+      fetchAllData().then(() => {
+        isMountedRef.current = true;
+      });
     }
   }, [clinic?.id]);
 
   useEffect(() => {
+    if (!isMountedRef.current) return;
     if (clinic?.id) {
       fetchVolumeData();
     }
   }, [clinic?.id, flowTimeRange, flowScale, customStartDate, customEndDate]);
 
   useEffect(() => {
+    if (!isMountedRef.current) return;
     if (clinic?.id) {
       fetchAppointmentLoads(appointmentLoadRange);
     }
@@ -1016,15 +1020,16 @@ export default function Analytics() {
   if (!clinic?.id) return null;
 
   return (
-    <div className="max-w-[1600px] mx-auto animate-in fade-in duration-700 pb-20 font-jakarta-sans bg-slate-50/50 dark:bg-slate-950/50">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 font-jakarta-sans animate-in fade-in duration-700 pb-20">
       <PageBanner
         title="Predictive Analytics"
-        description="Leveraging clinical data to optimize patient care and operational efficiency. (v1.1)"
-        imageSrc={analyticsBanner}
+        description="Leveraging clinical data to optimize patient care and operational efficiency."
       >
-        <div className="w-24 h-24 md:w-40 md:h-40 -ml-6 -mt-4 opacity-90 drop-shadow-2xl">
-          <Lottie animationData={analyticsAnimation} loop={true} />
-        </div>
+        <img 
+          src={analyticsImg} 
+          alt="Predictive Analytics" 
+          className="h-24 sm:h-32 md:h-36 lg:h-40 w-auto object-contain select-none pointer-events-none drop-shadow-sm" 
+        />
       </PageBanner>
 
       <div className="px-4 md:px-10 lg:px-16 relative z-20 space-y-8">

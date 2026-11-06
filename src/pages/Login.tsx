@@ -174,7 +174,7 @@ export default function Login() {
                <div className="flex items-center justify-center gap-3 text-xs font-bold text-primary">
                  <button
                    type="button"
-                   onClick={() => navigate('/contact')}
+                   onClick={() => window.location.href = 'mailto:contact.zevox@gmail.com'}
                    className="hover:underline flex items-center gap-1"
                  >
                    Contact Zevox Support

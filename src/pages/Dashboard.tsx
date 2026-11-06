@@ -23,6 +23,7 @@ import PrescriptionTemplate from '@/components/PrescriptionTemplate';
 import { printPrescription } from '@/lib/printPrescription';
 import { formatAge, getPatientCurrentAge, calculateDobFromAge } from '@/lib/utils';
 import { validateNumericRange } from '@/lib/security-sanitize';
+import dashboardImg from '@/assets/Dashboard.png';
 
 interface VitalsForm {
   weight: string;
@@ -724,6 +725,36 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+
+      {/* ── PreScripto Clinical Ecosystem Explainer (Seamless Transparent Art) ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="space-y-3 pt-2"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-black text-sm text-slate-900 dark:text-white">PreScripto Clinical Workflow</h3>
+              <p className="text-[11px] text-slate-400 font-medium">End-to-end outpatient charting pipeline with zero latency</p>
+            </div>
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 border border-blue-200 dark:border-blue-800 w-fit">
+            Live Ecosystem
+          </span>
+        </div>
+        <div className="w-full flex justify-center py-4">
+          <img 
+            src={dashboardImg} 
+            alt="PreScripto Clinical Workflow" 
+            className="w-full max-w-2xl sm:max-w-3xl h-auto object-contain select-none pointer-events-none drop-shadow-sm"
+          />
+        </div>
+      </motion.div>
 
       {/* ── Recently Completed Patients (Compact) ── */}
       {completedList.length > 0 && (

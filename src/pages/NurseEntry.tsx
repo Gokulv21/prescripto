@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { Search, UserPlus, History, CheckCircle, ArrowRight, User, Phone, MapPin, X, AlertCircle, ChevronDown, Loader2, Clock } from 'lucide-react';
 import { sanitizeText, validatePhone, validateNumericRange } from '@/lib/security-sanitize';
 import type { Clinic } from '@/types/clinic';
+import patientEntryImg from '@/assets/PatientEntry.png';
 
 interface PatientForm {
   title: string;
@@ -136,6 +137,7 @@ export default function NurseEntry() {
   const doctorOptions = useMemo(() => {
     const seen = new Set<string>();
     return (doctors || [])
+      .filter((d: any) => d.email?.toLowerCase() !== 'doctor@clinic.com' && d.role !== 'superadmin')
       .map((doctor: any) => {
         const assignId = doctor?.id || doctor?.user_id || '';
         return { ...doctor, assignId: String(assignId) };
@@ -462,12 +464,17 @@ export default function NurseEntry() {
   }
 
   return (
-    <div className="max-w-[1600px] mx-auto animate-in fade-in duration-500 pb-32">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 font-jakarta-sans animate-in fade-in duration-500 pb-32">
       <PageBanner
         title="Patient Registration"
-        description="Search for existing patients or register new ones with vitals and history."
-        imageSrc={patientEntryBanner}
-      />
+        description="Search for existing patients or register new ones with vitals and clinical history."
+      >
+        <img 
+          src={patientEntryImg} 
+          alt="Patient Registration" 
+          className="h-24 sm:h-32 md:h-36 lg:h-40 w-auto object-contain select-none pointer-events-none drop-shadow-sm" 
+        />
+      </PageBanner>
 
       <div className="px-4 md:px-8 max-w-5xl mx-auto">
         {step === 'confirm' && selectedPatientFull && (
