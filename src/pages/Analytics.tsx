@@ -8,7 +8,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-  AreaChart, Area, PieChart, Pie, Cell, ReferenceLine, ReferenceArea, Label, LineChart, Line, Legend, ComposedChart
+  AreaChart, Area, PieChart, Pie, Cell, ReferenceLine, ReferenceArea, Label, LineChart, Line, Legend, ComposedChart, LabelList
 } from 'recharts';
 import {
   Users, CalendarDays, Activity, Pill, Filter, Lightbulb, Sparkles, TrendingUp, X,
@@ -1711,7 +1711,7 @@ export default function Analytics() {
             description="Age-based clinical cohort distribution"
             icon={<Users className="w-5 h-5" />}
           >
-            <BarChart data={demographics.age} layout="vertical" margin={{ top: 10, right: 30, left: 50, bottom: 10 }}>
+            <BarChart data={demographics.age} layout="vertical" margin={{ top: 12, right: 55, left: -10, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.15} />
               <XAxis type="number" hide />
               <YAxis
@@ -1719,11 +1719,24 @@ export default function Analytics() {
                 dataKey="name"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: 'hsl(var(--foreground))', fontSize: 11, fontWeight: 800 }}
-                width={140}
+                tick={{ fill: 'hsl(var(--foreground))', fontSize: 10, fontWeight: 800 }}
+                width={120}
               />
-              <RechartsTooltip content={<CustomTooltip />} />
-              <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 8, 8, 0]} barSize={26} />
+              <RechartsTooltip 
+                content={<CustomTooltip />} 
+                cursor={{ fill: 'hsl(var(--primary) / 0.08)' }}
+                wrapperStyle={{ zIndex: 100 }}
+                position={{ y: -8 }}
+              />
+              <Bar dataKey="value" name="Patients" fill="hsl(var(--primary))" radius={[0, 8, 8, 0]} barSize={22}>
+                <LabelList 
+                  dataKey="value" 
+                  position="right" 
+                  offset={8} 
+                  className="fill-foreground font-black text-[11px]" 
+                  formatter={(val: number) => (val > 0 ? `${val}` : '')}
+                />
+              </Bar>
             </BarChart>
           </ChartContainer>
         </div>

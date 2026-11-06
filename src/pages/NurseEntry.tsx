@@ -463,7 +463,7 @@ export default function NurseEntry() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 font-jakarta-sans animate-in fade-in duration-500 pb-32">
+    <div className="max-w-7xl mx-auto px-1 sm:px-4 md:px-6 py-4 sm:py-8 font-jakarta-sans animate-in fade-in duration-500 pb-32">
       <PageBanner
         title="Patient Registration"
         description="Search for existing patients or register new ones with vitals and clinical history."
@@ -475,17 +475,17 @@ export default function NurseEntry() {
         />
       </PageBanner>
 
-      <div className="px-4 md:px-8 max-w-5xl mx-auto">
+      <div className="px-0 sm:px-2 md:px-6 max-w-5xl mx-auto">
         {step === 'confirm' && selectedPatientFull && (
             <div className="max-w-2xl mx-auto space-y-6">
                 <Card className="animate-in slide-in-from-bottom-5 duration-500 overflow-hidden shadow-2xl border-primary/20">
-                    <CardHeader className="bg-primary/5 py-8 border-b border-primary/10">
+                    <CardHeader className="bg-primary/5 py-6 sm:py-8 border-b border-primary/10">
                         <div className="text-center space-y-2">
                             <CardDescription className="text-primary font-bold uppercase tracking-widest text-xs">Verify Patient Information</CardDescription>
-                            <CardTitle className="text-3xl font-heading font-black text-foreground">Is this the correct patient?</CardTitle>
+                            <CardTitle className="text-2xl sm:text-3xl font-heading font-black text-foreground">Is this the correct patient?</CardTitle>
                         </div>
                     </CardHeader>
-                    <CardContent className="pt-10 pb-10 space-y-8 px-6 md:px-10">
+                    <CardContent className="pt-6 sm:pt-10 pb-6 sm:pb-10 space-y-6 sm:space-y-8 px-4 sm:px-6 md:px-10">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6 md:gap-y-8">
                             <div className="space-y-1">
                                 <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Full Name</Label>
@@ -511,12 +511,12 @@ export default function NurseEntry() {
                             </div>
                         </div>
 
-                        <div className="pt-8 flex flex-col md:flex-row gap-4">
-                            <Button variant="ghost" className="order-2 md:order-1 flex-1 h-14 text-muted-foreground font-bold text-lg hover:bg-muted" onClick={() => setStep('patient')}>
+                        <div className="pt-6 sm:pt-8 flex flex-col md:flex-row gap-3 sm:gap-4">
+                            <Button variant="ghost" className="order-2 md:order-1 flex-1 h-12 sm:h-14 text-muted-foreground font-bold text-sm sm:text-lg hover:bg-muted" onClick={() => setStep('patient')}>
                                 <X className="w-5 h-5 mr-2" /> No, Search Again
                             </Button>
-                            <Button className="order-1 md:order-2 flex-[2] h-14 text-lg font-black shadow-xl shadow-primary/30" onClick={() => setStep('vitals')}>
-                                <CheckCircle className="w-6 h-6 mr-2" /> Yes, Proceed to Vitals
+                            <Button className="order-1 md:order-2 flex-[2] h-12 sm:h-14 text-sm sm:text-lg font-black shadow-xl shadow-primary/30" onClick={() => setStep('vitals')}>
+                                <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 mr-2" /> Yes, Proceed to Vitals
                             </Button>
                         </div>
                     </CardContent>
@@ -528,10 +528,10 @@ export default function NurseEntry() {
             <div className="space-y-8">
                 {/* Search Header Interface */}
                 <div className="relative group" ref={searchContainerRef}>
-                    <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-sky-400/20 rounded-2xl blur opacity-25 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
+                    <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-sky-400/20 rounded-2xl blur opacity-25 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 hidden sm:block"></div>
                     <Card className="relative border-primary/10 shadow-xl overflow-visible">
-                        <CardContent className="pt-6">
-                            <div className="flex flex-col md:flex-row gap-4 items-center">
+                        <CardContent className="p-3 sm:p-6">
+                            <div className="flex flex-col md:flex-row gap-3 sm:gap-4 items-stretch md:items-center">
                                 <div className="relative flex-1 w-full">
                                     {isSearching ? (
                                         <Loader2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-primary animate-spin" />
@@ -539,7 +539,7 @@ export default function NurseEntry() {
                                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground transition-colors group-focus-within:text-primary" />
                                     )}
                                     <Input
-                                        className="h-14 pl-12 text-lg border-border focus:border-primary focus:ring-primary/20 transition-all rounded-xl shadow-sm bg-background dark:bg-slate-900"
+                                        className="h-12 sm:h-14 pl-12 text-sm sm:text-lg border-border focus:border-primary focus:ring-primary/20 transition-all rounded-xl shadow-sm bg-background dark:bg-slate-900"
                                         placeholder="Search by Name, Phone, or Reg ID..."
                                         value={searchQuery}
                                         onFocus={() => {
@@ -636,23 +636,23 @@ export default function NurseEntry() {
                                     )}
                                 </div>
                                 <div className="h-6 w-px bg-border hidden md:block" />
-                                <div className="flex gap-2 w-full md:w-auto">
+                                <div className="grid grid-cols-2 gap-2 w-full md:flex md:w-auto shrink-0">
                                     <Button 
                                         onClick={() => { reset(); setSearchQuery(''); }}
                                         variant="outline" 
-                                        className="h-14 rounded-xl px-6 border-border font-bold text-muted-foreground flex-1 hover:bg-muted"
+                                        className="h-11 sm:h-14 rounded-xl px-2 sm:px-6 border-border font-bold text-xs sm:text-sm text-muted-foreground hover:bg-muted"
                                     >
                                         Clear
                                     </Button>
                                     <Button 
                                         variant="default" 
-                                        className="h-14 rounded-xl px-8 font-bold shadow-lg shadow-primary/20 flex-1 hover:scale-[1.02] transition-transform"
+                                        className="h-11 sm:h-14 rounded-xl px-2 sm:px-6 font-bold shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform text-xs sm:text-sm"
                                         onClick={() => {
                                             setSearchResults([]);
                                             setSearchQuery('');
                                         }}
                                     >
-                                        <UserPlus className="w-5 h-5 mr-2" /> New Patient
+                                        <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2 shrink-0" /> New Patient
                                     </Button>
                                 </div>
                             </div>
@@ -662,11 +662,11 @@ export default function NurseEntry() {
 
                 {/* Registration Form */}
                 <Card className="border-border shadow-lg animate-in slide-in-from-bottom-4 duration-500 overflow-hidden bg-background dark:bg-slate-900/50">
-                    <CardHeader className="bg-muted/30 border-b border-border py-6">
+                    <CardHeader className="bg-muted/30 border-b border-border p-4 sm:p-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <CardTitle className="text-xl font-heading font-bold text-foreground">Patient Details</CardTitle>
-                                <CardDescription className="font-medium text-muted-foreground">Complete information for the new registration</CardDescription>
+                                <CardTitle className="text-lg sm:text-xl font-heading font-bold text-foreground">Patient Details</CardTitle>
+                                <CardDescription className="text-xs sm:text-sm font-medium text-muted-foreground">Complete information for the new registration</CardDescription>
                             </div>
                             <div className="hidden sm:block">
                                 <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 text-right">System ID</div>
@@ -676,7 +676,7 @@ export default function NurseEntry() {
                             </div>
                         </div>
                     </CardHeader>
-                    <CardContent className="pt-8 space-y-8">
+                    <CardContent className="p-4 sm:p-6 pt-6 sm:pt-8 space-y-6 sm:space-y-8">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div className="space-y-6">
                                 <div className="space-y-3">
@@ -797,9 +797,13 @@ export default function NurseEntry() {
                             </div>
                         </div>
 
-                        <div className="pt-4 border-t border-border -mx-6 px-6 bg-muted/20 flex justify-center md:justify-end pb-8">
-                            <Button onClick={handleNewPatientNext} size="lg" className="w-full md:w-auto h-14 px-10 rounded-xl font-bold text-lg shadow-xl shadow-primary/20 hover:translate-y-[-2px] hover:shadow-primary/30 active:translate-y-[0px] transition-all">
-                                Continue — Record Vitals <ChevronDown className="w-5 h-5 ml-2" />
+                        <div className="pt-4 border-t border-border -mx-4 sm:-mx-6 px-4 sm:px-6 bg-muted/20 flex justify-center md:justify-end pb-6 sm:pb-8">
+                            <Button 
+                                onClick={handleNewPatientNext} 
+                                size="lg" 
+                                className="w-full md:w-auto h-12 sm:h-14 px-4 sm:px-10 rounded-xl font-bold text-sm sm:text-base md:text-lg shadow-xl shadow-primary/20 hover:translate-y-[-2px] hover:shadow-primary/30 active:translate-y-[0px] transition-all"
+                            >
+                                Continue — Record Vitals <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 ml-1.5 sm:ml-2 shrink-0" />
                             </Button>
                         </div>
                     </CardContent>
@@ -809,15 +813,15 @@ export default function NurseEntry() {
 
         {step === 'vitals' && (
           <Card className="animate-fade-in shadow-2xl border-primary/20 max-w-4xl mx-auto overflow-hidden bg-card">
-            <CardHeader className="bg-primary/5 py-8 border-b border-primary/10">
+            <CardHeader className="bg-primary/5 py-6 sm:py-8 px-4 sm:px-6 border-b border-primary/10">
                 <div className="flex items-center justify-between">
                     <div className="space-y-1">
                         <CardDescription className="text-primary font-bold uppercase tracking-widest text-[10px]">Vitals Pre-Consultation</CardDescription>
-                        <CardTitle className="text-2xl font-heading font-black text-foreground">Recording Vitals: {patient.title} {patient.name}</CardTitle>
+                        <CardTitle className="text-xl sm:text-2xl font-heading font-black text-foreground">Recording Vitals: {patient.title} {patient.name}</CardTitle>
                     </div>
                 </div>
             </CardHeader>
-            <CardContent className="pt-10 space-y-10 pb-10">
+            <CardContent className="p-4 sm:p-6 pt-6 sm:pt-10 space-y-6 sm:space-y-10 pb-8 sm:pb-10">
               <div className="bg-primary/5 p-4 rounded-xl border border-primary/10">
                  <Label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2 mb-3">Route to Specific Doctor (Optional)</Label>
                  <Select value={assignedDoctorId} onValueChange={setAssignedDoctorId}>
@@ -1014,12 +1018,12 @@ export default function NurseEntry() {
                  </div>
               </div>
               
-              <div className="flex flex-col md:flex-row gap-4 pt-4">
-                <Button variant="outline" size="lg" onClick={() => setStep('patient')} className="order-2 md:order-1 flex-1 h-14 rounded-2xl font-bold text-muted-foreground group border-border hover:bg-muted">
-                    <ChevronDown className="w-5 h-5 mr-2 rotate-90 group-hover:-translate-x-1 transition-transform" /> Go Back
+              <div className="flex flex-col md:flex-row gap-3 sm:gap-4 pt-4">
+                <Button variant="outline" size="lg" onClick={() => setStep('patient')} className="order-2 md:order-1 flex-1 h-12 sm:h-14 rounded-xl sm:rounded-2xl font-bold text-sm sm:text-base text-muted-foreground group border-border hover:bg-muted">
+                    <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 mr-2 rotate-90 group-hover:-translate-x-1 transition-transform" /> Go Back
                 </Button>
-                <Button onClick={submitVisit} disabled={loading} size="lg" className="order-1 md:order-2 flex-[2] h-14 rounded-2xl font-black text-xl shadow-2xl shadow-primary/30">
-                  {loading ? <Loader2 className="w-6 h-6 animate-spin mr-3 font-bold" /> : <CheckCircle className="w-6 h-6 mr-3" />}
+                <Button onClick={submitVisit} disabled={loading} size="lg" className="order-1 md:order-2 flex-[2] h-12 sm:h-14 rounded-xl sm:rounded-2xl font-black text-base sm:text-xl shadow-2xl shadow-primary/30">
+                  {loading ? <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin mr-2 sm:mr-3 font-bold" /> : <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 mr-2 sm:mr-3" />}
                   Submit & Queue Patient
                 </Button>
               </div>

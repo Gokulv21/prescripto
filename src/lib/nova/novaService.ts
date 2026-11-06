@@ -91,9 +91,9 @@ function isAnalyticsIntent(input: string): boolean {
 
 /**
  * Extracts clean patient search terms even from complex sentences
- * e.g., "give me the details for the patient gokul" -> "gokul"
- * e.g., "Hey enaku gokul nu irukura patient oda details venum" -> "gokul"
- * e.g., "patient priya pathi sollu" -> "priya"
+ * e.g., "give me the details for the patient ram" -> "ram"
+ * e.g., "Hey enaku ram nu irukura patient oda details venum" -> "ram"
+ * e.g., "patient john pathi sollu" -> "john"
  */
 function extractPatientSearchTerm(input: string): string {
   let s = input.trim();
@@ -205,11 +205,12 @@ async function callGeminiAI(
   systemInstructions: string,
   history: NovaMessage[] = []
 ): Promise<string | null> {
-  // gemini-3.1-flash-lite and gemini-3.5-flash-lite are fast (<2s) and reliably respond without 503 errors
+  // Official active Google Gemini models with fallback
   const candidateModels = [
-    'gemini-3.1-flash-lite',
-    'gemini-3.5-flash-lite',
-    'gemini-flash-latest'
+    'gemini-1.5-flash',
+    'gemini-2.0-flash',
+    'gemini-2.5-flash',
+    'gemini-1.5-pro'
   ];
 
   const formattedHistory = history.slice(-6).map(m => ({
@@ -219,7 +220,7 @@ async function callGeminiAI(
 
   for (const model of candidateModels) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+    const timer = setTimeout(() => controller.abort(), 9000);
 
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -255,7 +256,41 @@ async function callGeminiAI(
           return text;
         }
       } else {
-        console.warn(`[Nova AI] ${model} returned ${response.status}, trying next model...`);
+        const errJson = await response.json().catch(() => ({}));
+        console.warn(`[Nova AI] ${model} returned ${response.status}:`, errJson);
+
+        // Fallback for models or API keys that don't support systemInstruction field directly
+        if (response.status === 400) {
+          const fallbackController = new AbortController();
+          const fallbackTimer = setTimeout(() => fallbackController.abort(), 8000);
+          try {
+            const fallbackRes = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: fallbackController.signal,
+              body: JSON.stringify({
+                contents: [
+                  {
+                    role: 'user',
+                    parts: [{ text: `[SYSTEM INSTRUCTIONS]\n${systemInstructions}\n\n[USER QUERY]\n${userPrompt}` }]
+                  }
+                ],
+                generationConfig: {
+                  temperature: 0.35,
+                  maxOutputTokens: 800,
+                }
+              })
+            });
+            clearTimeout(fallbackTimer);
+            if (fallbackRes.ok) {
+              const fbData = await fallbackRes.json();
+              const fbText = fbData.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (fbText) return fbText;
+            }
+          } catch {
+            clearTimeout(fallbackTimer);
+          }
+        }
       }
     } catch (err: any) {
       clearTimeout(timer);
@@ -349,8 +384,8 @@ export async function sendNovaMessage(
         id: `msg-${Date.now()}`,
         sender: 'assistant',
         text: prefersTamil
-          ? 'தயவுசெய்து நோயாளியின் பெயர், தொலைபேசி எண் அல்லது பதிவு எண்ணை குறிப்பிடவும் (உதா: "Search patient Gokul").'
-          : 'Please specify the patient name, phone number, or registration ID to search (e.g., "Search patient Gokul").',
+          ? 'தயவுசெய்து நோயாளியின் பெயர், தொலைபேசி எண் அல்லது பதிவு எண்ணை குறிப்பிடவும் (உதா: "Search patient Ram").'
+          : 'Please specify the patient name, phone number, or registration ID to search (e.g., "Search patient Ram").',
         timestamp: new Date()
       };
     }
@@ -427,25 +462,36 @@ PRESCRIPTO APP MODULES & URLS:
   // 4. If Gemini API Key is configured, use Real AI LLM Reasoning with Live Data
   if (apiKey) {
     const systemPrompt = `You are "Nova", the intelligent clinical & operations AI created by Zevox.
-You power Prescripto (a flagship healthcare product by Zevox for modern hospitals and healthcare providers).
+You power PreScripto (a flagship healthcare product by Zevox for modern hospitals and healthcare providers).
 
 ${clinicContextText}
 
-LANGUAGE RULES (CRITICAL):
-- If the user asks in Tamil or Tanglish (e.g. "tamil la sollu", "enaku nethu ethana patients vandhanga nu paathu sollu", "v1.4 enna nu sollu", "epdi print panradhu"): RESPOND FLUENTLY IN NATURAL TAMIL (தமிழ்) or polite Tanglish matching their style!
-- If the user asks in English: Respond in clean, professional English.
-- Use the real clinic numbers from CLINIC LIVE CONTEXT above (for yesterday visits, today visits, waiting count, total patients).
-- If the user asks for a table, tabular column, or comparison (e.g. "tabular column maari potu kudu"): ALWAYS format the comparison using standard Markdown table syntax (| Col 1 | Col 2 | Col 3 |) so it renders as a sleek UI table card!
-- For questions about Analytics or statistics or yesterday/today numbers, explain what is available in the Analytics module and suggest /analytics.
-- For feature questions, provide practical steps and suggest direct URLs like /analytics, /print, /display, /consultation, /nurse.
-- Avoid generic bot clichés. Do not use excessive emojis.`;
+PRIMARY INSTRUCTIONS:
+- Directly answer the user's question without repetitive introductory boilerplate (do NOT start with "I am Nova by Zevox").
+- MULTILINGUAL MASTERY:
+  * If the user writes in Tamil or Tanglish (e.g. "staff password marandhuta enna panradhu", "tamil la sollu", "enaku nethu ethana patients vandhanga"): Respond fluently, warmly, and naturally in Tamil (தமிழ்) or conversational Tanglish matching their tone!
+  * If the user writes in English: Respond in clean, professional, structured English.
+- OPERATIONAL & CLINIC MANAGEMENT QUESTIONS:
+  * If asked about staff forgot password / password reset: Explain that the Clinic Owner can reset or re-create credentials from /users, or staff can use the Forgot Password link on the login screen.
+  * If asked about user roles, adding doctors/staff, or access control: Explain Owner vs Doctor vs Staff permissions at /users.
+  * If asked about clinic branding, letterhead, phone, address, or fees: Refer them to /settings and /profile.
+  * If asked about appearance, colors, or dark mode: Explain per-device themes and custom hex color picker at /settings.
+  * If asked about patient entry, vitals, queues, printing, or TV display: Give concrete operational steps and recommend the right path (/nurse, /consultation, /print, /display, /analytics).
+- CLINICAL & MEDICAL QUESTIONS:
+  * Answer with clinical accuracy, standard dosages, triage red flags, and precautions.
+- FORMATTING:
+  * Use bold headers, bullet lists, and markdown tables when comparing or presenting structured data.`;
 
     const aiResponse = await callGeminiAI(apiKey, query, systemPrompt, history);
     if (aiResponse) {
       let actionLink: { label: string; path: string } | undefined;
       const lowerAi = aiResponse.toLowerCase();
 
-      if (lowerAi.includes('analytics') || lowerQuery.includes('analytic') || lowerQuery.includes('nethu') || lowerQuery.includes('yesterday') || lowerQuery.includes('report')) {
+      if (lowerAi.includes('user') || lowerAi.includes('password') || lowerAi.includes('staff') || lowerQuery.includes('user') || lowerQuery.includes('password') || lowerQuery.includes('staff') || lowerQuery.includes('doctor') || lowerQuery.includes('role')) {
+        actionLink = { label: prefersTamil ? 'பணியாளர் மேலாண்மை' : 'Open Team Management', path: prefixPath('/users') };
+      } else if (lowerAi.includes('setting') || lowerAi.includes('theme') || lowerAi.includes('appearance') || lowerAi.includes('color') || lowerQuery.includes('setting') || lowerQuery.includes('theme') || lowerQuery.includes('appearance') || lowerQuery.includes('color')) {
+        actionLink = { label: prefersTamil ? 'அமைப்புகள் பக்கம்' : 'Open Clinic Settings', path: prefixPath('/settings') };
+      } else if (lowerAi.includes('analytics') || lowerQuery.includes('analytic') || lowerQuery.includes('nethu') || lowerQuery.includes('yesterday') || lowerQuery.includes('report')) {
         actionLink = { label: prefersTamil ? 'அனலிட்டிக்ஸ் பக்கம்' : 'Open Analytics Page', path: prefixPath('/analytics') };
       } else if (lowerAi.includes('print') || lowerQuery.includes('print')) {
         actionLink = { label: prefersTamil ? 'பிரிண்ட் வரிசைக்கு செல்' : 'Open Print Queue', path: prefixPath('/print') };
@@ -453,7 +499,7 @@ LANGUAGE RULES (CRITICAL):
         actionLink = { label: prefersTamil ? 'டிவி காட்சியை திற' : 'Open TV Display', path: prefixPath('/display') };
       } else if (lowerAi.includes('consultation') || lowerQuery.includes('consult')) {
         actionLink = { label: prefersTamil ? 'ஆலோசனைக்கு செல்' : 'Go to Consultation', path: prefixPath('/consultation') };
-      } else if (lowerAi.includes('nurse') || lowerQuery.includes('patient entry') || lowerQuery.includes('register')) {
+      } else if (lowerAi.includes('nurse') || lowerQuery.includes('patient entry') || lowerQuery.includes('register') || lowerQuery.includes('vital')) {
         actionLink = { label: prefersTamil ? 'நோயாளி பதிவுக்கு செல்' : 'Go to Patient Entry', path: prefixPath('/nurse') };
       }
 
@@ -570,15 +616,19 @@ LANGUAGE RULES (CRITICAL):
   // Procedural how-to guides
   const knowledge = searchAppKnowledge(query);
   if (knowledge.matchedGuide) {
+    const guide = knowledge.matchedGuide;
     if (prefersTamil) {
+      const title = guide.titleTa || guide.title;
+      const steps = (guide.stepsTa || guide.steps).map((s, i) => `${i + 1}. ${s}`).join('\n\n');
+      const actionLabel = guide.actionLabelTa || guide.actionLabel;
       return {
         id: `msg-${Date.now()}`,
         sender: 'assistant',
-        text: `### ${knowledge.matchedGuide.title} (வழிகாட்டி)\n\n${knowledge.matchedGuide.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
+        text: `### ${title}\n\n${steps}`,
         timestamp: new Date(),
         actionLink: {
-          label: knowledge.matchedGuide.actionLabel,
-          path: prefixPath(knowledge.matchedGuide.targetPath)
+          label: actionLabel,
+          path: prefixPath(guide.targetPath)
         }
       };
     }
@@ -586,30 +636,70 @@ LANGUAGE RULES (CRITICAL):
     return {
       id: `msg-${Date.now()}`,
       sender: 'assistant',
-      text: `### ${knowledge.matchedGuide.title}\n\n${knowledge.matchedGuide.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
+      text: `### ${guide.title}\n\n${guide.steps.map((s, i) => `${i + 1}. ${s}`).join('\n\n')}`,
       timestamp: new Date(),
       actionLink: {
-        label: knowledge.matchedGuide.actionLabel,
-        path: prefixPath(knowledge.matchedGuide.targetPath)
+        label: guide.actionLabel,
+        path: prefixPath(guide.targetPath)
       }
     };
   }
 
-  // Greetings & General Fallback
+  // Pure Greetings
+  const isPureGreeting = /^(hi|hello|hey|vanakkam|வணக்கம்|good\s*(morning|afternoon|evening)|hola)\b/i.test(query.trim());
+  if (isPureGreeting) {
+    if (prefersTamil) {
+      return {
+        id: `msg-${Date.now()}`,
+        sender: 'assistant',
+        text: `வணக்கம்! நான் **Nova by Zevox**, உங்கள் கிளினிக் உதவியாளர்.\n\nநோயாளி விவரங்கள், கடவுச்சொல் மீட்டமைப்பு, மருந்துச் சீட்டு வழிகாட்டுதல், வைட்டல்ஸ் அல்லது அமைப்புகள் குறித்து நீங்கள் எதையும் கேட்கலாம்!`,
+        timestamp: new Date()
+      };
+    }
+
+    return {
+      id: `msg-${Date.now()}`,
+      sender: 'assistant',
+      text: `Hello! I am **Nova by Zevox**, your clinic operations and clinical AI assistant.\n\nHow can I help you today? You can ask about patient history, password reset, printing prescriptions, clinical vitals, or system settings.`,
+      timestamp: new Date()
+    };
+  }
+
+  // Contextual Smart Guidance for Any Other Query
   if (prefersTamil) {
     return {
       id: `msg-${Date.now()}`,
       sender: 'assistant',
-      text: `வணக்கம்! நான் **Nova by Zevox**.\n\nநான் கிளினிக் மருத்துவர்கள் மற்றும் ஊழியர்களுக்கான உதவியாளர்.\n\n• நோயாளி விவரங்களை அறிய: *"Search patient [பெயர்]"*\n• புதிய வசதிகளை அறிய: *"v1.4 புதிய வசதிகள் என்ன?"*\n• அம்சங்களை இயக்க: *"பிரிண்ட் எடுப்பது எப்படி?"*`,
-      timestamp: new Date()
+      text: `**"${query}"** தொடர்பான கிளினிக் வழிகாட்டுதல்:\n\n` +
+        `• **கடவுச்சொல் / பணியாளர் மேலாண்மை:** பாஸ்வேர்ட் மீட்டமைக்க அல்லது ஊழியர்களை நிர்வகிக்க **Team Management** (/users) செல்லவும்.\n` +
+        `• **கிளினிக் அமைப்புகள் & தீம்கள்:** கிளினிக் பெயர், முகவரி, லோகோ மற்றும் வண்ணங்களை மாற்ற **Settings** (/settings) செல்லவும்.\n` +
+        `• **டாக்டர் ஆலோசனை & பிரஸ்கிரிப்ஷன்:** நோயாளிக்கு மருந்துச் சீட்டு எழுத **Consultation** (/consultation) பயன்படுத்தவும்.\n` +
+        `• **பிரிண்ட் & டிவி வரிசை:** **Print Queue** (/print) அல்லது **TV Display** (/display) செல்லவும்.\n\n` +
+        `💡 *முழுமையான AI மருத்துவ உரையாடல்கள் மற்றும் விரிவான பதில்களை இயக்க, Nova தலைப்பில் உள்ள சாவி (Key) குறியீட்டை அழுத்தி உங்கள் இலவச Google Gemini API Key-ஐ இணைத்துக் கொள்ளலாம்.*`,
+      timestamp: new Date(),
+      actionLink: {
+        label: 'கிளினிக் அமைப்புகள்',
+        path: prefixPath('/settings')
+      }
     };
   }
 
   return {
     id: `msg-${Date.now()}`,
     sender: 'assistant',
-    text: `I am **Nova by Zevox**, your clinical operations assistant.\n\n• **Search Patient:** "Search patient [name]"\n• **System Features:** "How to print a prescription?"\n• **v1.4 Updates:** "What are the new features in v1.4?"`,
-    timestamp: new Date()
+    text: `Operational guidance for: **"${query}"**\n\n` +
+      `Here are direct steps for related clinical operations in PreScripto:\n\n` +
+      `• **User Accounts & Password Reset:** The Clinic Owner can reset credentials or update roles under **Team Management** (/users).\n` +
+      `• **Clinic Letterhead & Themes:** Update branding, logos, doctor credentials, and UI appearance in **Settings** (/settings).\n` +
+      `• **Clinical Records & Prescriptions:** Conduct consultations and draw/type prescriptions under **Consultation** (/consultation).\n` +
+      `• **Patient Vitals & Intake:** Register patients and triage baseline vitals under **Patient Entry** (/nurse).\n` +
+      `• **Prescription Printing & TV Display:** Access **Print Queue** (/print) or **TV Display** (/display).\n\n` +
+      `💡 *Tip: To enable open-ended clinical reasoning, medical explanations, and unrestricted conversational AI, connect a Google Gemini API key by clicking the key icon in the Nova header.*`,
+    timestamp: new Date(),
+    actionLink: {
+      label: 'Open Clinic Settings',
+      path: prefixPath('/settings')
+    }
   };
 }
 

@@ -3,10 +3,10 @@ import { useAuth, AppRole } from '@/lib/auth';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
-  Stethoscope, ClipboardPlus, Printer, BarChart3, Users, LogOut, Home, Menu, HelpCircle, Sun, Moon, Monitor, ChevronDown, Info, Tv, User, LayoutGrid, Building2, Mail, Settings
+  Stethoscope, ClipboardPlus, Printer, BarChart3, Users, LogOut, Home, Menu, HelpCircle, Sun, Moon, Monitor, ChevronDown, Info, Tv, User, LayoutGrid, Building2, Mail, Settings, X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { useTheme } from '@/components/ThemeProvider';
 import logo from '@/assets/logo.png';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -480,7 +480,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             localStorage.setItem(DOCK_POS_KEY, JSON.stringify(newPos));
           } catch (e) {}
         }}
-        className="fixed bottom-4 inset-x-0 mx-auto z-50 flex md:hidden items-center justify-between w-[94vw] max-w-[390px] min-h-[62px] h-auto py-1 px-1 rounded-[2.25rem] bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl border border-white/70 dark:border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.18)] select-none touch-none cursor-grab"
+        className="fixed bottom-4 inset-x-0 mx-auto z-50 grid grid-cols-5 items-center w-[94vw] max-w-[390px] min-h-[62px] h-auto py-1 px-1 rounded-[2.25rem] bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl border border-white/70 dark:border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.18)] select-none touch-none cursor-grab"
       >
         {/* Drag Indicator Pill (Double-tap to reset center) */}
         <div
@@ -498,7 +498,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               onClick={() => {
                 if (!isDraggingDock) navigateTab(item.path);
               }}
-              className="flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 select-none active:scale-90 transition-transform relative"
+              className="w-full min-w-0 flex flex-col items-center justify-center py-1 px-0.5 select-none active:scale-90 transition-transform relative"
             >
               <div className={cn(
                 "w-6 h-6 flex items-center justify-center transition-all duration-150 shrink-0",
@@ -524,7 +524,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           onClick={() => {
             if (!isDraggingDock) setIsMobileMenuOpen(true);
           }}
-          className="flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 select-none active:scale-90 transition-transform relative"
+          className="w-full min-w-0 flex flex-col items-center justify-center py-1 px-0.5 select-none active:scale-90 transition-transform relative"
         >
           <div className={cn(
             "w-6 h-6 flex items-center justify-center transition-all duration-150 shrink-0",
@@ -548,9 +548,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
         <SheetContent
           side="bottom"
-          className="p-0 border-0 bg-transparent shadow-none overflow-visible"
+          className="p-0 border-0 bg-transparent shadow-none overflow-visible [&>button.absolute]:hidden"
           style={{ height: 'auto', maxHeight: '90vh' }}
         >
+          <SheetTitle className="sr-only">All Modules Launcher</SheetTitle>
+          <SheetDescription className="sr-only">Access all clinic tools and pages</SheetDescription>
           <motion.div
             initial={{ y: "100%", opacity: 0.5, scale: 0.97 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
@@ -563,8 +565,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <div className="w-9 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
             </div>
 
-            {/* Launcher Header - Compact */}
-            <div className="px-4 py-2 flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800/60">
+            {/* Launcher Header - Compact with strictly ONE Close Button */}
+            <div className="px-4 py-2.5 flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800/60">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary to-purple-600 flex items-center justify-center text-white shadow-xs">
                   <Stethoscope className="w-4 h-4" />
@@ -578,9 +580,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 variant="ghost"
                 size="icon"
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="rounded-full w-7 h-7 bg-slate-100 dark:bg-slate-800 active:scale-75 transition-transform"
+                className="rounded-full w-7 h-7 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-75 transition-all text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                title="Close Menu"
               >
-                <ChevronDown className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
+                <X className="w-3.5 h-3.5" />
               </Button>
             </div>
 

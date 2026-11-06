@@ -254,7 +254,7 @@ export default function UserManagement() {
                   <Input
                     value={fullName}
                     onChange={e => setFullName(e.target.value)}
-                    placeholder="e.g. Dr. V. Aravind or Sister Priya"
+                    placeholder="e.g. Dr. John Doe or Nurse Mary"
                     className="h-11 rounded-xl font-bold bg-slate-50/50 dark:bg-slate-800/40"
                   />
                 </div>

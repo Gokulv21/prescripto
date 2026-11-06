@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Bell, Check, X, Loader2, Eye, EyeOff, ShieldCheck, PhoneCall, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';00
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -32,31 +32,31 @@ export default function NotificationCenter() {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContext) return;
       const ctx = new AudioContext();
-      
+
       const playTone = (freq: number, startTime: number, duration: number, type: 'sine' | 'triangle' | 'square' = 'triangle') => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        
+
         osc.type = type;
         osc.frequency.setValueAtTime(freq, startTime);
-        
+
         // Quick attack and quick decay for a sharp, loud alarm alert
         gain.gain.setValueAtTime(0, startTime);
         gain.gain.linearRampToValueAtTime(0.8, startTime + 0.015);
         gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-        
+
         osc.connect(gain);
         gain.connect(ctx.destination);
-        
+
         osc.start(startTime);
         osc.stop(startTime + duration);
       };
-      
+
       const now = ctx.currentTime;
       // Loud, distinct 4-pulse medical cabin pager alarm (beep-beep ... beep-beep)
       playTone(987.77, now, 0.15, 'triangle');        // B5 (sharp)
       playTone(987.77, now + 0.2, 0.15, 'triangle');  // B5
-      
+
       playTone(1318.51, now + 0.45, 0.15, 'triangle'); // E6 (higher pitch)
       playTone(1318.51, now + 0.65, 0.25, 'triangle'); // E6
     } catch (e) {
@@ -105,7 +105,7 @@ export default function NotificationCenter() {
 
   const fetchRequests = async () => {
     if (!isSuper && !isOwner && !isDoctor) return;
-    
+
     const { data, error } = await supabase
       .from('password_reset_requests')
       .select('*')
@@ -150,14 +150,14 @@ export default function NotificationCenter() {
     const { data, error } = isSuper
       ? await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(40)
       : await supabase.from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(30);
-    
+
     if (!error && data) {
       let currentDismissed: string[] = [];
       let currentRead: string[] = [];
       try {
         currentDismissed = JSON.parse(localStorage.getItem(getDismissedKey(user.id)) || '[]');
         currentRead = JSON.parse(localStorage.getItem(getReadKey(user.id)) || '[]');
-      } catch {}
+      } catch { }
 
       const filtered = data
         .filter(n => {
@@ -182,13 +182,13 @@ export default function NotificationCenter() {
   useEffect(() => {
     fetchRequests();
     fetchSystemNotifications();
-    
+
     // Subscribe to password resets
     const channelResets = supabase
       .channel(`password_resets_${user?.id || 'guest'}`)
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
         table: 'password_reset_requests'
       }, () => fetchRequests())
       .subscribe();
@@ -227,7 +227,7 @@ export default function NotificationCenter() {
       .from('password_reset_requests')
       .update({ status: 'rejected' })
       .eq('id', id);
-    
+
     if (error) toast.error('Failed to reject request');
     else {
       toast.success('Request rejected');
@@ -248,8 +248,8 @@ export default function NotificationCenter() {
     setSaving(true);
     try {
       const { data, error } = await supabase.functions.invoke('admin-reset-password', {
-        body: { 
-          userId: resetModal.request.user_id, 
+        body: {
+          userId: resetModal.request.user_id,
           newPassword,
           requestId: resetModal.request.id
         }
@@ -262,7 +262,7 @@ export default function NotificationCenter() {
             const body = await (error as any).context.json();
             if (body?.error) msg = body.error;
           }
-        } catch {}
+        } catch { }
         throw new Error(msg || 'Failed to reset password');
       }
 
@@ -283,11 +283,11 @@ export default function NotificationCenter() {
     setReadIds(updated);
     try {
       localStorage.setItem(getReadKey(user?.id), JSON.stringify(updated));
-    } catch {}
+    } catch { }
     setSystemNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     try {
       await supabase.from('notifications').update({ is_read: true }).eq('id', id);
-    } catch {}
+    } catch { }
   };
 
   // Mark all as read
@@ -297,11 +297,11 @@ export default function NotificationCenter() {
     setReadIds(updated);
     try {
       localStorage.setItem(getReadKey(user?.id), JSON.stringify(updated));
-    } catch {}
+    } catch { }
     setSystemNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     try {
       await supabase.from('notifications').update({ is_read: true }).in('id', allIds);
-    } catch {}
+    } catch { }
     toast.success('All notifications marked as read');
   };
 
@@ -311,11 +311,11 @@ export default function NotificationCenter() {
     setDismissedIds(updated);
     try {
       localStorage.setItem(getDismissedKey(user?.id), JSON.stringify(updated));
-    } catch {}
+    } catch { }
     setSystemNotifications(prev => prev.filter(n => n.id !== id));
     try {
       await supabase.from('notifications').delete().eq('id', id);
-    } catch {}
+    } catch { }
   };
 
   // Permanently delete ALL notifications for this user
@@ -325,11 +325,11 @@ export default function NotificationCenter() {
     setDismissedIds(updated);
     try {
       localStorage.setItem(getDismissedKey(user?.id), JSON.stringify(updated));
-    } catch {}
+    } catch { }
     setSystemNotifications([]);
     try {
       await supabase.from('notifications').delete().in('id', allIds);
-    } catch {}
+    } catch { }
     toast.success('All notifications cleared');
   };
 
@@ -377,20 +377,20 @@ export default function NotificationCenter() {
               )}
             </div>
           </div>
-          
+
           <div className="space-y-1 max-h-[400px] overflow-auto no-scrollbar">
             {systemNotifications.length > 0 && (
               <div className="mb-2">
                 {systemNotifications.map(notif => (
-                  <div 
-                    key={notif.id} 
+                  <div
+                    key={notif.id}
                     onClick={() => {
                       if (!notif.is_read) markAsRead(notif.id);
                     }}
                     className={cn(
                       "p-3 rounded-xl transition-all border border-transparent mb-1 relative group cursor-pointer",
-                      notif.is_read 
-                        ? "opacity-50 hover:opacity-80 bg-slate-50/50 dark:bg-slate-900/30" 
+                      notif.is_read
+                        ? "opacity-50 hover:opacity-80 bg-slate-50/50 dark:bg-slate-900/30"
                         : notif.title === 'CALLING PATIENT'
                           ? "bg-red-500/10 dark:bg-red-500/10 border-red-500/30 animate-pulse"
                           : "bg-blue-500/5 dark:bg-blue-400/5 border-blue-500/10"
@@ -429,8 +429,8 @@ export default function NotificationCenter() {
                       <p className={cn(
                         "text-[11px] font-black uppercase tracking-tight flex items-center gap-1.5",
                         notif.title === 'CALLING PATIENT' ? "text-red-500" :
-                        notif.type === 'error' ? "text-red-600" : 
-                        notif.type === 'success' ? "text-emerald-600" : "text-blue-600"
+                          notif.type === 'error' ? "text-red-600" :
+                            notif.type === 'success' ? "text-emerald-600" : "text-blue-600"
                       )}>
                         {notif.title === 'CALLING PATIENT' && <PhoneCall className="w-3.5 h-3.5 text-red-500 animate-pulse shrink-0" />}
                         {notif.title}
@@ -462,16 +462,16 @@ export default function NotificationCenter() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         onClick={() => handleApprove(req)}
                         className="h-7 text-[10px] px-3 bg-primary/10 text-primary hover:bg-primary hover:text-white border-none shadow-none font-black uppercase tracking-wider"
                       >
                         Approve
                       </Button>
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
+                      <Button
+                        size="sm"
+                        variant="ghost"
                         onClick={() => handleReject(req.id)}
                         className="h-7 text-[10px] px-3 text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 font-black uppercase tracking-wider"
                       >
@@ -496,17 +496,17 @@ export default function NotificationCenter() {
       <Dialog open={resetModal.open} onOpenChange={(open) => !open && setResetModal({ open: false, request: null })}>
         <DialogContent className="sm:max-w-[400px] glass-thick border-primary/20 rounded-3xl overflow-hidden p-0">
           <div className="bg-primary/5 p-6 border-b border-primary/10 flex items-center gap-4">
-             <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center text-primary">
-                <ShieldCheck className="w-6 h-6" />
-             </div>
-             <div>
-                <DialogTitle className="text-xl font-black tracking-tight">Security Review</DialogTitle>
-                <DialogDescription>
-                  Reset password for {resetModal.request?.email} <span className="font-semibold uppercase text-xs">({resetModal.request?.requester_role})</span>
-                </DialogDescription>
-             </div>
+            <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center text-primary">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <DialogTitle className="text-xl font-black tracking-tight">Security Review</DialogTitle>
+              <DialogDescription>
+                Reset password for {resetModal.request?.email} <span className="font-semibold uppercase text-xs">({resetModal.request?.requester_role})</span>
+              </DialogDescription>
+            </div>
           </div>
-          
+
           <div className="p-6 space-y-4">
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-widest font-black text-slate-500">New Password</Label>
@@ -540,10 +540,10 @@ export default function NotificationCenter() {
 
           <DialogFooter className="p-6 bg-slate-50/50 dark:bg-white/5 gap-3 sm:gap-0">
             <Button variant="ghost" onClick={() => setResetModal({ open: false, request: null })} className="font-bold">Cancel</Button>
-            <Button 
-               onClick={submitReset} 
-               disabled={saving || !newPassword || newPassword !== confirmPassword}
-               className="font-black uppercase tracking-widest text-[11px] shadow-lg shadow-primary/20"
+            <Button
+              onClick={submitReset}
+              disabled={saving || !newPassword || newPassword !== confirmPassword}
+              className="font-black uppercase tracking-widest text-[11px] shadow-lg shadow-primary/20"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Check className="w-4 h-4 mr-2" />}
               Update Password

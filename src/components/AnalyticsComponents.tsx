@@ -54,21 +54,25 @@ export const CustomTooltip = ({ active, payload, label }: TooltipProps<number, s
     }, []);
 
     return (
-      <div className="bg-card/80 backdrop-blur-md border border-border p-3 rounded-2xl shadow-xl animate-in zoom-in-95 duration-200">
-        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-1.5 border-b border-border/50 pb-1">{label}</p>
+      <div className="bg-card dark:bg-slate-900 border border-border/80 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl shadow-2xl animate-in zoom-in-95 duration-200 pointer-events-none select-none max-w-[220px]">
+        <p className="text-[11px] font-black uppercase tracking-wider text-muted-foreground mb-1.5 border-b border-border/50 pb-1 truncate">{label}</p>
         <div className="space-y-1">
-          {uniquePayload.map((item, index) => (
-            <div key={index} className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                <span className="text-sm font-bold text-foreground">{item.name}:</span>
+          {uniquePayload.map((item, index) => {
+            const rawName = String(item.name || '');
+            const displayName = (!rawName || rawName === 'value') ? 'Patients' : rawName;
+            return (
+              <div key={index} className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color || 'hsl(var(--primary))' }} />
+                  <span className="text-xs font-bold text-foreground truncate">{displayName}:</span>
+                </div>
+                <span className="text-xs font-black text-primary shrink-0 tabular-nums">
+                  {item.value}
+                  {displayName.toLowerCase() === 'percentage' ? '%' : displayName.toLowerCase().includes('patient') ? '' : ''}
+                </span>
               </div>
-              <span className="text-sm font-black text-primary">
-                {item.value}
-                {String(item.name).toLowerCase() === 'percentage' ? '%' : String(item.name).toLowerCase().includes('patient') ? ' patients' : ''}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );

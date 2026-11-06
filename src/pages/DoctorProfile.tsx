@@ -1483,7 +1483,7 @@ export default function DoctorProfile() {
                                                 value={profile?.full_name || ''}
                                                 onChange={e => setProfile(p => ({ ...p!, full_name: e.target.value }))}
                                                 required
-                                                placeholder="e.g. Dr. V. Aravind"
+                                                placeholder="e.g. Dr. John Doe"
                                                 className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 rounded-xl px-4 font-bold text-sm"
                                             />
                                         </div>

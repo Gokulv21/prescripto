@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import {
   ClipboardPlus, Stethoscope, Printer, Users, Activity,
   ArrowUpRight, UserPlus, CheckCircle2, Tv, Sparkles, Clock, CalendarX,
-  Edit, Eye, Plus, ChevronRight, Loader2, CheckCircle, Bot, MessageSquare, RefreshCw
+  Edit, Eye, Plus, ChevronRight, Loader2, CheckCircle, Bot, MessageSquare, RefreshCw, X
 } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { startOfDay, endOfDay, formatDistanceToNow } from 'date-fns';
@@ -1224,15 +1224,17 @@ export default function Dashboard() {
 
       {/* ── Prescription Preview Dialog ── */}
       <Dialog open={!!viewingRx} onOpenChange={open => !open && setViewingRx(null)}>
-        <DialogContent className="max-w-[800px] p-0 overflow-hidden bg-muted">
-          <div className="bg-card p-4 pr-12 border-b border-border flex items-center justify-between sticky top-0 z-20">
-            <h3 className="font-bold text-foreground">Prescription History</h3>
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={() => printPrescription('.print-container')} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
-                <Printer className="w-4 h-4" /> <span className="hidden sm:inline">Print</span>
+        <DialogContent className="max-w-[850px] w-[96vw] p-0 overflow-hidden bg-muted [&>button.absolute]:hidden">
+          <DialogTitle className="sr-only">Prescription History</DialogTitle>
+          <DialogDescription className="sr-only">Detailed prescription history preview</DialogDescription>
+          <div className="bg-card px-4 py-3 border-b border-border flex items-center justify-between sticky top-0 z-20 gap-2">
+            <h3 className="font-bold text-foreground text-sm sm:text-base truncate">Prescription History</h3>
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <Button size="sm" onClick={() => printPrescription('.print-container')} className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 h-8 sm:h-9 px-3 sm:px-4 rounded-xl text-xs sm:text-sm font-bold">
+                <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span>Print</span>
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setViewingRx(null)} className="gap-1 border-muted-foreground/20 text-muted-foreground hover:bg-red-50 hover:text-red-600 hover:border-red-200">
-                <span className="hidden sm:inline">Close</span>
+              <Button size="icon" variant="ghost" onClick={() => setViewingRx(null)} className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted" title="Close">
+                <X className="w-4 h-4" />
               </Button>
             </div>
           </div>

@@ -414,12 +414,13 @@ export default function ClinicSettings() {
         </div>
       )}
 
-      {/* ── TOP HORIZONTAL SETTINGS TAB BAR ── */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-1.5 shadow-xs flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+      {/* ── TOP HORIZONTAL SETTINGS TAB BAR (Responsive: 2x2 Grid on Mobile, Seamless Strip on Desktop) ── */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-2 sm:p-1.5 shadow-xs grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-1.5 sm:overflow-x-auto scrollbar-none">
         {[
           { 
             id: 'clinic_info', 
             label: 'Clinic Information', 
+            shortLabel: 'Clinic Info',
             desc: 'Name, address & phone', 
             icon: Building2,
             ownerOnly: true
@@ -427,6 +428,7 @@ export default function ClinicSettings() {
           { 
             id: 'clinic_branding', 
             label: 'Clinic Branding', 
+            shortLabel: 'Branding',
             desc: 'Logo, watermark & header', 
             icon: Stamp,
             ownerOnly: true
@@ -434,6 +436,7 @@ export default function ClinicSettings() {
           { 
             id: 'prescriptions', 
             label: 'Prescription Layout', 
+            shortLabel: 'Prescriptions',
             desc: 'Template presets & style', 
             icon: FileText,
             ownerOnly: true
@@ -441,6 +444,7 @@ export default function ClinicSettings() {
           { 
             id: 'themes', 
             label: 'Themes & Appearance', 
+            shortLabel: 'Themes',
             desc: 'Dark mode & brand accents', 
             icon: Palette,
             ownerOnly: false
@@ -454,25 +458,26 @@ export default function ClinicSettings() {
               type="button"
               onClick={() => setActiveTab(tab.id as any)}
               className={cn(
-                "flex-1 min-w-[160px] sm:min-w-[190px] flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl transition-all group shrink-0",
+                "w-full flex items-center gap-2 sm:gap-2.5 p-2 sm:px-3.5 sm:py-2.5 rounded-xl transition-all group sm:flex-1 sm:min-w-[170px]",
                 isActive
                   ? "bg-blue-600 text-white shadow-sm font-bold"
-                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60 font-medium"
+                  : "bg-slate-50/70 sm:bg-transparent dark:bg-slate-800/40 sm:dark:bg-transparent text-slate-600 dark:text-slate-300 hover:bg-slate-100 sm:hover:bg-slate-50 dark:hover:bg-slate-800/60 font-medium"
               )}
             >
               <div className={cn(
-                "p-2 rounded-lg transition-colors shrink-0",
+                "p-1.5 sm:p-2 rounded-lg transition-colors shrink-0",
                 isActive 
                   ? "bg-white/20 text-white" 
-                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30"
+                  : "bg-white dark:bg-slate-800 text-slate-500 shadow-2xs group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30"
               )}>
                 <Icon className="w-4 h-4" />
               </div>
-              <div className="text-left min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs sm:text-sm tracking-tight whitespace-nowrap">{tab.label}</span>
+              <div className="text-left min-w-0 flex-1">
+                <div className="flex items-center gap-1">
+                  <span className="text-xs sm:text-sm tracking-tight truncate hidden sm:inline">{tab.label}</span>
+                  <span className="text-xs tracking-tight truncate sm:hidden font-bold">{tab.shortLabel}</span>
                   {tab.ownerOnly && !isClinicOwner && (
-                    <Lock className={cn("w-3 h-3 shrink-0", isActive ? "text-white/70" : "text-amber-500")} />
+                    <Lock className={cn("w-3 h-3 shrink-0 ml-auto sm:ml-0", isActive ? "text-white/70" : "text-amber-500")} />
                   )}
                 </div>
                 <p className={cn(
@@ -528,7 +533,7 @@ export default function ClinicSettings() {
                     onChange={e => setClinicName(e.target.value)}
                     disabled={!isClinicOwner}
                     required
-                    placeholder="e.g. GV Clinic"
+                    placeholder="e.g. City Health Care"
                     className={cn("h-11 rounded-xl font-bold", !isClinicOwner && "bg-slate-50 dark:bg-slate-800/40 cursor-not-allowed")}
                   />
                 </div>
@@ -543,7 +548,7 @@ export default function ClinicSettings() {
                     onChange={e => setClinicAddress(e.target.value)}
                     disabled={!isClinicOwner}
                     required
-                    placeholder="e.g. 742, SSR Complex, Sathanur - 606706"
+                    placeholder="e.g. 104, Healthcare Ave, Central District - 600001"
                     className={cn("h-11 rounded-xl font-medium", !isClinicOwner && "bg-slate-50 dark:bg-slate-800/40 cursor-not-allowed")}
                   />
                 </div>
@@ -558,7 +563,7 @@ export default function ClinicSettings() {
                     onChange={e => setClinicPhone(e.target.value)}
                     disabled={!isClinicOwner}
                     required
-                    placeholder="e.g. +91 9488017636"
+                    placeholder="e.g. +91 98765 43210"
                     className={cn("h-11 rounded-xl font-medium", !isClinicOwner && "bg-slate-50 dark:bg-slate-800/40 cursor-not-allowed")}
                   />
                 </div>
