@@ -350,7 +350,7 @@ export default function NotificationCenter() {
             )}
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-[340px] p-2 glass-thick border-primary/20 shadow-2xl rounded-2xl mt-2 overflow-hidden">
+        <DropdownMenuContent align="end" className="w-[min(340px,calc(100vw-2rem))] p-2 glass-thick border-primary/20 shadow-2xl rounded-2xl mt-2 overflow-hidden">
           <div className="px-3 py-2 border-b border-primary/5 mb-2 flex items-center justify-between">
             <span className="text-sm font-black uppercase tracking-widest text-slate-500">Notifications</span>
             <div className="flex items-center gap-2">
