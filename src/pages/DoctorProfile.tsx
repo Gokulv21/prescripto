@@ -13,7 +13,7 @@ import {
     Lock, Building2, Upload, Palette, Sparkles, Check, Pipette, Sliders, Stamp, FileText
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { startOfDay, endOfDay, subDays, format, isSameDay, parseISO } from 'date-fns';
+import { startOfDay, endOfDay, subDays, format, isSameDay, parseISO, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -344,12 +344,62 @@ export default function DoctorProfile() {
                 }
             }
 
-            // 2. Fetch Stats
+            // 2. Account-Specific Stats (Personalized for this logged-in account, NOT entire clinic)
             const todayStart = startOfDay(new Date()).toISOString();
-            const { count: totalCount } = await supabase.from('patients').select('*', { count: 'exact', head: true }).eq('clinic_id', clinic?.id);
-            const { count: todayCount } = await supabase.from('visits').select('*', { count: 'exact', head: true }).eq('clinic_id', clinic?.id).gte('created_at', todayStart);
+            const sevenDaysAgo = startOfDay(subDays(new Date(), 6)).toISOString();
 
-            // 3. Weekly Traffic (Last 7 days) & Stats for specific doctor (from prescriptions)
+            // Total Unique Patients treated by THIS logged-in account
+            const { count: myTotalRxCount, data: firstBatch } = await supabase
+                .from('prescriptions')
+                .select('patient_id, created_at', { count: 'exact' })
+                .eq('clinic_id', clinic?.id)
+                .eq('doctor_id', user.id)
+                .order('created_at', { ascending: false })
+                .limit(1000);
+
+            const myUniquePatients = new Set<string>();
+
+            if (firstBatch && firstBatch.length > 0) {
+                firstBatch.forEach(r => {
+                    if (r.patient_id) myUniquePatients.add(r.patient_id);
+                });
+
+                // Fetch remaining patient_ids in chunks if doctor has > 1000 prescriptions
+                if (myTotalRxCount && myTotalRxCount > 1000) {
+                    let offset = 1000;
+                    while (offset < myTotalRxCount && offset < 10000) {
+                        const { data: nextChunk } = await supabase
+                            .from('prescriptions')
+                            .select('patient_id')
+                            .eq('clinic_id', clinic?.id)
+                            .eq('doctor_id', user.id)
+                            .range(offset, offset + 999);
+                        if (!nextChunk || nextChunk.length === 0) break;
+                        nextChunk.forEach(r => {
+                            if (r.patient_id) myUniquePatients.add(r.patient_id);
+                        });
+                        if (nextChunk.length < 1000) break;
+                        offset += 1000;
+                    }
+                }
+            }
+
+            // Also check completed visits assigned specifically to this doctor account
+            const { data: myVisits } = await supabase
+                .from('visits')
+                .select('patient_id')
+                .eq('clinic_id', clinic?.id)
+                .eq('status', 'completed')
+                .or(`assigned_doctor_id.eq.${user.id}${profile?.id ? `,assigned_doctor_id.eq.${profile.id}` : ''}`)
+                .limit(1000);
+
+            if (myVisits) {
+                myVisits.forEach(v => {
+                    if (v.patient_id) myUniquePatients.add(v.patient_id);
+                });
+            }
+
+            // 3. Weekly Traffic (Last 7 days) — Filtered exclusively for THIS doctor account
             const last7Days = Array.from({ length: 7 }, (_, i) => {
                 const date = subDays(new Date(), 6 - i);
                 return {
@@ -359,56 +409,97 @@ export default function DoctorProfile() {
                 };
             });
 
-            const { data: doctorPrescriptions } = await supabase
-                .from('prescriptions')
-                .select('created_at, patient_id')
-                .eq('clinic_id', clinic?.id)
-                .eq('doctor_id', user.id);
+            const [{ data: myRecentRx }, { data: myRecentVisits }] = await Promise.all([
+                supabase
+                    .from('prescriptions')
+                    .select('created_at, patient_id')
+                    .eq('clinic_id', clinic?.id)
+                    .eq('doctor_id', user.id)
+                    .gte('created_at', sevenDaysAgo),
+                supabase
+                    .from('visits')
+                    .select('created_at, status')
+                    .eq('clinic_id', clinic?.id)
+                    .eq('status', 'completed')
+                    .or(`assigned_doctor_id.eq.${user.id}${profile?.id ? `,assigned_doctor_id.eq.${profile.id}` : ''}`)
+                    .gte('created_at', sevenDaysAgo)
+            ]);
 
-            const uniquePatients = new Set<string>();
-            let todayRxCount = 0;
+            let myTodayCount = 0;
+            const seenCountPerDay: Record<string, number> = {};
 
-            if (doctorPrescriptions) {
-                doctorPrescriptions.forEach(p => {
-                    if (p.patient_id) uniquePatients.add(p.patient_id);
-                    
+            if (myRecentRx && myRecentRx.length > 0) {
+                myRecentRx.forEach(p => {
                     const pDate = new Date(p.created_at);
-                    if (pDate >= startOfDay(new Date())) {
-                        todayRxCount++;
-                    }
-
                     const day = format(pDate, 'yyyy-MM-dd');
-                    const dayData = last7Days.find(d => d.fullDate === day);
-                    if (dayData) dayData.count++;
+                    seenCountPerDay[day] = (seenCountPerDay[day] || 0) + 1;
+                    if (pDate >= startOfDay(new Date())) {
+                        myTodayCount++;
+                    }
+                });
+            } else if (myRecentVisits && myRecentVisits.length > 0) {
+                myRecentVisits.forEach(v => {
+                    const vDate = new Date(v.created_at);
+                    const day = format(vDate, 'yyyy-MM-dd');
+                    seenCountPerDay[day] = (seenCountPerDay[day] || 0) + 1;
+                    if (vDate >= startOfDay(new Date())) {
+                        myTodayCount++;
+                    }
                 });
             }
 
-            // 4. Demographics (Age + Gender) - filtered for this doctor's patients
-            const patientIds = Array.from(uniquePatients);
+            last7Days.forEach(d => {
+                d.count = seenCountPerDay[d.fullDate] || 0;
+            });
+
+            // 4. Demographics (Age + Gender) — Filtered ONLY for this doctor's treated patients
+            const myPatientIdsSample = Array.from(myUniquePatients).slice(0, 300);
             let demoData: any[] = [];
-            
-            if (patientIds.length > 0) {
-                // Supabase doesn't easily support WHERE id IN (array of 1000s), so we'll just fetch all and filter client side
-                const { data: patients } = await supabase.from('patients').select('id, sex, age, dob, created_at').eq('clinic_id', clinic?.id);
-                const docPatients = patients?.filter(p => patientIds.includes(p.id)) || [];
-                
-                const ageThreshold = 18;
-                demoData = [
-                    { name: 'Men (>= 18)', value: docPatients.filter(p => p.sex === 'Male' && (getPatientCurrentAge(p) ?? p.age ?? 0) >= ageThreshold).length, color: '#2563eb' },
-                    { name: 'Women (>= 18)', value: docPatients.filter(p => p.sex === 'Female' && (getPatientCurrentAge(p) ?? p.age ?? 0) >= ageThreshold).length, color: '#db2777' },
-                    { name: 'Boys (< 18)', value: docPatients.filter(p => p.sex === 'Male' && (getPatientCurrentAge(p) ?? p.age ?? 0) < ageThreshold).length, color: '#60a5fa' },
-                    { name: 'Girls (< 18)', value: docPatients.filter(p => p.sex === 'Female' && (getPatientCurrentAge(p) ?? p.age ?? 0) < ageThreshold).length, color: '#f472b6' },
-                    { name: 'Other', value: docPatients.filter(p => p.sex === 'Other').length, color: '#94a3b8' }
-                ].filter(d => d.value > 0);
+            if (myPatientIdsSample.length > 0) {
+                const { data: docPatients } = await supabase
+                    .from('patients')
+                    .select('id, sex, age, dob, created_at')
+                    .in('id', myPatientIdsSample);
+
+                if (docPatients && docPatients.length > 0) {
+                    const ageThreshold = 18;
+                    demoData = [
+                        { name: 'Men (>= 18)', value: docPatients.filter(p => p.sex === 'Male' && (getPatientCurrentAge(p) ?? p.age ?? 0) >= ageThreshold).length, color: '#0ea5e9' },
+                        { name: 'Women (>= 18)', value: docPatients.filter(p => p.sex === 'Female' && (getPatientCurrentAge(p) ?? p.age ?? 0) >= ageThreshold).length, color: '#ec4899' },
+                        { name: 'Boys (< 18)', value: docPatients.filter(p => p.sex === 'Male' && (getPatientCurrentAge(p) ?? p.age ?? 0) < ageThreshold).length, color: '#10b981' },
+                        { name: 'Girls (< 18)', value: docPatients.filter(p => p.sex === 'Female' && (getPatientCurrentAge(p) ?? p.age ?? 0) < ageThreshold).length, color: '#f59e0b' },
+                        { name: 'Other', value: docPatients.filter(p => p.sex === 'Other').length, color: '#8b5cf6' }
+                    ].filter(d => d.value > 0);
+                }
             }
 
-            // 5. Recent Activity
-            const { data: recent } = await supabase
-                .from('visits')
-                .select('id, created_at, status, patients(name, age, dob, created_at, sex)')
+            // 5. Recent Activity — Filtered exclusively for this doctor account
+            const { data: myActivityRx } = await supabase
+                .from('prescriptions')
+                .select('id, created_at, visit_id, patient_id, patients(name, age, dob, created_at, sex)')
                 .eq('clinic_id', clinic?.id)
+                .eq('doctor_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(8);
+
+            let recentActivityList: any[] = [];
+            if (myActivityRx && myActivityRx.length > 0) {
+                recentActivityList = myActivityRx.map(rx => ({
+                    id: rx.id,
+                    created_at: rx.created_at,
+                    status: 'completed',
+                    patients: rx.patients
+                }));
+            } else {
+                const { data: myActivityVisits } = await supabase
+                    .from('visits')
+                    .select('id, created_at, status, patients(name, age, dob, created_at, sex)')
+                    .eq('clinic_id', clinic?.id)
+                    .or(`assigned_doctor_id.eq.${user.id}${profile?.id ? `,assigned_doctor_id.eq.${profile.id}` : ''}`)
+                    .order('created_at', { ascending: false })
+                    .limit(8);
+                recentActivityList = myActivityVisits || [];
+            }
 
             // 6. Protocols List
             const { data: protocolData } = await supabase
@@ -419,11 +510,11 @@ export default function DoctorProfile() {
             setProtocols(protocolData || []);
 
             setStats({
-                totalPatients: uniquePatients.size,
-                todayPatients: todayRxCount,
+                totalPatients: myUniquePatients.size,
+                todayPatients: myTodayCount,
                 weeklyData: last7Days,
                 demographics: demoData,
-                recentActivity: recent || []
+                recentActivity: recentActivityList
             });
 
         } catch (err) {
@@ -1160,36 +1251,74 @@ export default function DoctorProfile() {
 
                 <TabsContent value="overview" className="space-y-6 focus-visible:outline-none">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <Card className="border-none shadow-sm bg-blue-600 text-white overflow-hidden relative group">
-                            <CardContent className="p-8 space-y-2">
-                                <Users className="w-10 h-10 opacity-20 absolute -right-2 -top-2 group-hover:scale-150 transition-transform duration-700" />
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Total Patients Treated</p>
-                                <h3 className="text-5xl font-black tracking-tighter">{stats.totalPatients}</h3>
-                                <p className="text-xs font-bold bg-white/20 inline-block px-3 py-1 rounded-full">Unique Lifetime</p>
-                            </CardContent>
-                        </Card>
-                        <Card className="border-none shadow-sm bg-purple-500 text-white overflow-hidden relative group">
-                            <CardContent className="p-8 space-y-2">
-                                <FileSignature className="w-10 h-10 opacity-20 absolute -right-2 -top-2 group-hover:scale-150 transition-transform duration-700" />
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Saved Protocols</p>
-                                <h3 className="text-5xl font-black tracking-tighter">{protocols.length}</h3>
-                                <div className="flex items-center gap-2 pt-2">
-                                    <span className="text-[10px] font-bold">Fast Prescription Templates</span>
+                        {/* Card 1: Total Patients Treated - Modern Emerald Accent Card */}
+                        <Card className="rounded-[2rem] border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
+                            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500" />
+                            <CardContent className="p-7 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/50">
+                                        <Users className="w-5 h-5" />
+                                    </div>
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/40">
+                                        Lifetime Active
+                                    </span>
+                                </div>
+                                <div>
+                                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Total Patients Treated</p>
+                                    <h3 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white mt-1">
+                                        {stats.totalPatients.toLocaleString()}
+                                    </h3>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium pt-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                    <span>Verified Consultations Recorded</span>
                                 </div>
                             </CardContent>
                         </Card>
-                        <Card className="border-none shadow-sm bg-white dark:bg-slate-900 overflow-hidden p-6 flex flex-col justify-center gap-4">
-                            <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Quick Actions</h4>
+
+                        {/* Card 2: Saved Protocols - Modern Amber Accent Card */}
+                        <Card className="rounded-[2rem] border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
+                            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-400" />
+                            <CardContent className="p-7 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50">
+                                        <FileSignature className="w-5 h-5" />
+                                    </div>
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200/50 dark:border-amber-800/40">
+                                        Rx Templates
+                                    </span>
+                                </div>
+                                <div>
+                                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Saved Protocols</p>
+                                    <h3 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white mt-1">
+                                        {protocols.length}
+                                    </h3>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium pt-1">
+                                    <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    <span>Fast 1-Click Prescription Bundles</span>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Card 3: Quick Actions */}
+                        <Card className="rounded-[2rem] border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-xs hover:shadow-md transition-all p-7 flex flex-col justify-between gap-4">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Quick Actions</h4>
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                    Shortcuts
+                                </span>
+                            </div>
                             <div className="grid grid-cols-3 gap-2">
                                 {[
-                                    { icon: <Plus className="w-5 h-5" />, label: "Entry", color: "bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400", path: slug ? `/${slug}/nurse` : "/nurse" },
-                                    { icon: <Stethoscope className="w-5 h-5" />, label: "Queue", color: "bg-purple-50 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400", path: slug ? `/${slug}/consultation` : "/consultation" },
+                                    { icon: <Plus className="w-5 h-5" />, label: "Entry", color: "bg-teal-50 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400", path: slug ? `/${slug}/nurse` : "/nurse" },
+                                    { icon: <Stethoscope className="w-5 h-5" />, label: "Queue", color: "bg-sky-50 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400", path: slug ? `/${slug}/consultation` : "/consultation" },
                                     { icon: <Printer className="w-5 h-5" />, label: "Print", color: "bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400", path: slug ? `/${slug}/print` : "/print" }
                                 ].map(a => (
                                     <button
                                         key={a.label}
                                         onClick={() => navigate(a.path)}
-                                        className="flex flex-col items-center gap-1 hover:scale-105 transition-transform"
+                                        className="flex flex-col items-center gap-1.5 hover:scale-105 transition-transform"
                                     >
                                         <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-all", a.color)}>
                                             {a.icon}
@@ -1198,6 +1327,7 @@ export default function DoctorProfile() {
                                     </button>
                                 ))}
                             </div>
+                            <p className="text-[10px] text-muted-foreground text-center font-medium">Instant navigation across your clinical flow</p>
                         </Card>
                     </div>
 
@@ -1207,44 +1337,68 @@ export default function DoctorProfile() {
                             <CardHeader className="border-b border-slate-50 dark:border-slate-800 px-8 py-6">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                                         <CardTitle className="text-sm font-black uppercase tracking-widest dark:text-slate-100">Clinic Timeline</CardTitle>
                                     </div>
-                                    <Activity className="w-4 h-4 text-slate-200 dark:text-slate-800" />
+                                    <Activity className="w-4 h-4 text-slate-300 dark:text-slate-700" />
                                 </div>
                             </CardHeader>
                             <CardContent className="p-0">
-                                <div className="divide-y divide-slate-50 dark:divide-slate-800">
-                                    {stats.recentActivity.map((visit, i) => (
-                                        <div key={visit.id} className="p-6 hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors flex items-center justify-between group">
-                                            <div className="flex items-center gap-4">
-                                                <div className="relative">
-                                                    <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-slate-400 dark:text-slate-500 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-all">
-                                                        {visit.patients?.name?.charAt(0)}
+                                {stats.recentActivity.length === 0 ? (
+                                    <div className="p-12 text-center space-y-3">
+                                        <Activity className="w-8 h-8 text-muted-foreground/30 mx-auto" />
+                                        <p className="text-xs font-bold text-muted-foreground">No recent patient visits recorded yet</p>
+                                    </div>
+                                ) : (
+                                    <div className="divide-y divide-slate-50 dark:divide-slate-800">
+                                        {stats.recentActivity.map((visit) => {
+                                            const vDate = new Date(visit.created_at);
+                                            let timeLabel = '';
+                                            if (isToday(vDate)) {
+                                                timeLabel = `Today, ${format(vDate, 'h:mm a')}`;
+                                            } else if (isYesterday(vDate)) {
+                                                timeLabel = `Yesterday, ${format(vDate, 'h:mm a')}`;
+                                            } else {
+                                                timeLabel = format(vDate, 'dd MMM, h:mm a');
+                                            }
+                                            const relativeTime = formatDistanceToNow(vDate, { addSuffix: true });
+
+                                            return (
+                                                <div key={visit.id} className="p-5 hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors flex items-center justify-between group">
+                                                    <div className="flex items-center gap-3.5 min-w-0">
+                                                        <div className="relative shrink-0">
+                                                            <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-slate-500 dark:text-slate-400 group-hover:bg-emerald-50 dark:group-hover:bg-emerald-950/50 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-all">
+                                                                {visit.patients?.name?.charAt(0) || 'P'}
+                                                            </div>
+                                                            <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-white dark:bg-slate-900 flex items-center justify-center shadow-xs">
+                                                                {visit.status === 'completed' ? <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500" /> : <Clock className="w-2.5 h-2.5 text-amber-500" />}
+                                                            </div>
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="font-bold text-slate-900 dark:text-slate-100 leading-tight truncate">
+                                                                {visit.patients?.name || 'Walk-in Patient'}
+                                                            </p>
+                                                            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">
+                                                                {visit.status === 'completed' ? 'Consultation Finished' : 'Waiting in Queue'}
+                                                            </p>
+                                                        </div>
                                                     </div>
-                                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-white dark:bg-slate-900 flex items-center justify-center shadow-sm">
-                                                        {visit.status === 'completed' ? <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500" /> : <Clock className="w-2.5 h-2.5 text-amber-500" />}
+                                                    <div className="text-right shrink-0 pl-3">
+                                                        <p className="text-xs font-black text-slate-900 dark:text-slate-100">
+                                                            {timeLabel}
+                                                        </p>
+                                                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">
+                                                            {relativeTime}
+                                                        </p>
                                                     </div>
                                                 </div>
-                                                <div>
-                                                    <p className="font-bold text-slate-900 dark:text-slate-100 leading-tight">{visit.patients?.name}</p>
-                                                    <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">
-                                                        {visit.status === 'completed' ? 'Consultation Finished' : 'Waiting in Queue'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-xs font-black text-slate-900 dark:text-slate-100">
-                                                    {new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric' }).format(new Date(visit.created_at))}
-                                                </p>
-                                                <p className="text-[10px] font-bold text-slate-300 dark:text-slate-600">Just now</p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                                 <Button
                                     variant="ghost"
-                                    className="w-full h-14 rounded-none text-blue-600 dark:text-blue-400 font-bold text-xs uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800 border-t border-slate-50 dark:border-slate-800"
+                                    className="w-full h-14 rounded-none text-slate-700 dark:text-slate-300 hover:text-emerald-600 font-bold text-xs uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800 border-t border-slate-50 dark:border-slate-800"
                                     onClick={() => handleTabChange('analytics')}
                                 >
                                     See All Activity <ArrowRight className="w-4 h-4 ml-2" />
@@ -1255,16 +1409,21 @@ export default function DoctorProfile() {
                         {/* Mini Analytics */}
                         <Card className="border-border dark:border-slate-800 rounded-[2rem] shadow-sm bg-card overflow-hidden p-8 flex flex-col">
                             <div className="flex items-center justify-between mb-8">
-                                <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground">Weekly Performance</h3>
-                                <TrendingUp className="w-5 h-5 text-emerald-500" />
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground">Weekly Performance</h3>
+                                    <p className="text-xs text-muted-foreground font-medium mt-0.5">Patient volume across last 7 days</p>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/50">
+                                    <TrendingUp className="w-4 h-4" />
+                                </div>
                             </div>
                             <div className="h-64 mt-auto">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={stats.weeklyData}>
                                         <defs>
                                             <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
+                                                <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
                                             </linearGradient>
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -1277,7 +1436,7 @@ export default function DoctorProfile() {
                                         <Tooltip
                                             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', fontWeight: 'bold' }}
                                         />
-                                        <Area type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={4} fillOpacity={1} fill="url(#colorCount)" />
+                                        <Area type="monotone" dataKey="count" stroke="#10b981" strokeWidth={3.5} fillOpacity={1} fill="url(#colorCount)" />
                                     </AreaChart>
                                 </ResponsiveContainer>
                             </div>
@@ -1291,9 +1450,9 @@ export default function DoctorProfile() {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <CardTitle className="text-2xl font-black tracking-tight mb-1 dark:text-slate-100">Patient Volume Trend</CardTitle>
-                                    <CardDescription className="dark:text-slate-400">Visualizing your clinic flow over the last 7 days.</CardDescription>
+                                    <CardDescription className="dark:text-slate-400">Visualizing your individual clinical flow over the last 7 days.</CardDescription>
                                 </div>
-                                <div className="bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 p-3 rounded-2xl">
+                                <div className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 p-3 rounded-2xl border border-emerald-100 dark:border-emerald-900/50">
                                     <Activity className="w-6 h-6" />
                                 </div>
                             </div>
@@ -1317,7 +1476,7 @@ export default function DoctorProfile() {
                                             contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }}
                                             labelStyle={{ fontWeight: 800 }}
                                         />
-                                        <Bar dataKey="count" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={40} />
+                                        <Bar dataKey="count" fill="#10b981" radius={[6, 6, 0, 0]} barSize={40} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -1326,46 +1485,58 @@ export default function DoctorProfile() {
                         <Card className="border-slate-100 dark:border-slate-800 rounded-[2rem] p-4 md:p-8 space-y-8 bg-white dark:bg-slate-900 shadow-sm flex flex-col transition-all duration-300">
                             <div>
                                 <CardTitle className="text-2xl font-black tracking-tight mb-1 dark:text-slate-100">Demographics</CardTitle>
-                                <CardDescription className="dark:text-slate-400">Patient age and gender distribution.</CardDescription>
+                                <CardDescription className="dark:text-slate-400">Your patients' age and gender distribution.</CardDescription>
                             </div>
-                            <div className="h-[300px] md:h-[450px] relative flex-1">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <RePieChart>
-                                        <Pie
-                                            data={stats.demographics}
-                                            innerRadius="65%"
-                                            outerRadius="90%"
-                                            paddingAngle={2}
-                                            dataKey="value"
-                                            stroke="none"
-                                        >
-                                            {stats.demographics.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={entry.color} />
-                                            ))}
-                                        </Pie>
-                                        <Tooltip
-                                            contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                                            itemStyle={{ fontWeight: 'bold' }}
-                                        />
-                                    </RePieChart>
-                                </ResponsiveContainer>
-                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                    <p className="text-3xl md:text-5xl font-black dark:text-slate-100 leading-none">{stats.totalPatients}</p>
-                                    <p className="text-[8px] md:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1 text-center">Patients</p>
+                            {stats.demographics.length === 0 ? (
+                                <div className="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-2">
+                                    <Users className="w-10 h-10 text-muted-foreground/30 mx-auto" />
+                                    <p className="text-xs font-bold text-muted-foreground">No demographic data recorded for this account yet</p>
+                                    <p className="text-[11px] text-muted-foreground/70 max-w-xs">
+                                        Patient distribution will automatically appear as you consult and prescribe for patients.
+                                    </p>
                                 </div>
-                            </div>
-
-                            <div className="space-y-3">
-                                {stats.demographics.map(d => (
-                                    <div key={d.name} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-3 h-3 rounded-full" style={{ background: d.color }} />
-                                            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{d.name}</span>
+                            ) : (
+                                <>
+                                    <div className="h-[300px] md:h-[450px] relative flex-1">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <RePieChart>
+                                                <Pie
+                                                    data={stats.demographics}
+                                                    innerRadius="65%"
+                                                    outerRadius="90%"
+                                                    paddingAngle={2}
+                                                    dataKey="value"
+                                                    stroke="none"
+                                                >
+                                                    {stats.demographics.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                                    ))}
+                                                </Pie>
+                                                <Tooltip
+                                                    contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                                    itemStyle={{ fontWeight: 'bold' }}
+                                                />
+                                            </RePieChart>
+                                        </ResponsiveContainer>
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                            <p className="text-3xl md:text-5xl font-black dark:text-slate-100 leading-none">{stats.totalPatients}</p>
+                                            <p className="text-[8px] md:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1 text-center">Patients</p>
                                         </div>
-                                        <span className="text-sm font-black text-slate-900 dark:text-white">{stats.totalPatients > 0 ? Math.round((d.value / stats.totalPatients) * 100) : 0}%</span>
                                     </div>
-                                ))}
-                            </div>
+
+                                    <div className="space-y-3">
+                                        {stats.demographics.map(d => (
+                                            <div key={d.name} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-3 h-3 rounded-full" style={{ background: d.color }} />
+                                                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{d.name}</span>
+                                                </div>
+                                                <span className="text-sm font-black text-slate-900 dark:text-white">{stats.totalPatients > 0 ? Math.round((d.value / stats.totalPatients) * 100) : 0}%</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
                         </Card>
                     </div>
                 </TabsContent>

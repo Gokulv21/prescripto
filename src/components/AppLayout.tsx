@@ -480,7 +480,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             localStorage.setItem(DOCK_POS_KEY, JSON.stringify(newPos));
           } catch (e) {}
         }}
-        className="fixed bottom-4 inset-x-0 mx-auto z-50 grid grid-cols-5 items-center w-[94vw] max-w-[390px] min-h-[62px] h-auto py-1 px-1 rounded-[2.25rem] bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl border border-white/70 dark:border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.18)] select-none touch-none cursor-grab"
+        className="md:hidden fixed bottom-4 inset-x-0 mx-auto z-50 grid grid-cols-5 items-center w-[94vw] max-w-[390px] min-h-[62px] h-auto py-1 px-1 rounded-[2.25rem] bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl border border-white/70 dark:border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.18)] select-none touch-none cursor-grab"
       >
         {/* Drag Indicator Pill (Double-tap to reset center) */}
         <div
