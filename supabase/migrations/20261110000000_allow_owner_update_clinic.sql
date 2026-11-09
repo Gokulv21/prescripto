@@ -9,3 +9,4 @@ CREATE POLICY "Owners can update their clinic"
   TO authenticated
   USING (owner_id = auth.uid())
   WITH CHECK (owner_id = auth.uid());
+
