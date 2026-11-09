@@ -177,6 +177,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   });
 
   const [isDraggingDock, setIsDraggingDock] = useState(false);
+  const [isMobileScreen, setIsMobileScreen] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileScreen(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const resetDockPosition = () => {
     setDockPos({ x: 0, y: 0 });
@@ -454,95 +463,97 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </main>
 
-      {/* ── Apple VisionOS / iOS 18 Draggable Floating Glass Dock (Persisted Position) ── */}
-      <motion.nav
-        drag
-        dragMomentum={false}
-        dragElastic={0.06}
-        dragConstraints={{
-          left: -140,
-          right: 140,
-          top: -window.innerHeight + 120,
-          bottom: 10
-        }}
-        initial={false}
-        animate={{ x: dockPos.x, y: dockPos.y }}
-        whileDrag={{ scale: 1.05, cursor: "grabbing" }}
-        onDragStart={() => setIsDraggingDock(true)}
-        onDragEnd={(_e, info) => {
-          setTimeout(() => setIsDraggingDock(false), 80);
-          const newPos = {
-            x: dockPos.x + info.offset.x,
-            y: dockPos.y + info.offset.y
-          };
-          setDockPos(newPos);
-          try {
-            localStorage.setItem(DOCK_POS_KEY, JSON.stringify(newPos));
-          } catch (e) {}
-        }}
-        className="md:hidden fixed bottom-4 inset-x-0 mx-auto z-50 grid grid-cols-5 items-center w-[94vw] max-w-[390px] min-h-[62px] h-auto py-1 px-1 rounded-[2.25rem] bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl border border-white/70 dark:border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.18)] select-none touch-none cursor-grab"
-      >
-        {/* Drag Indicator Pill (Double-tap to reset center) */}
-        <div
-          onDoubleClick={resetDockPosition}
-          className="absolute -top-1 left-1/2 -translate-x-1/2 w-7 h-1 rounded-full bg-slate-300 dark:bg-slate-700 opacity-60 hover:opacity-100 transition-opacity"
-          title="Drag dock anywhere • Double-tap to reset position"
-        />
-
-        {mobileCoreTabs.map((item) => {
-          const fullPath = getFullPath(item.path);
-          const isActive = location.pathname === fullPath || (item.path === '/' && location.pathname.endsWith('/dashboard'));
-          return (
-            <button
-              key={item.path}
-              onClick={() => {
-                if (!isDraggingDock) navigateTab(item.path);
-              }}
-              className="w-full min-w-0 flex flex-col items-center justify-center py-1 px-0.5 select-none active:scale-90 transition-transform relative"
-            >
-              <div className={cn(
-                "w-6 h-6 flex items-center justify-center transition-all duration-150 shrink-0",
-                isActive ? "text-primary scale-110 drop-shadow-[0_0_8px_var(--accent-glow)]" : "text-slate-400 dark:text-slate-500"
-              )}>
-                {item.icon}
-              </div>
-              <span className={cn(
-                "text-[10px] font-bold mt-0.5 leading-none transition-colors duration-150 truncate max-w-full",
-                isActive ? "text-slate-900 dark:text-white font-extrabold" : "text-slate-400 dark:text-slate-500"
-              )}>
-                {item.label}
-              </span>
-              {isActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1 shadow-[0_0_6px_var(--accent-glow)] shrink-0" />
-              )}
-            </button>
-          );
-        })}
-
-        {/* 5th Tab: Hamburger / All Modules Launcher (No Box, Instant) */}
-        <button
-          onClick={() => {
-            if (!isDraggingDock) setIsMobileMenuOpen(true);
+      {/* ── Apple VisionOS / iOS 18 Draggable Floating Glass Dock (Mobile Only) ── */}
+      {isMobileScreen && (
+        <motion.nav
+          drag
+          dragMomentum={false}
+          dragElastic={0.06}
+          dragConstraints={{
+            left: -140,
+            right: 140,
+            top: -window.innerHeight + 120,
+            bottom: 10
           }}
-          className="w-full min-w-0 flex flex-col items-center justify-center py-1 px-0.5 select-none active:scale-90 transition-transform relative"
+          initial={false}
+          animate={{ x: dockPos.x, y: dockPos.y }}
+          whileDrag={{ scale: 1.05, cursor: "grabbing" }}
+          onDragStart={() => setIsDraggingDock(true)}
+          onDragEnd={(_e, info) => {
+            setTimeout(() => setIsDraggingDock(false), 80);
+            const newPos = {
+              x: dockPos.x + info.offset.x,
+              y: dockPos.y + info.offset.y
+            };
+            setDockPos(newPos);
+            try {
+              localStorage.setItem(DOCK_POS_KEY, JSON.stringify(newPos));
+            } catch (e) {}
+          }}
+          className="md:!hidden fixed bottom-4 inset-x-0 mx-auto z-50 grid grid-cols-5 items-center w-[94vw] max-w-[390px] min-h-[62px] h-auto py-1 px-1 rounded-[2.25rem] bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl border border-white/70 dark:border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.18)] select-none touch-none cursor-grab"
         >
-          <div className={cn(
-            "w-6 h-6 flex items-center justify-center transition-all duration-150 shrink-0",
-            isMobileMenuOpen ? "text-primary scale-110 drop-shadow-[0_0_8px_var(--accent-glow)]" : "text-slate-400 dark:text-slate-500"
-          )}>
-            <LayoutGrid className="w-5 h-5" />
-          </div>
-          <span className={cn(
-            "text-[10px] font-bold mt-0.5 leading-none transition-colors duration-150 truncate max-w-full",
-            isMobileMenuOpen ? "text-slate-900 dark:text-white font-extrabold" : "text-slate-400 dark:text-slate-500"
-          )}>
-            Menu
-          </span>
-          {isMobileMenuOpen && (
-            <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1 shadow-[0_0_6px_var(--accent-glow)] shrink-0" />
-          )}
-        </button>
-      </motion.nav>
+          {/* Drag Indicator Pill (Double-tap to reset center) */}
+          <div
+            onDoubleClick={resetDockPosition}
+            className="absolute -top-1 left-1/2 -translate-x-1/2 w-7 h-1 rounded-full bg-slate-300 dark:bg-slate-700 opacity-60 hover:opacity-100 transition-opacity"
+            title="Drag dock anywhere • Double-tap to reset position"
+          />
+
+          {mobileCoreTabs.map((item) => {
+            const fullPath = getFullPath(item.path);
+            const isActive = location.pathname === fullPath || (item.path === '/' && location.pathname.endsWith('/dashboard'));
+            return (
+              <button
+                key={item.path}
+                onClick={() => {
+                  if (!isDraggingDock) navigateTab(item.path);
+                }}
+                className="w-full min-w-0 flex flex-col items-center justify-center py-1 px-0.5 select-none active:scale-90 transition-transform relative"
+              >
+                <div className={cn(
+                  "w-6 h-6 flex items-center justify-center transition-all duration-150 shrink-0",
+                  isActive ? "text-primary scale-110 drop-shadow-[0_0_8px_var(--accent-glow)]" : "text-slate-400 dark:text-slate-500"
+                )}>
+                  {item.icon}
+                </div>
+                <span className={cn(
+                  "text-[10px] font-bold mt-0.5 leading-none transition-colors duration-150 truncate max-w-full",
+                  isActive ? "text-slate-900 dark:text-white font-extrabold" : "text-slate-400 dark:text-slate-500"
+                )}>
+                  {item.label}
+                </span>
+                {isActive && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1 shadow-[0_0_6px_var(--accent-glow)] shrink-0" />
+                )}
+              </button>
+            );
+          })}
+
+          {/* 5th Tab: Hamburger / All Modules Launcher (No Box, Instant) */}
+          <button
+            onClick={() => {
+              if (!isDraggingDock) setIsMobileMenuOpen(true);
+            }}
+            className="w-full min-w-0 flex flex-col items-center justify-center py-1 px-0.5 select-none active:scale-90 transition-transform relative"
+          >
+            <div className={cn(
+              "w-6 h-6 flex items-center justify-center transition-all duration-150 shrink-0",
+              isMobileMenuOpen ? "text-primary scale-110 drop-shadow-[0_0_8px_var(--accent-glow)]" : "text-slate-400 dark:text-slate-500"
+            )}>
+              <LayoutGrid className="w-5 h-5" />
+            </div>
+            <span className={cn(
+              "text-[10px] font-bold mt-0.5 leading-none transition-colors duration-150 truncate max-w-full",
+              isMobileMenuOpen ? "text-slate-900 dark:text-white font-extrabold" : "text-slate-400 dark:text-slate-500"
+            )}>
+              Menu
+            </span>
+            {isMobileMenuOpen && (
+              <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1 shadow-[0_0_6px_var(--accent-glow)] shrink-0" />
+            )}
+          </button>
+        </motion.nav>
+      )}
 
       {/* ── Apple-Inspired Modernized "All Modules" Launcher Sheet (Zero-Scroll Compact) ── */}
       <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>

@@ -53,6 +53,7 @@ interface DigitalPrescriptionProps {
     onClose: () => void;
     // Doctor & Clinic Identity Props
     doctorId?: string;
+    clinicId?: string;
     doctorName?: string;
     doctorQualifications?: string;
     doctorRegId?: string;
@@ -74,6 +75,7 @@ export default function DigitalPrescription({
     onPathsChange,
     onClose,
     doctorId,
+    clinicId,
     doctorName,
     doctorQualifications,
     doctorRegId,
@@ -158,9 +160,17 @@ export default function DigitalPrescription({
     const [scaleFactor, setScaleFactor] = useState(1);
     const [resizeStartPos, setResizeStartPos] = useState({ x: 0, y: 0 });
     const resizeBoundsRef = useRef({ minX: 0, minY: 0, maxX: 0, maxY: 0 });
+
+    const effectiveClinicId = clinicId || visit?.clinic_id || '';
+    const effectiveDoctorId = doctorId || visit?.assigned_doctor_id || '';
+    const getStorageKey = (cId: string, dId?: string) => cId ? `prescripto_snippets_${cId}_${dId || 'common'}` : null;
+
     const [savedProtocols, setSavedProtocols] = useState<HandwrittenSnippet[]>(() => {
+        if (!effectiveClinicId) return [];
+        const key = getStorageKey(effectiveClinicId, effectiveDoctorId);
+        if (!key) return [];
         try {
-            return JSON.parse(localStorage.getItem('handwritten_protocols') || '[]');
+            return JSON.parse(localStorage.getItem(key) || '[]');
         } catch {
             return [];
         }
@@ -176,23 +186,43 @@ export default function DigitalPrescription({
     const [snippetSaveTarget, setSnippetSaveTarget] = useState<'selection' | 'current_page'>('current_page');
     const [isSavingSnippet, setIsSavingSnippet] = useState(false);
 
-    const clinicId = visit?.clinic_id;
-    const effectiveDoctorId = doctorId || visit?.assigned_doctor_id;
-
-    // Load & sync snippets from Supabase and merge with localStorage
+    // Load & sync snippets from Supabase strictly isolated by clinic and doctor
     useEffect(() => {
+        if (!effectiveClinicId) {
+            setSavedProtocols([]);
+            return;
+        }
+
+        const key = getStorageKey(effectiveClinicId, effectiveDoctorId);
+        if (key) {
+            try {
+                const cached = JSON.parse(localStorage.getItem(key) || '[]');
+                setSavedProtocols(cached);
+            } catch {
+                setSavedProtocols([]);
+            }
+        }
+
         let isSubscribed = true;
         async function fetchSupabaseSnippets() {
+            if (!effectiveClinicId) return;
             try {
-                let query = supabase.from('handwritten_protocols').select('*').order('created_at', { ascending: false });
-                if (clinicId) {
-                    query = query.or(`clinic_id.eq.${clinicId},clinic_id.is.null`);
+                let query = supabase
+                    .from('handwritten_protocols')
+                    .select('*')
+                    .eq('clinic_id', effectiveClinicId)
+                    .order('created_at', { ascending: false });
+
+                if (effectiveDoctorId) {
+                    query = query.or(`doctor_id.eq.${effectiveDoctorId},doctor_id.is.null`);
                 }
+
                 const { data, error } = await query;
                 if (!error && data && isSubscribed) {
                     const local: HandwrittenSnippet[] = (() => {
+                        if (!key) return [];
                         try {
-                            return JSON.parse(localStorage.getItem('handwritten_protocols') || '[]');
+                            return JSON.parse(localStorage.getItem(key) || '[]');
                         } catch {
                             return [];
                         }
@@ -200,8 +230,8 @@ export default function DigitalPrescription({
 
                     const combinedMap = new Map<string, HandwrittenSnippet>();
                     data.forEach((row: any) => {
-                        const key = row.id || row.name;
-                        combinedMap.set(key, {
+                        const itemKey = row.id || row.name;
+                        combinedMap.set(itemKey, {
                             id: row.id,
                             name: row.name,
                             paths: row.raw_paths || [],
@@ -212,18 +242,22 @@ export default function DigitalPrescription({
                     });
 
                     local.forEach((item) => {
-                        const key = item.id || item.name;
-                        if (!combinedMap.has(key)) {
-                            combinedMap.set(key, item);
+                        // Strict isolation: never include snippet belonging to a different clinic
+                        if (item.clinic_id && item.clinic_id !== effectiveClinicId) return;
+                        const itemKey = item.id || item.name;
+                        if (!combinedMap.has(itemKey)) {
+                            combinedMap.set(itemKey, item);
                         }
                     });
 
                     const merged = Array.from(combinedMap.values());
                     setSavedProtocols(merged);
-                    try {
-                        localStorage.setItem('handwritten_protocols', JSON.stringify(merged));
-                    } catch (e) {
-                        console.warn('LocalStorage quota warning', e);
+                    if (key) {
+                        try {
+                            localStorage.setItem(key, JSON.stringify(merged));
+                        } catch (e) {
+                            console.warn('LocalStorage quota warning', e);
+                        }
                     }
                 }
             } catch (err) {
@@ -232,7 +266,7 @@ export default function DigitalPrescription({
         }
         fetchSupabaseSnippets();
         return () => { isSubscribed = false; };
-    }, [clinicId]);
+    }, [effectiveClinicId, effectiveDoctorId]);
 
     React.useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -927,17 +961,20 @@ export default function DigitalPrescription({
                 id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined,
                 name,
                 paths: clonedPaths,
-                clinic_id: clinicId || null,
+                clinic_id: effectiveClinicId || null,
                 doctor_id: effectiveDoctorId || null,
                 created_at: new Date().toISOString()
             };
 
             const updated = [newSnippet, ...savedProtocols.filter(p => p.name.toLowerCase() !== name.toLowerCase())];
             setSavedProtocols(updated);
-            try {
-                localStorage.setItem('handwritten_protocols', JSON.stringify(updated));
-            } catch (e) {
-                console.warn('LocalStorage quota exceeded', e);
+            const key = getStorageKey(effectiveClinicId, effectiveDoctorId);
+            if (key) {
+                try {
+                    localStorage.setItem(key, JSON.stringify(updated));
+                } catch (e) {
+                    console.warn('LocalStorage quota exceeded', e);
+                }
             }
 
             toast.success(`Snippet "${name}" saved!`);
@@ -949,21 +986,25 @@ export default function DigitalPrescription({
                 setSelectedPathIndices([]);
             }
 
-            // Cloud sync to Supabase table handwritten_protocols
-            const { data, error } = await supabase.from('handwritten_protocols').insert({
-                name: newSnippet.name,
-                clinic_id: newSnippet.clinic_id,
-                doctor_id: newSnippet.doctor_id,
-                raw_paths: newSnippet.paths
-            }).select().maybeSingle();
+            // Cloud sync to Supabase table handwritten_protocols strictly with clinic_id
+            if (effectiveClinicId) {
+                const { data, error } = await supabase.from('handwritten_protocols').insert({
+                    name: newSnippet.name,
+                    clinic_id: effectiveClinicId,
+                    doctor_id: effectiveDoctorId || null,
+                    raw_paths: newSnippet.paths
+                }).select().maybeSingle();
 
-            if (!error && data?.id) {
-                newSnippet.id = data.id;
-                const withId = updated.map(p => p.name === name ? { ...p, id: data.id } : p);
-                setSavedProtocols(withId);
-                try {
-                    localStorage.setItem('handwritten_protocols', JSON.stringify(withId));
-                } catch {}
+                if (!error && data?.id) {
+                    newSnippet.id = data.id;
+                    const withId = updated.map(p => p.name === name ? { ...p, id: data.id } : p);
+                    setSavedProtocols(withId);
+                    if (key) {
+                        try {
+                            localStorage.setItem(key, JSON.stringify(withId));
+                        } catch {}
+                    }
+                }
             }
         } catch (err) {
             console.error('Error saving snippet:', err);
@@ -976,17 +1017,20 @@ export default function DigitalPrescription({
     const handleDeleteSnippet = async (index: number, snippet: HandwrittenSnippet) => {
         const updated = savedProtocols.filter((_, idx) => idx !== index);
         setSavedProtocols(updated);
-        try {
-            localStorage.setItem('handwritten_protocols', JSON.stringify(updated));
-        } catch {}
+        const key = getStorageKey(effectiveClinicId, effectiveDoctorId);
+        if (key) {
+            try {
+                localStorage.setItem(key, JSON.stringify(updated));
+            } catch {}
+        }
 
         toast.success(`Snippet "${snippet.name}" deleted`);
 
         try {
             if (snippet.id) {
                 await supabase.from('handwritten_protocols').delete().eq('id', snippet.id);
-            } else {
-                await supabase.from('handwritten_protocols').delete().eq('name', snippet.name);
+            } else if (effectiveClinicId) {
+                await supabase.from('handwritten_protocols').delete().eq('clinic_id', effectiveClinicId).eq('name', snippet.name);
             }
         } catch (err) {
             console.warn('Could not delete snippet from cloud:', err);

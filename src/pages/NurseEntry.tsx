@@ -463,7 +463,7 @@ export default function NurseEntry() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-1 sm:px-4 md:px-6 py-4 sm:py-8 font-jakarta-sans animate-in fade-in duration-500 pb-32">
+    <div className="max-w-7xl mx-auto px-1 sm:px-4 md:px-6 py-4 sm:py-8 font-jakarta-sans animate-in fade-in duration-500 pb-44 md:pb-16">
       <PageBanner
         title="Patient Registration"
         description="Search for existing patients or register new ones with vitals and clinical history."
@@ -797,11 +797,11 @@ export default function NurseEntry() {
                             </div>
                         </div>
 
-                        <div className="pt-4 border-t border-border -mx-4 sm:-mx-6 px-4 sm:px-6 bg-muted/20 flex justify-center md:justify-end pb-6 sm:pb-8">
+                        <div className="pt-4 border-t border-border -mx-4 sm:-mx-6 px-4 sm:px-6 bg-muted/20 flex justify-center md:justify-end pb-8 sm:pb-8">
                             <Button 
                                 onClick={handleNewPatientNext} 
                                 size="lg" 
-                                className="w-full md:w-auto h-12 sm:h-14 px-4 sm:px-10 rounded-xl font-bold text-xs sm:text-base md:text-lg shadow-xl shadow-primary/20 hover:translate-y-[-2px] hover:shadow-primary/30 active:translate-y-[0px] transition-all flex items-center justify-center gap-2"
+                                className="w-full md:w-auto h-12 sm:h-14 px-4 sm:px-10 rounded-xl font-bold text-sm sm:text-base md:text-lg shadow-xl shadow-primary/20 hover:translate-y-[-2px] hover:shadow-primary/30 active:translate-y-[0px] transition-all flex items-center justify-center gap-2 mb-2 md:mb-0"
                             >
                                 <span>Continue — Record Vitals</span>
                                 <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />

@@ -162,25 +162,40 @@ export default function DoctorConsultation() {
   const activeDocName = (myProfile?.full_name || profile?.full_name || user?.user_metadata?.full_name || '').trim();
   const activeDocReg = (myProfile?.registration_id || (profile as any)?.registration_id || '').trim();
   const activeDocQual = (myProfile?.qualifications || (profile as any)?.qualifications || '').trim();
-  const activeClinicName = (clinic?.name || myProfile?.clinic_name || '').trim();
-  const activeClinicAddress = (clinic?.address || myProfile?.clinic_address || '').trim();
-  const activeClinicPhone = (clinic?.phone || myProfile?.clinic_phone || '').trim();
+  const activeClinicName = (clinic?.name || myProfile?.clinic_name || (profile as any)?.clinic_name || '').trim();
+  const cachedClinicAddress = clinic?.id ? (localStorage.getItem(`prescripto_clinic_address_${clinic.id}`) || '') : '';
+  const activeClinicAddress = (
+    clinic?.address ||
+    myProfile?.clinic_address ||
+    (profile as any)?.clinic_address ||
+    cachedClinicAddress ||
+    ''
+  ).trim();
+  const cachedClinicPhone = clinic?.id ? (localStorage.getItem(`prescripto_clinic_phone_${clinic.id}`) || '') : '';
+  const activeClinicPhone = (
+    clinic?.phone ||
+    myProfile?.clinic_phone ||
+    (profile as any)?.clinic_phone ||
+    cachedClinicPhone ||
+    ''
+  ).trim();
 
-  // Guard against false blocking while initial profile is still resolving
+  // Guard against false blocking while initial profile or clinic is still resolving
   const isProfileLoading = !profile && !myProfile;
-  const isClinicNameMissing = !isProfileLoading && !activeClinicName;
-  const isClinicAddressMissing = !isProfileLoading && !activeClinicAddress;
+  const isClinicLoading = !clinic;
+  const isClinicNameMissing = !isProfileLoading && !isClinicLoading && !activeClinicName;
+  const isClinicAddressMissing = !isProfileLoading && !isClinicLoading && !activeClinicAddress;
   const isDoctorNameMissing = !isProfileLoading && !activeDocName;
   const isDoctorRegMissing = !isProfileLoading && !activeDocReg;
 
-  const isConsultationBlocked = !isProfileLoading && (isClinicNameMissing || isClinicAddressMissing || isDoctorNameMissing || isDoctorRegMissing);
+  const isConsultationBlocked = !isProfileLoading && !isClinicLoading && (isClinicNameMissing || isClinicAddressMissing || isDoctorNameMissing || isDoctorRegMissing);
 
   const [setupPromptOpen, setSetupPromptOpen] = useState(false);
   const [missingFieldsList, setMissingFieldsList] = useState<string[]>([]);
 
   // Show setup guidance popup on mount if profile details are incomplete
   useEffect(() => {
-    if (!isProfileLoading) {
+    if (!isProfileLoading && !isClinicLoading) {
       const missing: string[] = [];
       if (isClinicNameMissing) missing.push("Clinic Name");
       if (isClinicAddressMissing) missing.push("Clinic Address");
@@ -190,9 +205,11 @@ export default function DoctorConsultation() {
       if (missing.length > 0) {
         setMissingFieldsList(missing);
         setSetupPromptOpen(true);
+      } else {
+        setSetupPromptOpen(false);
       }
     }
-  }, [isProfileLoading, isClinicNameMissing, isClinicAddressMissing, isDoctorNameMissing, isDoctorRegMissing]);
+  }, [isProfileLoading, isClinicLoading, isClinicNameMissing, isClinicAddressMissing, isDoctorNameMissing, isDoctorRegMissing]);
 
   const handleSelectVisit = (v: any) => {
     if (isConsultationBlocked) {
@@ -641,6 +658,7 @@ Wishing you a quick recovery!
           }}
           onClose={() => setShowDigitalRx(false)}
           doctorId={user?.id}
+          clinicId={clinic?.id}
           doctorName={activeDocName}
           doctorQualifications={activeDocQual}
           doctorRegId={activeDocReg}
