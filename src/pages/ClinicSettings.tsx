@@ -73,10 +73,20 @@ export default function ClinicSettings() {
   // Sub-Navigation Tabs: 4 dedicated clinic & device settings sections
   const [activeTab, setActiveTab] = useState<'clinic_info' | 'clinic_branding' | 'prescriptions' | 'themes'>('clinic_info');
 
-  // Clinic Form States
-  const [clinicName, setClinicName] = useState(clinic?.name || profile?.clinic_name || '');
-  const [clinicAddress, setClinicAddress] = useState(clinic?.address || profile?.clinic_address || '');
-  const [clinicPhone, setClinicPhone] = useState(clinic?.phone || profile?.clinic_phone || '');
+  // Clinic Form States — read localStorage as final fallback so values survive refresh
+  // even before the new owner-update RLS policy is applied in Supabase.
+  const [clinicName, setClinicName] = useState(
+    clinic?.name || profile?.clinic_name ||
+    (clinic?.id ? localStorage.getItem(`prescripto_clinic_name_${clinic.id}`) : null) || ''
+  );
+  const [clinicAddress, setClinicAddress] = useState(
+    clinic?.address || profile?.clinic_address ||
+    (clinic?.id ? localStorage.getItem(`prescripto_clinic_address_${clinic.id}`) : null) || ''
+  );
+  const [clinicPhone, setClinicPhone] = useState(
+    clinic?.phone || profile?.clinic_phone ||
+    (clinic?.id ? localStorage.getItem(`prescripto_clinic_phone_${clinic.id}`) : null) || ''
+  );
   const [clinicCaption, setClinicCaption] = useState('24/7 Emergency · ECG · Lab');
   const [headerMode, setHeaderMode] = useState<'name' | 'logo' | 'both'>('both');
   const [brandingOption, setBrandingOption] = useState<'both' | 'logo_only' | 'watermark_only' | 'none'>('both');
@@ -324,6 +334,8 @@ export default function ClinicSettings() {
             phone: trimmedPhone
           };
         });
+        // Also invalidate so ClinicWrapper re-fetches and applies the profile fallback correctly
+        queryClient.invalidateQueries({ queryKey: ['clinic', clinic.slug] });
       }
 
       toast.success('Clinic settings and prescription template saved successfully!');

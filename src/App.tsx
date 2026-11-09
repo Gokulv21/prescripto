@@ -66,8 +66,10 @@ function ClinicWrapper() {
       if (error) {
         throw error;
       }
-      if (data && (!data.address || !data.phone)) {
+      if (data) {
         try {
+          // Always look up owner profile as the authoritative source for name/address/phone.
+          // The clinics table may lag if an RLS policy blocked a previous save attempt.
           let ownerProfile = null;
           if (data.owner_id) {
             const { data: prof } = await supabase
@@ -88,6 +90,8 @@ function ClinicWrapper() {
           }
 
           if (ownerProfile) {
+            // Profile values override clinics table only when clinics table value is empty,
+            // but after the new RLS policy is applied both should stay in sync.
             if (!data.address && ownerProfile.clinic_address) data.address = ownerProfile.clinic_address;
             if (!data.phone && ownerProfile.clinic_phone) data.phone = ownerProfile.clinic_phone;
             if (!data.name && ownerProfile.clinic_name) data.name = ownerProfile.clinic_name;
@@ -96,6 +100,7 @@ function ClinicWrapper() {
           console.warn('[ClinicWrapper] Fallback owner profile lookup notice:', e);
         }
 
+        // Final fallback: localStorage cache (written by ClinicSettings on every save)
         const localAddr = localStorage.getItem(`prescripto_clinic_address_${data.id}`);
         const localPhone = localStorage.getItem(`prescripto_clinic_phone_${data.id}`);
         if (!data.address && localAddr) data.address = localAddr;
