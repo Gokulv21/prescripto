@@ -415,8 +415,9 @@ export function useConsultation(clinic: any) {
     // Mandatory Clinical Identity Guardrail: Check clinic & doctor details
     const docName = (myProfile?.full_name || profile?.full_name || '').trim();
     const docReg = (myProfile?.registration_id || profile?.registration_id || '').trim();
-    const clinicName = (clinic?.name || '').trim();
-    const clinicAddress = (clinic?.address || '').trim();
+    const cachedAddress = clinic?.id ? (localStorage.getItem(`prescripto_clinic_address_${clinic.id}`) || '') : '';
+    const clinicName = (clinic?.name || myProfile?.clinic_name || (profile as any)?.clinic_name || '').trim();
+    const clinicAddress = (clinic?.address || myProfile?.clinic_address || (profile as any)?.clinic_address || cachedAddress || '').trim();
 
     if (!docName || !docReg || !clinicName || !clinicAddress) {
       toast.error('Cannot issue prescription: Clinic Name, Address, Doctor Name, and Registration ID are mandatory before consulting.', { duration: 5000 });

@@ -188,6 +188,11 @@ export default function DigitalPrescription({
 
     // Load & sync snippets from Supabase strictly isolated by clinic and doctor
     useEffect(() => {
+        // Automatically purge any obsolete global snippets key to guarantee zero cross-tenant contamination
+        try {
+            localStorage.removeItem('handwritten_protocols');
+        } catch {}
+
         if (!effectiveClinicId) {
             setSavedProtocols([]);
             return;
@@ -196,8 +201,11 @@ export default function DigitalPrescription({
         const key = getStorageKey(effectiveClinicId, effectiveDoctorId);
         if (key) {
             try {
-                const cached = JSON.parse(localStorage.getItem(key) || '[]');
-                setSavedProtocols(cached);
+                const rawCached = JSON.parse(localStorage.getItem(key) || '[]');
+                const validCached = Array.isArray(rawCached)
+                    ? rawCached.filter((s: HandwrittenSnippet) => s.clinic_id === effectiveClinicId && (!s.doctor_id || !effectiveDoctorId || s.doctor_id === effectiveDoctorId))
+                    : [];
+                setSavedProtocols(validCached);
             } catch {
                 setSavedProtocols([]);
             }
@@ -222,7 +230,10 @@ export default function DigitalPrescription({
                     const local: HandwrittenSnippet[] = (() => {
                         if (!key) return [];
                         try {
-                            return JSON.parse(localStorage.getItem(key) || '[]');
+                            const raw = JSON.parse(localStorage.getItem(key) || '[]');
+                            return Array.isArray(raw)
+                                ? raw.filter((s: HandwrittenSnippet) => s.clinic_id === effectiveClinicId && (!s.doctor_id || !effectiveDoctorId || s.doctor_id === effectiveDoctorId))
+                                : [];
                         } catch {
                             return [];
                         }
@@ -230,6 +241,10 @@ export default function DigitalPrescription({
 
                     const combinedMap = new Map<string, HandwrittenSnippet>();
                     data.forEach((row: any) => {
+                        // Strict isolation: only include snippets explicitly for this clinic
+                        if (row.clinic_id !== effectiveClinicId) return;
+                        if (row.doctor_id && effectiveDoctorId && row.doctor_id !== effectiveDoctorId) return;
+
                         const itemKey = row.id || row.name;
                         combinedMap.set(itemKey, {
                             id: row.id,
@@ -242,8 +257,10 @@ export default function DigitalPrescription({
                     });
 
                     local.forEach((item) => {
-                        // Strict isolation: never include snippet belonging to a different clinic
-                        if (item.clinic_id && item.clinic_id !== effectiveClinicId) return;
+                        // Strict isolation: never include snippet without matching clinic ID
+                        if (item.clinic_id !== effectiveClinicId) return;
+                        if (item.doctor_id && effectiveDoctorId && item.doctor_id !== effectiveDoctorId) return;
+
                         const itemKey = item.id || item.name;
                         if (!combinedMap.has(itemKey)) {
                             combinedMap.set(itemKey, item);
@@ -952,6 +969,11 @@ export default function DigitalPrescription({
             return;
         }
 
+        if (!effectiveClinicId) {
+            toast.error('Clinic information is missing. Cannot save snippet without clinic scope.');
+            return;
+        }
+
         setIsSavingSnippet(true);
         try {
             // Deep clone paths so future canvas modifications don't mutate saved snippets
@@ -961,7 +983,7 @@ export default function DigitalPrescription({
                 id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : undefined,
                 name,
                 paths: clonedPaths,
-                clinic_id: effectiveClinicId || null,
+                clinic_id: effectiveClinicId,
                 doctor_id: effectiveDoctorId || null,
                 created_at: new Date().toISOString()
             };
