@@ -595,6 +595,10 @@ export default function DoctorProfile() {
 
             // 2. Update Clinic Branding (ONLY if true owner of this clinic and only existing columns)
             if (isClinicOwner && clinic?.id) {
+                if (sData.clinic_name) localStorage.setItem(`prescripto_clinic_name_${clinic.id}`, sData.clinic_name);
+                if (sData.clinic_address) localStorage.setItem(`prescripto_clinic_address_${clinic.id}`, sData.clinic_address);
+                if (sData.clinic_phone) localStorage.setItem(`prescripto_clinic_phone_${clinic.id}`, sData.clinic_phone);
+
                 const { error: clinicError } = await supabase
                     .from('clinics')
                     .update({

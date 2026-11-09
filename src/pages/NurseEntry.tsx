@@ -539,8 +539,8 @@ export default function NurseEntry() {
                                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground transition-colors group-focus-within:text-primary" />
                                     )}
                                     <Input
-                                        className="h-12 sm:h-14 pl-12 text-sm sm:text-lg border-border focus:border-primary focus:ring-primary/20 transition-all rounded-xl shadow-sm bg-background dark:bg-slate-900"
-                                        placeholder="Search by Name, Phone, or Reg ID..."
+                                        className="h-12 sm:h-14 pl-12 text-sm sm:text-base md:text-lg border-border focus:border-primary focus:ring-primary/20 transition-all rounded-xl shadow-sm bg-background dark:bg-slate-900"
+                                        placeholder="Search Name, Phone, or Reg ID..."
                                         value={searchQuery}
                                         onFocus={() => {
                                             setShowSearch(true);
@@ -801,9 +801,10 @@ export default function NurseEntry() {
                             <Button 
                                 onClick={handleNewPatientNext} 
                                 size="lg" 
-                                className="w-full md:w-auto h-12 sm:h-14 px-4 sm:px-10 rounded-xl font-bold text-sm sm:text-base md:text-lg shadow-xl shadow-primary/20 hover:translate-y-[-2px] hover:shadow-primary/30 active:translate-y-[0px] transition-all"
+                                className="w-full md:w-auto h-12 sm:h-14 px-4 sm:px-10 rounded-xl font-bold text-xs sm:text-base md:text-lg shadow-xl shadow-primary/20 hover:translate-y-[-2px] hover:shadow-primary/30 active:translate-y-[0px] transition-all flex items-center justify-center gap-2"
                             >
-                                Continue — Record Vitals <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 ml-1.5 sm:ml-2 shrink-0" />
+                                <span>Continue — Record Vitals</span>
+                                <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
                             </Button>
                         </div>
                     </CardContent>

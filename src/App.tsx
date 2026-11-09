@@ -66,6 +66,29 @@ function ClinicWrapper() {
       if (error) {
         throw error;
       }
+      if (data && (!data.address || !data.phone)) {
+        try {
+          const { data: ownerProfile } = await supabase
+            .from('profiles')
+            .select('clinic_address, clinic_phone, clinic_name')
+            .eq('clinic_id', data.id)
+            .eq('role', 'owner')
+            .maybeSingle();
+
+          if (ownerProfile) {
+            if (!data.address && ownerProfile.clinic_address) data.address = ownerProfile.clinic_address;
+            if (!data.phone && ownerProfile.clinic_phone) data.phone = ownerProfile.clinic_phone;
+            if (!data.name && ownerProfile.clinic_name) data.name = ownerProfile.clinic_name;
+          }
+        } catch (e) {
+          console.warn('[ClinicWrapper] Fallback owner profile lookup notice:', e);
+        }
+
+        const localAddr = localStorage.getItem(`prescripto_clinic_address_${data.id}`);
+        const localPhone = localStorage.getItem(`prescripto_clinic_phone_${data.id}`);
+        if (!data.address && localAddr) data.address = localAddr;
+        if (!data.phone && localPhone) data.phone = localPhone;
+      }
       return data;
     }
   });

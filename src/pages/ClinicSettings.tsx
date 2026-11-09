@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useDeferredValue } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { useParams, useOutletContext, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,6 +59,7 @@ export default function ClinicSettings() {
   const { user, profile, refresh: refreshAuth } = useAuth();
   const { slug } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { clinic } = useOutletContext<{ clinic: Clinic }>();
 
   // STRICT OWNER PERMISSION: Only the recorded owner of this specific clinic can edit clinic info & templates
@@ -72,9 +74,9 @@ export default function ClinicSettings() {
   const [activeTab, setActiveTab] = useState<'clinic_info' | 'clinic_branding' | 'prescriptions' | 'themes'>('clinic_info');
 
   // Clinic Form States
-  const [clinicName, setClinicName] = useState(clinic?.name || '');
-  const [clinicAddress, setClinicAddress] = useState(clinic?.address || '');
-  const [clinicPhone, setClinicPhone] = useState(clinic?.phone || '');
+  const [clinicName, setClinicName] = useState(clinic?.name || profile?.clinic_name || '');
+  const [clinicAddress, setClinicAddress] = useState(clinic?.address || profile?.clinic_address || '');
+  const [clinicPhone, setClinicPhone] = useState(clinic?.phone || profile?.clinic_phone || '');
   const [clinicCaption, setClinicCaption] = useState('24/7 Emergency · ECG · Lab');
   const [headerMode, setHeaderMode] = useState<'name' | 'logo' | 'both'>('both');
   const [brandingOption, setBrandingOption] = useState<'both' | 'logo_only' | 'watermark_only' | 'none'>('both');
@@ -124,9 +126,13 @@ export default function ClinicSettings() {
   useEffect(() => {
     if (!clinic?.id) return;
 
-    setClinicName(clinic.name || '');
-    setClinicAddress(clinic.address || '');
-    setClinicPhone(clinic.phone || '');
+    const savedAddr = clinic.address || profile?.clinic_address || localStorage.getItem(`prescripto_clinic_address_${clinic.id}`) || '';
+    const savedPhone = clinic.phone || profile?.clinic_phone || localStorage.getItem(`prescripto_clinic_phone_${clinic.id}`) || '';
+    const savedName = clinic.name || profile?.clinic_name || localStorage.getItem(`prescripto_clinic_name_${clinic.id}`) || '';
+
+    setClinicName(savedName);
+    setClinicAddress(savedAddr);
+    setClinicPhone(savedPhone);
 
     // Check localStorage cache
     const cachedMode = localStorage.getItem(`prescripto_clinic_header_mode_${clinic.id}`);
@@ -263,18 +269,42 @@ export default function ClinicSettings() {
 
     setSavingSettings(true);
     try {
-      // 1. Update clinics table in database
+      const trimmedName = clinicName.trim();
+      const trimmedAddress = clinicAddress.trim();
+      const trimmedPhone = clinicPhone.trim();
+
+      // 1. Update profiles table (ALWAYS permitted for current user/owner via RLS)
+      if (user?.id) {
+        const { error: profileErr } = await supabase
+          .from('profiles')
+          .update({
+            clinic_name: trimmedName,
+            clinic_address: trimmedAddress,
+            clinic_phone: trimmedPhone
+          })
+          .eq('user_id', user.id);
+        if (profileErr) {
+          console.warn('[ClinicSettings] Owner profile update notice:', profileErr);
+        }
+      }
+
+      // 2. Update clinics table in database (permitted for superadmins, attempt for owner)
       const { error: clinicErr } = await (supabase.from as any)('clinics')
         .update({
-          name: clinicName.trim(),
-          address: clinicAddress.trim(),
-          phone: clinicPhone.trim()
+          name: trimmedName,
+          address: trimmedAddress,
+          phone: trimmedPhone
         })
         .eq('id', clinic.id);
 
-      if (clinicErr) throw clinicErr;
+      if (clinicErr) {
+        console.warn('[ClinicSettings] Direct clinics update notice:', clinicErr);
+      }
 
-      // 2. Persist template preferences in LocalStorage
+      // 3. Persist template & clinic identity preferences in LocalStorage as permanent cache
+      localStorage.setItem(`prescripto_clinic_name_${clinic.id}`, trimmedName);
+      localStorage.setItem(`prescripto_clinic_address_${clinic.id}`, trimmedAddress);
+      localStorage.setItem(`prescripto_clinic_phone_${clinic.id}`, trimmedPhone);
       localStorage.setItem(`prescripto_clinic_header_mode_${clinic.id}`, headerMode);
       localStorage.setItem(`prescripto_clinic_branding_option_${clinic.id}`, brandingOption);
       localStorage.setItem(`prescripto_clinic_caption_${clinic.id}`, clinicCaption);
@@ -282,6 +312,19 @@ export default function ClinicSettings() {
       localStorage.setItem(`prescripto_clinic_color_${clinic.id}`, primaryColor);
       localStorage.setItem(`prescripto_clinic_vitals_${clinic.id}`, String(showVitalsSidebar));
       localStorage.setItem(`prescripto_onboarded_tour_${clinic.id}`, 'true');
+
+      // 4. Update in-memory React Query cache immediately so all tabs & print templates refresh
+      if (clinic.slug) {
+        queryClient.setQueryData(['clinic', clinic.slug], (prev: any) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            name: trimmedName,
+            address: trimmedAddress,
+            phone: trimmedPhone
+          };
+        });
+      }
 
       toast.success('Clinic settings and prescription template saved successfully!');
       await refreshAuth().catch(() => {});

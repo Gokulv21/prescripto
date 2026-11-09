@@ -1711,7 +1711,7 @@ export default function Analytics() {
             description="Age-based clinical cohort distribution"
             icon={<Users className="w-5 h-5" />}
           >
-            <BarChart data={demographics.age} layout="vertical" margin={{ top: 12, right: 55, left: -10, bottom: 8 }}>
+            <BarChart data={demographics.age} layout="vertical" margin={{ top: 12, right: 45, left: -10, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.15} />
               <XAxis type="number" hide />
               <YAxis
@@ -1720,13 +1720,13 @@ export default function Analytics() {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: 'hsl(var(--foreground))', fontSize: 10, fontWeight: 800 }}
-                width={120}
+                width={110}
               />
               <RechartsTooltip 
                 content={<CustomTooltip />} 
                 cursor={{ fill: 'hsl(var(--primary) / 0.08)' }}
                 wrapperStyle={{ zIndex: 100 }}
-                position={{ y: -8 }}
+                allowEscapeViewBox={{ x: false, y: false }}
               />
               <Bar dataKey="value" name="Patients" fill="hsl(var(--primary))" radius={[0, 8, 8, 0]} barSize={22}>
                 <LabelList 
