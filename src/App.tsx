@@ -68,12 +68,24 @@ function ClinicWrapper() {
       }
       if (data && (!data.address || !data.phone)) {
         try {
-          const { data: ownerProfile } = await supabase
-            .from('profiles')
-            .select('clinic_address, clinic_phone, clinic_name')
-            .eq('clinic_id', data.id)
-            .eq('role', 'owner')
-            .maybeSingle();
+          let ownerProfile = null;
+          if (data.owner_id) {
+            const { data: prof } = await supabase
+              .from('profiles')
+              .select('clinic_address, clinic_phone, clinic_name')
+              .eq('user_id', data.owner_id)
+              .maybeSingle();
+            ownerProfile = prof;
+          }
+          if (!ownerProfile) {
+            const { data: prof } = await supabase
+              .from('profiles')
+              .select('clinic_address, clinic_phone, clinic_name')
+              .eq('clinic_id', data.id)
+              .eq('role', 'owner')
+              .maybeSingle();
+            ownerProfile = prof;
+          }
 
           if (ownerProfile) {
             if (!data.address && ownerProfile.clinic_address) data.address = ownerProfile.clinic_address;

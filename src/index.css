@@ -379,7 +379,8 @@
     print-color-adjust: exact !important;
     height: 290mm !important;
     width: 210mm !important;
-    margin: 0 auto !important;
+    max-width: 100% !important;
+    margin: 0 !important;
     border: none !important;
     box-shadow: none !important;
     page-break-after: auto !important;
@@ -423,7 +424,7 @@
   #print-mount:not(:empty) {
     display: block !important;
     position: relative !important;
-    margin: 0 auto !important;
+    margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
     max-width: 210mm !important;
@@ -470,7 +471,7 @@
     opacity: 1 !important;
     position: relative !important;
     flex-direction: column !important;
-    align-items: center !important;
+    align-items: flex-start !important;
     min-height: auto !important;
   }
 

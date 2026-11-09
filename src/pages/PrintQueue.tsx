@@ -107,7 +107,8 @@ export default function PrintQueue() {
     else {
       toast.success('Printed & Cleared');
       // Optimistically remove from list
-      queryClient.setQueryData(['prescriptionsToPrint'], (old: any) => old?.filter((p: any) => p.id !== id));
+      queryClient.setQueryData(['prescriptionsToPrint', clinic?.id], (old: any) => old?.filter((p: any) => p.id !== id));
+      queryClient.invalidateQueries({ queryKey: ['prescriptionsToPrint', clinic?.id] });
     }
   };
 
@@ -237,7 +238,7 @@ export default function PrintQueue() {
           {prescriptions.length === 0 && !isLoading && (
             <div className="text-center py-10 px-4 space-y-4">
               <div className="flex justify-center">
-                <PrinterPrescriptionAnimatedIllustration className="w-44 sm:w-52 h-auto drop-shadow-sm" />
+                <PrinterPrescriptionAnimatedIllustration className="w-44 sm:w-52 h-auto drop-shadow-sm" clinicName={clinic?.name} />
               </div>
               <div className="space-y-1">
                 <h3 className="text-xl font-black text-slate-800 dark:text-slate-100">All Prescriptions Dispatched!</h3>

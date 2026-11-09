@@ -309,7 +309,14 @@ export function DoctorConsultationIllustration({ className = "w-full max-w-md h-
 // 4. PRINT QUEUE: Animated Prescription Printer with Yoyo Slide Motion
 // Prescription paper animates sliding smoothly out and back into the tray
 // ─────────────────────────────────────────────────────────────
-export function PrinterPrescriptionAnimatedIllustration({ className = "w-full max-w-sm h-auto" }: { className?: string }) {
+export function PrinterPrescriptionAnimatedIllustration({ 
+  className = "w-full max-w-sm h-auto",
+  clinicName
+}: { 
+  className?: string;
+  clinicName?: string;
+}) {
+  const displayTitle = (clinicName?.trim() || 'CLINIC').toUpperCase().slice(0, 14);
   return (
     <div className={className}>
       <svg viewBox="0 0 420 340" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
@@ -342,8 +349,10 @@ export function PrinterPrescriptionAnimatedIllustration({ className = "w-full ma
           <rect x="0" y="0" width="150" height="175" rx="10" fill="#ffffff" stroke="#93c5fd" strokeWidth="2" className="dark:fill-slate-900 shadow-xl" />
           {/* Header Banner */}
           <rect x="12" y="14" width="126" height="26" rx="6" fill="#eff6ff" className="dark:fill-slate-800" />
-          <text x="20" y="31" fill="#2563eb" fontSize="12" fontWeight="900" fontFamily="sans-serif">GV CLINIC</text>
-          <text x="96" y="31" fill="#10b981" fontSize="9" fontWeight="800">OFFICIAL</text>
+          <text x="20" y="31" fill="#2563eb" fontSize={displayTitle.length > 10 ? "10" : "11"} fontWeight="900" fontFamily="sans-serif">
+            {displayTitle}
+          </text>
+          <text x="100" y="31" fill="#10b981" fontSize="9" fontWeight="800">Rx</text>
           
           {/* Rx Symbol */}
           <text x="18" y="62" fill="#2563eb" fontSize="16" fontWeight="bold" fontFamily="serif">℞</text>
@@ -413,15 +422,15 @@ export function PatientDirectoryIllustration({ className = "w-full max-w-sm h-au
         
         {/* Status Rows */}
         <rect x="20" y="155" width="140" height="20" rx="6" fill="#f8fafc" stroke="#e2e8f0" strokeWidth="1" className="dark:fill-slate-800 dark:stroke-slate-700" />
-        <text x="30" y="169" fill="#0f172a" fontSize="9" fontWeight="800" className="dark:fill-white">#1 Miss Srimathi</text>
+        <text x="30" y="169" fill="#0f172a" fontSize="9" fontWeight="800" className="dark:fill-white">#1 Mr. John</text>
         <circle cx="145" cy="165" r="4" fill="#10b981" />
 
         <rect x="20" y="185" width="140" height="20" rx="6" fill="#f8fafc" stroke="#e2e8f0" strokeWidth="1" className="dark:fill-slate-800 dark:stroke-slate-700" />
-        <text x="30" y="199" fill="#0f172a" fontSize="9" fontWeight="800" className="dark:fill-white">#5 Mrs. Suganthi</text>
+        <text x="30" y="199" fill="#0f172a" fontSize="9" fontWeight="800" className="dark:fill-white">#5 Mrs. Sarah</text>
         <circle cx="145" cy="195" r="4" fill="#10b981" />
 
         <rect x="20" y="215" width="140" height="20" rx="6" fill="#f8fafc" stroke="#e2e8f0" strokeWidth="1" className="dark:fill-slate-800 dark:stroke-slate-700" />
-        <text x="30" y="229" fill="#0f172a" fontSize="9" fontWeight="800" className="dark:fill-white">#15 Mrs. Sowndari</text>
+        <text x="30" y="229" fill="#0f172a" fontSize="9" fontWeight="800" className="dark:fill-white">#15 Mr. Robert</text>
         <circle cx="145" cy="225" r="4" fill="#38bdf8" />
       </g>
 

@@ -258,14 +258,18 @@ const PrescriptionTemplate = React.memo(({
                             if (!clinicData) return null;
 
                             let bioMeta: any = {};
+                            let ownerProfData: any = null;
                             if (clinicData.owner_id) {
                                 const { data: ownerProf } = await supabase
                                     .from('profiles')
-                                    .select('bio')
+                                    .select('bio, clinic_address, clinic_phone, clinic_name')
                                     .eq('user_id', clinicData.owner_id)
                                     .maybeSingle();
-                                if (ownerProf?.bio) {
-                                    try { bioMeta = JSON.parse(ownerProf.bio); } catch {}
+                                if (ownerProf) {
+                                    ownerProfData = ownerProf;
+                                    if (ownerProf.bio) {
+                                        try { bioMeta = JSON.parse(ownerProf.bio); } catch {}
+                                    }
                                 }
                             }
 
@@ -276,11 +280,14 @@ const PrescriptionTemplate = React.memo(({
                             const cachedTemplate = localStorage.getItem(`prescripto_clinic_template_${clinicData.id}`) as any;
                             const cachedColor = localStorage.getItem(`prescripto_clinic_color_${clinicData.id}`);
                             const cachedVitals = localStorage.getItem(`prescripto_clinic_vitals_${clinicData.id}`);
+                            const cachedAddr = localStorage.getItem(`prescripto_clinic_address_${clinicData.id}`);
+                            const cachedPhone = localStorage.getItem(`prescripto_clinic_phone_${clinicData.id}`);
+                            const cachedName = localStorage.getItem(`prescripto_clinic_name_${clinicData.id}`);
 
                             const item: ClinicCacheItem = {
-                                clinic_name: clinicData.name || '',
-                                clinic_address: clinicData.address || '',
-                                clinic_phone: clinicData.phone || '',
+                                clinic_name: clinicData.name || ownerProfData?.clinic_name || cachedName || '',
+                                clinic_address: clinicData.address || ownerProfData?.clinic_address || cachedAddr || '',
+                                clinic_phone: clinicData.phone || ownerProfData?.clinic_phone || cachedPhone || '',
                                 owner_id: clinicData.owner_id,
                                 clinic_photo: bioMeta.clinic_photo || cachedLogo || null,
                                 clinic_watermark: bioMeta.clinic_watermark || cachedWm || null,
