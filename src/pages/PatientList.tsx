@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, User, History, Edit, Printer, Eye, X, Plus, Activity, Loader2, CheckCircle, Trash2 } from 'lucide-react';
+import { Search, User, History, Edit, Printer, Eye, X, Plus, Activity, Loader2, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import PrescriptionTemplate from '@/components/PrescriptionTemplate';
 import { printPrescription } from '@/lib/printPrescription';
@@ -41,14 +41,7 @@ const initialVitals: VitalsForm = { weight: '', blood_pressure: '', pulse_rate: 
 
 export default function PatientList() {
   const { clinic } = useOutletContext<{ clinic: Clinic }>();
-  const { user, profile, hasRole } = useAuth();
-  const canDeletePatient = Boolean(
-    hasRole('doctor') ||
-    hasRole('owner') ||
-    hasRole('superadmin') ||
-    (clinic?.owner_id && user?.id && clinic.owner_id === user.id)
-  );
-  const [deletingPatient, setDeletingPatient] = useState(false);
+  const { user, profile } = useAuth();
   const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
@@ -318,44 +311,6 @@ export default function PatientList() {
     }
   };
 
-  const handleDeletePatient = async () => {
-    if (!selectedPatient || !canDeletePatient) return;
-    const fullName = `${selectedPatient.title ? selectedPatient.title + ' ' : ''}${selectedPatient.name}`;
-    if (!window.confirm(`Permanently delete patient "${fullName}" and all their visits/prescriptions? This cannot be undone.`)) {
-      return;
-    }
-
-    setDeletingPatient(true);
-    try {
-      const { error: rxErr } = await supabase
-        .from('prescriptions')
-        .delete()
-        .eq('patient_id', selectedPatient.id);
-      if (rxErr) throw rxErr;
-
-      const { error: visitErr } = await supabase
-        .from('visits')
-        .delete()
-        .eq('patient_id', selectedPatient.id);
-      if (visitErr) throw visitErr;
-
-      const { error: ptErr } = await supabase
-        .from('patients')
-        .delete()
-        .eq('id', selectedPatient.id);
-      if (ptErr) throw ptErr;
-
-      toast.success(`Patient "${fullName}" deleted`);
-      setSelectedPatient(null);
-      setEditing(false);
-      fetchPatients();
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to delete patient');
-    } finally {
-      setDeletingPatient(false);
-    }
-  };
-
   const handleAddVisit = async () => {
     if (!selectedPatient || !clinic?.id) return;
 
@@ -506,28 +461,14 @@ export default function PatientList() {
       <Dialog open={!!selectedPatient} onOpenChange={open => !open && setSelectedPatient(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
           <DialogHeader>
-            <div className="flex items-center justify-between pr-8 gap-2">
+            <div className="flex items-center justify-between pr-8">
               <DialogTitle className="text-xl font-bold font-heading truncate">
                 {(selectedPatient?.title ? selectedPatient.title + ' ' : '') + selectedPatient?.name}
               </DialogTitle>
-              <div className="flex items-center gap-2 shrink-0 ml-3">
-                <Button size="sm" variant="outline" onClick={() => setEditing(!editing)} className="h-8 gap-1.5">
-                  <Edit className="w-3.5 h-3.5" />
-                  {editing ? 'Cancel' : 'Edit'}
-                </Button>
-                {canDeletePatient && !editing && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleDeletePatient}
-                    disabled={deletingPatient}
-                    className="h-8 gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:hover:bg-red-950/30"
-                  >
-                    {deletingPatient ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                    Delete
-                  </Button>
-                )}
-              </div>
+              <Button size="sm" variant="outline" onClick={() => setEditing(!editing)} className="h-8 gap-1.5 shrink-0 ml-3">
+                <Edit className="w-3.5 h-3.5" />
+                {editing ? 'Cancel' : 'Edit'}
+              </Button>
             </div>
           </DialogHeader>
 
@@ -840,7 +781,7 @@ export default function PatientList() {
 
       {/* Prescription Preview Dialog */}
       <Dialog open={!!viewingRx} onOpenChange={open => !open && setViewingRx(null)}>
-        <DialogContent className="max-w-[950px] w-[96vw] max-h-[94vh] p-0 flex flex-col overflow-hidden bg-slate-900 border-none shadow-2xl [&>button.absolute]:hidden">
+        <DialogContent className="max-w-[950px] w-[96vw] h-[92vh] max-h-[94vh] p-0 flex flex-col overflow-hidden bg-slate-900 border-none shadow-2xl [&>button.absolute]:hidden">
           <DialogTitle className="sr-only">Prescription History</DialogTitle>
           <DialogDescription className="sr-only">Detailed patient prescription preview</DialogDescription>
           <div className="bg-white dark:bg-slate-900 px-3.5 sm:px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 z-20 gap-2">
@@ -875,9 +816,9 @@ export default function PatientList() {
               </Button>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-slate-100 dark:bg-slate-950/80 flex justify-center items-start">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6 md:p-8 bg-slate-100 dark:bg-slate-950/80 flex justify-center items-start">
             {viewingRx && (
-                <div className="w-full max-w-[850px] bg-white shadow-xl rounded-lg overflow-hidden relative min-h-[400px]">
+                <div className="w-full max-w-[850px] bg-white shadow-xl rounded-lg relative min-h-[400px]">
                   {loadingRx ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-slate-900/80 z-50">
                       <Loader2 className="animate-spin w-8 h-8 text-blue-600 mb-2" />
@@ -891,8 +832,9 @@ export default function PatientList() {
                       clinicalNotes={currentRx?.clinical_notes}
                       diagnosis={currentRx?.diagnosis || viewingRx.diagnosis}
                       medicines={currentRx?.medicines}
-                      advice={currentRx?.advice_image} 
-                      isWritingMode={currentRx?.is_writing_mode ?? (!!currentRx?.advice_image && String(currentRx.advice_image).startsWith('data:image'))}
+                      advice={currentRx?.advice_image && !String(currentRx.advice_image).startsWith('data:image') && !String(currentRx.advice_image).startsWith('[') ? currentRx.advice_image : ''}
+                      isWritingMode={currentRx?.is_writing_mode ?? (!!currentRx?.advice_image && (String(currentRx.advice_image).startsWith('data:image') || String(currentRx.advice_image).startsWith('[')))}
+                      hideShare={true}
                       doctorId={currentRx?.doctor_id || viewingRx.assigned_doctor_id}
                       prescriptionCreatedAt={viewingRx?.created_at || currentRx?.created_at}
                       doctorName={currentRx?.doctor_id === user?.id ? profile?.full_name : undefined}

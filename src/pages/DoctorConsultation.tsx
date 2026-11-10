@@ -660,10 +660,10 @@ Wishing you a quick recovery!
 
       {/* 2. Prescription Preview Dialogue */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-[950px] w-[96vw] max-h-[94vh] p-0 flex flex-col overflow-hidden bg-slate-900 border-none shadow-2xl">
+        <DialogContent className="max-w-[950px] w-[96vw] h-[92vh] max-h-[94vh] p-0 flex flex-col overflow-hidden bg-slate-900 border-none shadow-2xl">
           <DialogHeader className="bg-white dark:bg-slate-900 p-3 sm:p-4 px-5 border-b border-slate-200 dark:border-slate-800 relative flex flex-row items-center justify-between shrink-0 z-20">
             <div className="flex items-center gap-2 z-10 flex-wrap">
-              <Button size="sm" onClick={() => printPrescription('#consultation-print-preview')} className="gap-2 h-9 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-sm">
+              <Button size="sm" onClick={() => printPrescription('#consultation-print-preview .print-container')} className="gap-2 h-9 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-sm">
                 <Printer className="w-4 h-4" /> Print PDF
               </Button>
               <Button variant="outline" size="sm" onClick={() => shareToWhatsApp(selectedVisit, patient)} className="gap-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 h-9 text-xs font-bold rounded-xl">
@@ -684,8 +684,8 @@ Wishing you a quick recovery!
               Live Prescription Preview
             </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-slate-100 dark:bg-slate-950/80 flex justify-center items-start" id="consultation-print-preview">
-            <div className="w-full max-w-[850px] bg-white shadow-xl rounded-lg overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6 md:p-8 bg-slate-100 dark:bg-slate-950/80 flex justify-center items-start" id="consultation-print-preview">
+            <div className="w-full max-w-[850px] bg-white shadow-xl rounded-lg">
               <PrescriptionTemplate
                  patient={patient}
                  visit={selectedVisit}
@@ -695,7 +695,8 @@ Wishing you a quick recovery!
                  medicines={medicines.filter(m => m.name.trim())}
                  advice={advice}
                  isWritingMode={lastInputWay === 'writing'}
-                 isPrint={true}
+                 isPrint={false}
+                 hideShare={true}
                  doctorId={user?.id}
                  prescriptionCreatedAt={selectedVisit?.created_at || new Date().toISOString()}
                  doctorName={activeDocName}
@@ -714,36 +715,38 @@ Wishing you a quick recovery!
 
       {/* 3. Past Visit Rx Preview Dialogue */}
       <Dialog open={!!viewingHistoryRx} onOpenChange={open => !open && setViewingHistoryRx(null)}>
-        <DialogContent className="max-w-[950px] w-[96vw] max-h-[94vh] p-0 flex flex-col overflow-hidden bg-slate-900 border-none shadow-2xl">
+        <DialogContent className="max-w-[950px] w-[96vw] h-[92vh] max-h-[94vh] p-0 flex flex-col overflow-hidden bg-slate-900 border-none shadow-2xl">
           <DialogHeader className="p-4 px-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-row items-center justify-between shrink-0 z-20">
             <DialogTitle className="text-sm font-bold text-slate-900 dark:text-white">
               Visit Details — {viewingHistoryRx && new Date(viewingHistoryRx.created_at).toLocaleDateString()}
             </DialogTitle>
+            <DialogDescription className="sr-only">Past visit prescription preview</DialogDescription>
             <div className="flex items-center gap-2 pr-6">
-              <Button size="sm" onClick={() => printPrescription('.print-container')} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold h-9 px-4 rounded-xl shadow-sm">
+              <Button size="sm" onClick={() => printPrescription('#history-rx-preview .print-container')} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold h-9 px-4 rounded-xl shadow-sm">
                 <Printer className="w-4 h-4" /> <span>Print</span>
               </Button>
             </div>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-slate-100 dark:bg-slate-950/80 flex justify-center items-start">
+          <div id="history-rx-preview" className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6 md:p-8 bg-slate-100 dark:bg-slate-950/80 flex justify-center items-start">
             {loadingHistoryRx ? (
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
               </div>
             ) : (
               currentHistoryRx && (
-                <div className="w-full max-w-[850px] bg-white shadow-xl rounded-lg overflow-hidden">
+                <div className="w-full max-w-[850px] bg-white shadow-xl rounded-lg">
                   <PrescriptionTemplate
                     patient={patient}
                     visit={viewingHistoryRx}
                     handwrittenImage={currentHistoryRx.advice_image}
                     clinicalNotes={currentHistoryRx.clinical_notes}
-                    diagnosis={currentHistoryRx.diagnosis}
+                    diagnosis={currentHistoryRx.diagnosis || viewingHistoryRx.diagnosis}
                     medicines={currentHistoryRx.medicines || []}
-                    advice={currentHistoryRx.advice_image && !currentHistoryRx.advice_image.startsWith('data:image') && !currentHistoryRx.advice_image.startsWith('[') ? currentHistoryRx.advice_image : ''}
-                    isWritingMode={currentHistoryRx.is_writing_mode}
-                    isPrint={true}
-                    doctorId={currentHistoryRx.doctor_id}
+                    advice={currentHistoryRx.advice_image && !String(currentHistoryRx.advice_image).startsWith('data:image') && !String(currentHistoryRx.advice_image).startsWith('[') ? currentHistoryRx.advice_image : ''}
+                    isWritingMode={currentHistoryRx.is_writing_mode ?? (!!currentHistoryRx.advice_image && (String(currentHistoryRx.advice_image).startsWith('data:image') || String(currentHistoryRx.advice_image).startsWith('[')))}
+                    isPrint={false}
+                    hideShare={true}
+                    doctorId={currentHistoryRx.doctor_id || viewingHistoryRx.assigned_doctor_id}
                     prescriptionCreatedAt={viewingHistoryRx?.created_at || currentHistoryRx.created_at}
                     doctorName={currentHistoryRx.doctor_id === user?.id ? activeDocName : undefined}
                     doctorQualifications={currentHistoryRx.doctor_id === user?.id ? activeDocQual : undefined}
