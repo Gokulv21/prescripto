@@ -329,7 +329,7 @@ export const NOVA_TOOL_DEFINITIONS = [
   },
   {
     name: 'get_app_guidance',
-    description: 'Explains how to use Prescripto features, locates modules, and describes latest v1.4 updates.',
+    description: 'Explains how to use Prescripto features, locates modules, and describes latest v1.5 updates.',
     parameters: {
       type: 'object',
       properties: {

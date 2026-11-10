@@ -117,6 +117,7 @@ function isPatientLookupIntent(input: string): boolean {
   const isSoftwareTopic = (
     q.includes('feature') ||
     q.includes('pudhu') ||
+    q.includes('v1.5') ||
     q.includes('v1.4') ||
     q.includes('update') ||
     q.includes('changelog') ||
@@ -456,7 +457,7 @@ PRESCRIPTO APP MODULES & URLS:
 - /patients : Patients directory archive and timeline history.
 - /users : Staff & doctor role management.
 - /profile : Clinic branding, letterhead, fees, and signatures.
-- /about : System details and v1.4 changelog.
+- /about : System details and v1.5 changelog.
 `;
 
   // 4. If Gemini API Key is configured, use Real AI LLM Reasoning with Live Data
@@ -566,6 +567,7 @@ PRIMARY INSTRUCTIONS:
   const isFeatureQuery = (
     lowerQuery.includes('feature') ||
     lowerQuery.includes('explain') ||
+    lowerQuery.includes('v1.5') ||
     lowerQuery.includes('v1.4') ||
     lowerQuery.includes('pudhu') ||
     lowerQuery.includes('update') ||
@@ -580,9 +582,9 @@ PRIMARY INSTRUCTIONS:
   if (isFeatureQuery) {
     if (prefersTamil) {
       const tamilSummary = [
-        '1. **VisionOS மொபைல் டாக்:** மொபைல் திரையில் எங்கு வேண்டுமானாலும் நகர்த்தக்கூடிய மிதக்கும் கண்ணாடி டாக். டபுள்-டேப் செய்தால் மையத்திற்கு வந்துவிடும்.',
-        '2. **ஜீரோ-லேக் நேவிகேஷன்:** பக்கங்கள் அல்லது டேப்கள் மாற்றும்போது தாமதமின்றி உடனடி மாற்றம் மற்றும் ஒளிரும் இன்டிகேட்டர்.',
-        '3. **ஆல்-இன்-ஒன் மாடியூல் லான்ச்சர்:** ஸ்க்ரோல் செய்யத் தேவையின்றி ஒரே திரையில் 4-நெடுவரிசை கட்டத்தில் அனைத்து வசதிகளையும் (பதிவு, கன்சல்ட்டேஷன், பிரிண்ட், அனலிட்டிக்ஸ்) அணுகலாம்.',
+        '1. **Nova AI உதவியாளர்:** மருத்துவம் மற்றும் கிளினிக் நிர்வாகத்திற்கான உடனடி AI வழிகாட்டி.',
+        '2. **VisionOS மொபைல் டாக்:** மொபைல் திரையில் எங்கு வேண்டுமானாலும் நகர்த்தக்கூடிய மிதக்கும் கண்ணாடி டாக். டபுள்-டேப் செய்தால் மையத்திற்கு வந்துவிடும்.',
+        '3. **தீம் & HEX கலர் தேர்வு:** Light/Dark தீம் மற்றும் கிளினிக்கிற்கு ஏற்ற நிறங்களை தனிப்பயனாக்கலாம்.',
         '4. **டிவி டிஸ்ப்ளே ஆடியோ மணி (Chime):** காத்திருப்பு அறையில் டோக்கன் அழைக்கும் போது தானியங்கி ஆடியோ மணி ஒலி இயல்பாகவே ஒலிக்கும்.',
         '5. **டிஜிட்டல் பிரஸ்கிரிப்ஷன்:** மருத்துவர்கள் தட்டச்சு செய்தோ அல்லது ஸ்டைலஸ் வரைவு மூலமாகவோ மருந்துச் சீட்டுகளை வழங்கி உடனடி பிரிண்ட் வரிசைக்கு அனுப்பலாம்.',
         '6. **முழுமையான கிளினிக் பாதுகாப்பு:** கிளினிக் பிராண்டிங் மற்றும் மருத்துவத் தரவுகள் பாதுகாப்பாக தனிமைப்படுத்தப்பட்டுள்ளது.'
@@ -591,7 +593,7 @@ PRIMARY INSTRUCTIONS:
       return {
         id: `msg-${Date.now()}`,
         sender: 'assistant',
-        text: `வணக்கம்! **PreScripto (by Zevox)**-இன் முக்கிய வசதிகள் மற்றும் v1.4 பதிப்பின் சிறப்பம்சங்கள்:\n\n${tamilSummary}\n\nஉங்களுக்கு குறிப்பிட்ட அம்சத்தை இயக்க வழிகாட்டுதல் தேவைப்பட்டால் என்னிடம் கேட்கலாம்!`,
+        text: `வணக்கம்! **PreScripto (by Zevox)**-இன் முக்கிய வசதிகள் மற்றும் v1.5 பதிப்பின் சிறப்பம்சங்கள்:\n\n${tamilSummary}\n\nஉங்களுக்கு குறிப்பிட்ட அம்சத்தை இயக்க வழிகாட்டுதல் தேவைப்பட்டால் என்னிடம் கேட்கலாம்!`,
         timestamp: new Date(),
         actionLink: {
           label: 'முழு விவரங்களை காண்',
@@ -604,7 +606,7 @@ PRIMARY INSTRUCTIONS:
     return {
       id: `msg-${Date.now()}`,
       sender: 'assistant',
-      text: `Key highlights and features of **PreScripto (by Zevox)** v1.4.0:\n\n${summary}`,
+      text: `Key highlights and features of **PreScripto (by Zevox)** v1.5.0:\n\n${summary}`,
       timestamp: new Date(),
       actionLink: {
         label: 'View Detailed Changelog',

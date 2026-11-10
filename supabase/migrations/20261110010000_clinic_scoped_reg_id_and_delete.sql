@@ -124,3 +124,4 @@ CREATE POLICY "Clinic Scoped Delete Patients"
     )
     OR EXISTS (SELECT 1 FROM public.profiles WHERE user_id = auth.uid() AND is_superadmin = true)
   );
+

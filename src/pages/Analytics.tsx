@@ -129,7 +129,39 @@ export default function Analytics() {
   const [selectedSeasonalityDiagnoses, setSelectedSeasonalityDiagnoses] = useState<string[]>([]);
   const [demographics, setDemographics] = useState<{ sex: any[], age: any[] }>({ sex: [], age: [] });
   const [protocolData, setProtocolData] = useState<any[]>([]);
-  const [retentionData, setRetentionData] = useState<any[]>([]);
+  const [allRetentionData, setAllRetentionData] = useState<any[]>([]);
+  const [retentionRangeMode, setRetentionRangeMode] = useState<'3m' | '6m' | '1y' | 'year' | 'custom' | 'all'>('6m');
+  const [retentionSelectedYear, setRetentionSelectedYear] = useState<string>(String(new Date().getFullYear()));
+  const [retentionStartMonth, setRetentionStartMonth] = useState<string>(format(subMonths(new Date(), 5), 'yyyy-MM'));
+  const [retentionEndMonth, setRetentionEndMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
+
+  const availableRetentionYears = useMemo(() => {
+    const years = new Set<string>();
+    allRetentionData.forEach(item => {
+      if (item.month) years.add(item.month.slice(0, 4));
+    });
+    if (years.size === 0) years.add(String(new Date().getFullYear()));
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [allRetentionData]);
+
+  const retentionData = useMemo(() => {
+    if (!allRetentionData || allRetentionData.length === 0) return [];
+    if (retentionRangeMode === '3m') return allRetentionData.slice(-3);
+    if (retentionRangeMode === '6m') return allRetentionData.slice(-6);
+    if (retentionRangeMode === '1y') return allRetentionData.slice(-12);
+    if (retentionRangeMode === 'year') {
+      return allRetentionData.filter(d => d.month?.startsWith(retentionSelectedYear));
+    }
+    if (retentionRangeMode === 'custom') {
+      return allRetentionData.filter(d => {
+        const afterStart = !retentionStartMonth || d.month >= retentionStartMonth;
+        const beforeEnd = !retentionEndMonth || d.month <= retentionEndMonth;
+        return afterStart && beforeEnd;
+      });
+    }
+    return allRetentionData;
+  }, [allRetentionData, retentionRangeMode, retentionSelectedYear, retentionStartMonth, retentionEndMonth]);
+
   const [peakHoursData, setPeakHoursData] = useState<any[]>([]);
   const [appointmentLoadRange, setAppointmentLoadRange] = useState<'all' | 'today' | '7d' | '30d'>('today');
   const [appointmentLoadsTotal, setAppointmentLoadsTotal] = useState<number>(0);
@@ -408,13 +440,19 @@ export default function Analytics() {
       stat.total++;
     });
 
-    // Calculate retention percentage for each month and take the active months
-    const sorted = Array.from(monthlyStats.values()).map(m => ({
-      ...m,
-      retentionRate: m.total > 0 ? Math.round((m.returningPatients / m.total) * 100) : 0
-    }));
+    // Calculate retention percentage for each month chronologically across all active months
+    const sorted = Array.from(monthlyStats.values())
+      .map(m => ({
+        ...m,
+        retentionRate: m.total > 0 ? Math.round((m.returningPatients / m.total) * 100) : 0
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
 
-    setRetentionData(sorted.slice(-7));
+    setAllRetentionData(sorted);
+    if (sorted.length > 0) {
+      const latestYear = sorted[sorted.length - 1].month.slice(0, 4);
+      setRetentionSelectedYear(prev => sorted.some(s => s.month.startsWith(prev)) ? prev : latestYear);
+    }
   };
 
   const fetchAppointmentLoads = async (range: 'all' | 'today' | '7d' | '30d' = appointmentLoadRange) => {
@@ -2124,53 +2162,116 @@ export default function Analytics() {
             description="First-Time Registrations vs Returning Follow-Up Encounters"
             icon={<UserCheck className="w-5 h-5" />}
             extra={
-              retentionData.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-muted-foreground hidden sm:inline">Latest Retention Rate:</span>
-                  <span className="text-xs font-black px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                    {retentionData[retentionData.length - 1]?.retentionRate}% Returning
-                  </span>
-                </div>
-              )
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Select
+                  value={retentionRangeMode}
+                  onValueChange={(val: '3m' | '6m' | '1y' | 'year' | 'custom' | 'all') => setRetentionRangeMode(val)}
+                >
+                  <SelectTrigger className="h-8 w-[145px] text-xs font-bold rounded-xl border-border bg-card">
+                    <SelectValue placeholder="Range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="3m" className="text-xs font-bold">Last 3 Months</SelectItem>
+                    <SelectItem value="6m" className="text-xs font-bold">Last 6 Months</SelectItem>
+                    <SelectItem value="1y" className="text-xs font-bold">Last 12 Months</SelectItem>
+                    <SelectItem value="year" className="text-xs font-bold">Select Year</SelectItem>
+                    <SelectItem value="custom" className="text-xs font-bold">Custom Month Range</SelectItem>
+                    <SelectItem value="all" className="text-xs font-bold">All Time</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {retentionRangeMode === 'year' && (
+                  <Select value={retentionSelectedYear} onValueChange={setRetentionSelectedYear}>
+                    <SelectTrigger className="h-8 w-[95px] text-xs font-bold rounded-xl border-border bg-card">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableRetentionYears.map(yr => (
+                        <SelectItem key={yr} value={yr} className="text-xs font-bold">
+                          {yr}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {retentionRangeMode === 'custom' && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <input
+                      type="month"
+                      value={retentionStartMonth}
+                      max={retentionEndMonth || undefined}
+                      onChange={e => setRetentionStartMonth(e.target.value)}
+                      className="h-8 px-2 text-xs font-bold rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      aria-label="From month"
+                    />
+                    <span className="text-[11px] font-bold text-muted-foreground">to</span>
+                    <input
+                      type="month"
+                      value={retentionEndMonth}
+                      min={retentionStartMonth || undefined}
+                      onChange={e => setRetentionEndMonth(e.target.value)}
+                      className="h-8 px-2 text-xs font-bold rounded-xl border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      aria-label="To month"
+                    />
+                  </div>
+                )}
+
+                {retentionData.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-muted-foreground hidden sm:inline">Latest Retention Rate:</span>
+                    <span className="text-xs font-black px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+                      {retentionData[retentionData.length - 1]?.retentionRate}% Returning
+                    </span>
+                  </div>
+                )}
+              </div>
             }
           >
-            <BarChart data={retentionData} margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.15} />
-              <XAxis
-                dataKey="monthLabel"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 11, fontWeight: 800, fill: 'hsl(var(--foreground))' }}
-              />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 10, fontWeight: 700 }}
-              />
-              <RechartsTooltip content={<CustomTooltip />} />
-              <Legend
-                verticalAlign="top"
-                align="right"
-                wrapperStyle={{ paddingBottom: '16px' }}
-                iconType="circle"
-              />
-              <Bar
-                name="New Patients"
-                dataKey="newPatients"
-                fill="#3b82f6"
-                stackId="flow"
-                radius={[0, 0, 4, 4]}
-                barSize={42}
-              />
-              <Bar
-                name="Returning Patients"
-                dataKey="returningPatients"
-                fill="#10b981"
-                stackId="flow"
-                radius={[8, 8, 0, 0]}
-                barSize={42}
-              />
-            </BarChart>
+            {retentionData.length === 0 ? (
+              <div className="h-full min-h-[260px] flex flex-col items-center justify-center text-muted-foreground text-xs font-bold gap-1.5">
+                <CalendarRange className="w-6 h-6 opacity-40" />
+                <p>No patient visit records found for the selected month/year range.</p>
+              </div>
+            ) : (
+              <BarChart data={retentionData} margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.15} />
+                <XAxis
+                  dataKey="monthLabel"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 11, fontWeight: 800, fill: 'hsl(var(--foreground))' }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fontWeight: 700 }}
+                />
+                <RechartsTooltip content={<CustomTooltip />} />
+                <Legend
+                  verticalAlign="top"
+                  align="right"
+                  wrapperStyle={{ paddingBottom: '16px' }}
+                  iconType="circle"
+                />
+                <Bar
+                  name="New Patients"
+                  dataKey="newPatients"
+                  fill="#3b82f6"
+                  stackId="flow"
+                  radius={[0, 0, 4, 4]}
+                  barSize={retentionData.length > 10 ? 26 : 42}
+                />
+                <Bar
+                  name="Returning Patients"
+                  dataKey="returningPatients"
+                  fill="#10b981"
+                  stackId="flow"
+                  radius={[8, 8, 0, 0]}
+                  barSize={retentionData.length > 10 ? 26 : 42}
+                />
+              </BarChart>
+            )}
           </ChartContainer>
         </div>
 

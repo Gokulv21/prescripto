@@ -135,7 +135,7 @@ User Role: ${userRole || 'Staff'}
 Rules:
 1. Be concise, clinically accurate, and polite.
 2. If asked in Tamil or Tanglish, reply fluently in Tamil/Tanglish.
-3. If asked about features, highlight Prescripto v1.4 features (VisionOS floating dock, TV token audio chime, zero-lag transitions, all-in-one launcher).
+3. If asked about features, highlight Prescripto v1.5 features (Nova Clinical AI Copilot, custom themes & HEX picker, VisionOS floating dock, TV token audio chime, strict multi-clinic isolation).
 4. If search results are provided, summarize patient records accurately.
 
 User Question: ${message}

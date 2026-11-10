@@ -1,6 +1,6 @@
 /**
  * Prescripto Application Knowledge Base (Procedural & Semantic Memory)
- * Contains modules, routing, v1.4 release features, and clinical workflows.
+ * Contains modules, routing, v1.5 release features, and clinical workflows.
  */
 
 export interface AppModuleInfo {
@@ -90,35 +90,35 @@ export const APP_MODULES: AppModuleInfo[] = [
     name: 'About & Changelog',
     path: '/about',
     roles: ['staff', 'doctor', 'owner', 'superadmin'],
-    description: 'View Prescripto system version details, latest v1.4 changelog, and clinical safety information.',
-    keywords: ['about', 'version', 'changelog', 'updates', 'v1.4', 'features']
+    description: 'View Prescripto system version details, latest v1.5 changelog, and clinical safety information.',
+    keywords: ['about', 'version', 'changelog', 'updates', 'v1.5', 'features']
   }
 ];
 
 export const V14_FEATURES = [
   {
+    title: 'Nova Clinical AI Copilot',
+    description: 'Built-in clinical & operational assistant across the platform for quick records lookup, guidance, and analytics.',
+  },
+  {
+    title: 'Themes & Custom HEX Color Wheel Picker',
+    description: 'Brand personalization engine with Light/Dark/System themes and custom accent color selection.',
+  },
+  {
     title: 'VisionOS-Inspired Floating Glass Dock',
     description: 'Freely draggable bottom dock on mobile that saves its coordinates in localStorage. Double-tap the handle to reset to center.',
   },
   {
-    title: 'Zero-Lag Micro Navigation',
-    description: 'Instantaneous tab switching without layout stutter, with illuminated glowing indicator for the active module.',
-  },
-  {
-    title: 'Ultra-Compact All Modules Launcher',
-    description: 'Zero-scroll 4-column matrix sheet to access any clinic tool in one tap without scrolling.',
-  },
-  {
-    title: 'Mobile Header Ergonomics',
-    description: 'Doctor avatar & settings moved to the sticky top header, keeping the dock exclusively for high-frequency clinical actions.',
+    title: 'Zero-Lag Micro Navigation & All Modules Launcher',
+    description: 'Instantaneous tab switching without layout stutter, plus a zero-scroll 4-column matrix launcher for all clinic tools.',
   },
   {
     title: 'TV Queue Display Default Audio Chime',
-    description: 'Automatic Web Audio API token calling chime is now enabled by default with responsive multi-device layouts for widescreen TVs and tablets.',
+    description: 'Automatic Web Audio API token calling chime is enabled by default with responsive multi-device layouts for widescreen TVs and tablets.',
   },
   {
-    title: 'Superadmin & Clinic Branding Isolation',
-    description: 'Strict clinic data isolation ensuring only clinic owners and doctors can modify their clinic identity and photos.',
+    title: 'Strict Multi-Clinic RBAC & Data Isolation',
+    description: 'Complete clinic data, registration ID, snippet, and branding isolation ensuring each clinic operates independently and securely.',
   }
 ];
 
