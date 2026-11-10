@@ -226,14 +226,42 @@ export default function NurseEntry() {
   };
 
   const getNextRegId = async () => {
-    const { data, error } = await (supabase.rpc as any)('get_next_registration_id');
+    if (!clinic?.id) {
+      throw new Error('Clinic ID is required to generate Registration ID');
+    }
+
+    const { data, error } = await (supabase.rpc as any)('get_next_registration_id', {
+      p_clinic_id: clinic.id
+    });
+
     if (error) {
-        console.error('Error generating Reg ID, falling back:', error);
-        // Fallback to random if RPC fails
-        const timestamp = Date.now().toString().slice(-6);
-        const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-        const yy = new Date().getFullYear().toString().slice(-2);
-        return `${yy}${timestamp}${random}`;
+      console.error('Error generating Reg ID via RPC, using clinic-scoped fallback:', error);
+      // Fallback: compute next sequential ID strictly from THIS clinic's existing patients
+      const yy = new Date().getFullYear().toString().slice(-2);
+      const { data: latestPatients, error: queryErr } = await supabase
+        .from('patients')
+        .select('registration_id')
+        .eq('clinic_id', clinic.id)
+        .ilike('registration_id', `${yy}%`)
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (!queryErr && latestPatients) {
+        let maxSeq = 0;
+        for (const p of latestPatients) {
+          const rid = String(p.registration_id || '').trim();
+          const match = rid.match(new RegExp(`^${yy}(\\d{1,7})$`));
+          if (match) {
+            const seq = parseInt(match[1], 10);
+            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+          }
+        }
+        return `${yy}${String(maxSeq + 1).padStart(5, '0')}`;
+      }
+
+      const timestamp = Date.now().toString().slice(-6);
+      const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      return `${yy}${timestamp}${random}`;
     }
     return data;
   };

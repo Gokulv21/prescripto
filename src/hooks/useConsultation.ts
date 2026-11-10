@@ -535,37 +535,45 @@ export function useConsultation(clinic: any) {
     }
   };
 
-  const markAsNoShow = async () => {
-    if (!selectedVisit) return;
+  const markAsNoShow = async (targetVisit?: any) => {
+    const isVisitObj = targetVisit && typeof targetVisit === 'object' && 'id' in targetVisit && 'patient_id' in targetVisit;
+    const visitToDelete = isVisitObj ? targetVisit : selectedVisit;
+    if (!visitToDelete) return;
+
     setSaving(true);
     try {
-      const patientId = selectedVisit.patient_id;
-      await supabase.from('visits').update({ status: 'no_show', draft_data: null }).eq('id', selectedVisit.id);
-      await supabase.from('prescriptions').delete().eq('visit_id', selectedVisit.id);
-      await supabase.from('visits').delete().eq('id', selectedVisit.id);
+      const patientId = visitToDelete.patient_id;
+      const { error: rxDelErr } = await supabase.from('prescriptions').delete().eq('visit_id', visitToDelete.id);
+      if (rxDelErr) throw rxDelErr;
+
+      const { error: visitDelErr } = await supabase.from('visits').delete().eq('id', visitToDelete.id);
+      if (visitDelErr) throw visitDelErr;
       
       const { data: otherVisits } = await supabase.from('visits').select('id').eq('patient_id', patientId).limit(1);
       if (!otherVisits || otherVisits.length === 0) {
-        await supabase.from('patients').delete().eq('id', patientId);
+        const { error: ptDelErr } = await supabase.from('patients').delete().eq('id', patientId);
+        if (ptDelErr) console.warn('[useConsultation] Patient cleanup notice:', ptDelErr);
       }
 
-      toast.success('Visit cancelled');
-      localStorage.removeItem(`draft_${selectedVisit.id}`);
-      localStorage.removeItem('active_consultation_id');
-      
-      setSelectedVisit(null);
-      setPatient(null);
-      setHistory([]);
-      setPrescriptionImage(null);
-      setPrescriptionPaths([]);
-      setDiagnosis('');
-      setDiagnoses([]);
-      setClinicalNotes('');
-      setMedicines([{ type: 'Tab.', name: '', dosage: '', frequency: '', duration: '' }]);
+      toast.success('Patient visit removed');
+      localStorage.removeItem(`draft_${visitToDelete.id}`);
+      if (selectedVisit?.id === visitToDelete.id) {
+        localStorage.removeItem('active_consultation_id');
+        setSelectedVisit(null);
+        setPatient(null);
+        setHistory([]);
+        setPrescriptionImage(null);
+        setPrescriptionPaths([]);
+        setDiagnosis('');
+        setDiagnoses([]);
+        setClinicalNotes('');
+        setMedicines([{ type: 'Tab.', name: '', dosage: '', frequency: '', duration: '' }]);
+      }
       
       queryClient.invalidateQueries({ queryKey: ['visitQueue'] });
+      await refetchQueue();
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err?.message || 'Failed to remove patient visit');
     } finally {
       setSaving(false);
     }

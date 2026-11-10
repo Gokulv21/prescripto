@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn, formatAge } from '@/lib/utils';
-import { Loader2, RefreshCw, Users, Bell, Clock, AlertTriangle } from 'lucide-react';
+import { Loader2, RefreshCw, Users, Bell, Clock, AlertTriangle, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface QueuePanelProps {
@@ -12,6 +12,7 @@ interface QueuePanelProps {
   selectedVisit: any;
   selectVisit: (visit: any, checkForDrafts?: boolean) => void;
   onCallPatient: (visit: any) => void;
+  onRemoveVisit?: (visit: any) => void;
 }
 
 export default function QueuePanel({
@@ -21,6 +22,7 @@ export default function QueuePanel({
   selectedVisit,
   selectVisit,
   onCallPatient,
+  onRemoveVisit,
 }: QueuePanelProps) {
   const [now, setNow] = React.useState(Date.now());
 
@@ -135,7 +137,7 @@ export default function QueuePanel({
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
                     <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 h-5 font-black uppercase tracking-wider", getStatusColor(visit.status))}>
                       {visit.status === 'waiting' ? 'Wait' : visit.status === 'in_consultation' ? 'Active' : 'Done'}
                     </Badge>
@@ -151,6 +153,23 @@ export default function QueuePanel({
                     >
                       <Bell className="w-4 h-4 animate-pulse" />
                     </Button>
+                    {onRemoveVisit && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const name = `${visit.patients?.title ? visit.patients.title + ' ' : ''}${visit.patients?.name || 'this patient'}`;
+                          if (window.confirm(`Remove ${name} from queue and delete test visit?`)) {
+                            onRemoveVisit(visit);
+                          }
+                        }}
+                        className="h-8 w-8 hover:bg-red-50 text-slate-400 hover:text-red-600 dark:hover:bg-red-950/30 rounded-xl"
+                        title="Remove from Queue"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                   </div>
                 </div>
 

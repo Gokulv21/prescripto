@@ -12,8 +12,8 @@ import { cn, formatAge } from '@/lib/utils';
 import { 
   Plus, History, Stethoscope, User, Users, Trash2, Printer, 
   Phone, Pencil, ArrowLeft, Activity, Scale, Wind, 
-  Thermometer, Droplet, MessageCircle, X, HeartPulse, Loader2, Sparkles, Info, GripVertical,
-  Move, LayoutGrid, Zap, Volume2, ShieldCheck, Clock
+  Thermometer, Droplet, MessageCircle, X, HeartPulse, Loader2, Info, GripVertical,
+  ShieldCheck, Clock
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
@@ -102,7 +102,6 @@ export default function DoctorConsultation() {
   const [loadingHistoryRx, setLoadingHistoryRx] = useState(false);
   const [currentHistoryRx, setCurrentHistoryRx] = useState<any>(null);
   const [printOnStationery, setPrintOnStationery] = useState(false);
-  const [showChangelog, setShowChangelog] = useState(false);
 
 
 
@@ -146,17 +145,7 @@ export default function DoctorConsultation() {
     return () => { document.title = 'Prescripto'; };
   }, [clinic?.name]);
 
-  useEffect(() => {
-    const acknowledged = localStorage.getItem('prescripto_version_1_4_acknowledged');
-    if (!acknowledged) {
-      setShowChangelog(true);
-    }
-  }, []);
 
-  const handleAcknowledgeChangelog = () => {
-    localStorage.setItem('prescripto_version_1_4_acknowledged', 'true');
-    setShowChangelog(false);
-  };
 
   // Mandatory Credentials Validation
   const activeDocName = (myProfile?.full_name || profile?.full_name || user?.user_metadata?.full_name || '').trim();
@@ -381,6 +370,7 @@ Wishing you a quick recovery!
           selectedVisit={selectedVisit}
           selectVisit={handleSelectVisit}
           onCallPatient={handleCallPatient}
+          onRemoveVisit={(v) => markAsNoShow(v)}
         />
       </div>
 
@@ -914,15 +904,7 @@ Wishing you a quick recovery!
 
 
 
-      {/* What's New Floating Trigger Button */}
-      <div className="fixed bottom-4 left-4 z-[40] hidden md:block">
-        <Button
-          onClick={() => setShowChangelog(true)}
-          className="bg-indigo-650 hover:bg-indigo-700 text-white font-extrabold text-[10px] rounded-full shadow-lg h-9 px-4 flex items-center gap-1.5 uppercase tracking-wider transition-all hover:scale-105 active:scale-95"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-yellow-300 animate-pulse" /> What's New (v2.2)
-        </Button>
-      </div>
+
 
       {/* Setup Profile Prompt Dialog for New Clinics */}
       <Dialog open={setupPromptOpen} onOpenChange={setSetupPromptOpen}>
@@ -967,86 +949,6 @@ Wishing you a quick recovery!
             >
               Go to Settings
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 5. What's New / Changelog Dialogue */}
-      <Dialog open={showChangelog} onOpenChange={setShowChangelog}>
-        <DialogContent className="max-w-[600px] w-[95vw] rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl bg-card">
-          <DialogHeader className="p-6 bg-gradient-to-r from-blue-650 to-indigo-650 text-white relative">
-            <DialogTitle className="text-xl font-black flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-yellow-300 animate-pulse" />
-              IN THIS VERSION (v1.4)
-            </DialogTitle>
-            <DialogDescription className="text-blue-100 font-bold text-xs mt-1">
-              Major mobile navigation upgrades, performance refinements, and clinic branding security.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="p-6 overflow-y-auto max-h-[60vh] space-y-4">
-            <div className="space-y-3.5">
-              {[
-                {
-                  icon: Move,
-                  color: 'text-blue-500 bg-blue-50 dark:bg-blue-950/30',
-                  title: 'VisionOS Floating Glass Dock (Draggable)',
-                  desc: 'Freely drag the mobile navigation bar anywhere on screen. Your custom position is saved automatically across browser reloads.'
-                },
-                {
-                  icon: Zap,
-                  color: 'text-amber-500 bg-amber-50 dark:bg-amber-950/30',
-                  title: 'Zero-Lag Navigation & Borderless Design',
-                  desc: 'Removed box outlines and heavy animations for instant, fluid tab transitions with subtle glowing active indicators.'
-                },
-                {
-                  icon: LayoutGrid,
-                  color: 'text-purple-500 bg-purple-50 dark:bg-purple-950/30',
-                  title: 'Ultra-Compact "All Modules" Launcher',
-                  desc: 'Compact 4-column quick module grid that fits completely on screen with zero scrolling required.'
-                },
-                {
-                  icon: Volume2,
-                  color: 'text-rose-500 bg-rose-50 dark:bg-rose-950/30',
-                  title: 'TV Queue Display Default Audio Chime',
-                  desc: 'Audible token call chime active by default with Web Audio context unlock and multi-device responsive layout.'
-                },
-                {
-                  icon: ShieldCheck,
-                  color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30',
-                  title: 'Clinic Branding Lockdown',
-                  desc: 'Clinic branding, name customization, and photo uploads secured exclusively to clinic owners and doctors.'
-                }
-              ].map((item, index) => (
-                <div key={index} className="flex gap-3.5 items-start p-3 bg-muted/30 dark:bg-slate-900/10 border border-border/50 rounded-2xl">
-                  <div className={cn("p-2 rounded-xl shrink-0 mt-0.5", item.color)}>
-                    <item.icon className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h5 className="font-extrabold text-[13px] text-slate-800 dark:text-slate-200">{item.title}</h5>
-                    <p className="text-[11px] font-bold text-muted-foreground mt-0.5 leading-relaxed">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          
-          <DialogFooter className="p-4 border-t bg-muted/10 flex justify-end">
-            <div className="flex gap-3">
-              <Button 
-                variant="outline"
-                onClick={() => { setShowChangelog(false); navigate(slug ? `/${slug}/about` : '/about'); }}
-                className="font-extrabold text-xs uppercase tracking-widest px-5 py-4 rounded-xl"
-              >
-                Full Version History
-              </Button>
-              <Button 
-                onClick={handleAcknowledgeChangelog} 
-                className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs uppercase tracking-widest px-8 py-4 rounded-xl shadow-lg"
-              >
-                Got It!
-              </Button>
-            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

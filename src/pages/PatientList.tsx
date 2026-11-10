@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, User, History, Edit, Printer, Eye, X, Plus, Activity, Loader2, CheckCircle } from 'lucide-react';
+import { Search, User, History, Edit, Printer, Eye, X, Plus, Activity, Loader2, CheckCircle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import PrescriptionTemplate from '@/components/PrescriptionTemplate';
 import { printPrescription } from '@/lib/printPrescription';
@@ -41,7 +41,14 @@ const initialVitals: VitalsForm = { weight: '', blood_pressure: '', pulse_rate: 
 
 export default function PatientList() {
   const { clinic } = useOutletContext<{ clinic: Clinic }>();
-  const { user, profile } = useAuth();
+  const { user, profile, hasRole } = useAuth();
+  const canDeletePatient = Boolean(
+    hasRole('doctor') ||
+    hasRole('owner') ||
+    hasRole('superadmin') ||
+    (clinic?.owner_id && user?.id && clinic.owner_id === user.id)
+  );
+  const [deletingPatient, setDeletingPatient] = useState(false);
   const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
@@ -311,6 +318,44 @@ export default function PatientList() {
     }
   };
 
+  const handleDeletePatient = async () => {
+    if (!selectedPatient || !canDeletePatient) return;
+    const fullName = `${selectedPatient.title ? selectedPatient.title + ' ' : ''}${selectedPatient.name}`;
+    if (!window.confirm(`Permanently delete patient "${fullName}" and all their visits/prescriptions? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingPatient(true);
+    try {
+      const { error: rxErr } = await supabase
+        .from('prescriptions')
+        .delete()
+        .eq('patient_id', selectedPatient.id);
+      if (rxErr) throw rxErr;
+
+      const { error: visitErr } = await supabase
+        .from('visits')
+        .delete()
+        .eq('patient_id', selectedPatient.id);
+      if (visitErr) throw visitErr;
+
+      const { error: ptErr } = await supabase
+        .from('patients')
+        .delete()
+        .eq('id', selectedPatient.id);
+      if (ptErr) throw ptErr;
+
+      toast.success(`Patient "${fullName}" deleted`);
+      setSelectedPatient(null);
+      setEditing(false);
+      fetchPatients();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete patient');
+    } finally {
+      setDeletingPatient(false);
+    }
+  };
+
   const handleAddVisit = async () => {
     if (!selectedPatient || !clinic?.id) return;
 
@@ -461,14 +506,28 @@ export default function PatientList() {
       <Dialog open={!!selectedPatient} onOpenChange={open => !open && setSelectedPatient(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
           <DialogHeader>
-            <div className="flex items-center justify-between pr-8">
+            <div className="flex items-center justify-between pr-8 gap-2">
               <DialogTitle className="text-xl font-bold font-heading truncate">
                 {(selectedPatient?.title ? selectedPatient.title + ' ' : '') + selectedPatient?.name}
               </DialogTitle>
-              <Button size="sm" variant="outline" onClick={() => setEditing(!editing)} className="h-8 gap-1.5 shrink-0 ml-3">
-                <Edit className="w-3.5 h-3.5" />
-                {editing ? 'Cancel' : 'Edit'}
-              </Button>
+              <div className="flex items-center gap-2 shrink-0 ml-3">
+                <Button size="sm" variant="outline" onClick={() => setEditing(!editing)} className="h-8 gap-1.5">
+                  <Edit className="w-3.5 h-3.5" />
+                  {editing ? 'Cancel' : 'Edit'}
+                </Button>
+                {canDeletePatient && !editing && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDeletePatient}
+                    disabled={deletingPatient}
+                    className="h-8 gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:hover:bg-red-950/30"
+                  >
+                    {deletingPatient ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    Delete
+                  </Button>
+                )}
+              </div>
             </div>
           </DialogHeader>
 
