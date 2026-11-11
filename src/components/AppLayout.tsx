@@ -103,6 +103,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   // This keeps the stack clean as [..., Dashboard, CurrentTab].
   // When Back is pressed from any tab, it pops directly to Dashboard!
   const navigateTab = (targetPath: string) => {
+    const isSittingOnModalEntry = Boolean((window.history.state as any)?.__prescriptoModalId);
     if (isMobileMenuOpen) {
       setIsMobileMenuOpen(false);
     }
@@ -111,9 +112,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     const isTargetDashboard = targetPath === '/' || fullPath === dashboardPath || fullPath.endsWith('/dashboard');
 
     if (isTargetDashboard) {
-      navigate(dashboardPath);
+      navigate(dashboardPath, { replace: isSittingOnModalEntry });
     } else {
-      if (!isCurrentlyDashboard) {
+      if (!isCurrentlyDashboard || isSittingOnModalEntry) {
         navigate(fullPath, { replace: true });
       } else {
         navigate(fullPath);

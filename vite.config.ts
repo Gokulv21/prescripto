@@ -23,8 +23,9 @@ export default defineConfig(({ mode }) => ({
       strategies: 'generateSW',
       includeAssets: ['favicon.ico', 'prescriptionLogo.png', 'logo.png'],
       workbox: {
-        skipWaiting: false,
-        clientsClaim: false,
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         maximumFileSizeToCacheInBytes: 5000000,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webmanifest}']
       },

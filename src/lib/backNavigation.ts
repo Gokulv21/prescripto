@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 
 interface ModalEntry {
   id: symbol;
+  modalKey: string;
   onClose: () => void;
   poppedByBack: boolean;
 }
@@ -62,8 +63,10 @@ export function useModalBackHandler(isOpen: boolean, onClose: () => void) {
 
     ensureListener();
 
+    const modalKey = `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const entry: ModalEntry = {
       id: Symbol('modal'),
+      modalKey,
       onClose: () => onCloseRef.current(),
       poppedByBack: false,
     };
@@ -71,7 +74,7 @@ export function useModalBackHandler(isOpen: boolean, onClose: () => void) {
     modalStack.push(entry);
     activeDummyHistoryCount++;
     try {
-      window.history.pushState({ ...(window.history.state || {}), __prescriptoModal: true }, '');
+      window.history.pushState({ ...(window.history.state || {}), __prescriptoModalId: modalKey }, '');
     } catch {
       // Ignore history restrictions in restricted frames
     }
@@ -84,11 +87,17 @@ export function useModalBackHandler(isOpen: boolean, onClose: () => void) {
 
       if (!entry.poppedByBack && activeDummyHistoryCount > 0) {
         activeDummyHistoryCount--;
-        ignoreNextPopCount++;
-        try {
-          window.history.back();
-        } catch {
-          ignoreNextPopCount = Math.max(0, ignoreNextPopCount - 1);
+        // Only pop our dummy history entry if it is STILL the active history state.
+        // If the user navigated to a new route while closing (e.g. clicking a drawer menu item),
+        // history.state no longer matches modalKey, so we must NOT call history.back().
+        const currentModalKey = (window.history.state as any)?.__prescriptoModalId;
+        if (currentModalKey === modalKey) {
+          ignoreNextPopCount++;
+          try {
+            window.history.back();
+          } catch {
+            ignoreNextPopCount = Math.max(0, ignoreNextPopCount - 1);
+          }
         }
       }
     };
