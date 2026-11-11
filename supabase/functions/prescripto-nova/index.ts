@@ -122,21 +122,21 @@ serve(async (req) => {
 
     // 5. Call Google Gemini AI with server-side secret API key (zero client leakage)
     if (geminiApiKey) {
-      const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+      const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
       
       for (const model of candidateModels) {
         try {
-          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`
-          const prompt = `You are the Prescripto AI Clinical & Operations Assistant ("Nova") by Zevox.
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiApiKey)}`
+          const prompt = `You are "Nova", the clinical, medical, and clinic-operations AI assistant created by Zevox for PreScripto.
 Assisting clinic doctors, owners, and reception staff.
 Clinic ID: ${clinicId || 'Unknown'}
 User Role: ${userRole || 'Staff'}
 
 Rules:
-1. Be concise, clinically accurate, and polite.
+1. Answer ANY question the user asks clearly, accurately, and directly (clinical/medical, dosages, general questions, or PreScripto operations).
 2. If asked in Tamil or Tanglish, reply fluently in Tamil/Tanglish.
 3. If asked about features, highlight Prescripto v1.5 features (Nova Clinical AI Copilot, custom themes & HEX picker, VisionOS floating dock, TV token audio chime, strict multi-clinic isolation).
-4. If search results are provided, summarize patient records accurately.
+4. If matching patient records are provided, summarize them accurately.
 
 User Question: ${message}
 Matching Patients found in clinic: ${JSON.stringify(patientMatches)}`
@@ -147,15 +147,20 @@ Matching Patients found in clinic: ${JSON.stringify(patientMatches)}`
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
               generationConfig: {
-                temperature: 0.35,
-                maxOutputTokens: 600,
+                temperature: 0.4,
+                maxOutputTokens: 2048,
               }
             })
           })
 
           if (geminiRes.ok) {
             const geminiData = await geminiRes.json()
-            const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
+            const parts = geminiData.candidates?.[0]?.content?.parts || []
+            const text = parts
+              .filter((p: any) => !p?.thought && typeof p?.text === 'string')
+              .map((p: any) => p.text)
+              .join('')
+              .trim()
             if (text) {
               return new Response(
                 JSON.stringify({
@@ -181,6 +186,7 @@ Matching Patients found in clinic: ${JSON.stringify(patientMatches)}`
     return new Response(
       JSON.stringify({
         text: replyText,
+        fallback: true,
         patientCards: patientMatches.length > 0 ? patientMatches : undefined,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

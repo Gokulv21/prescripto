@@ -337,7 +337,7 @@ export const PrescriptoNova: React.FC<PrescriptoNovaProps> = ({ clinicId }) => {
                       type="password"
                       value={apiKeyInput}
                       onChange={e => setApiKeyInput(e.target.value)}
-                      placeholder="AIzaSy..."
+                      placeholder="AQ... or AIzaSy..."
                       className="flex-1 h-8 text-xs px-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono"
                     />
                     <button

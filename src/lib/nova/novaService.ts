@@ -43,11 +43,8 @@ export type CopilotContext = NovaContext;
  * Gets the active Gemini API key from environment or local storage
  */
 export function getGeminiApiKey(): string {
-  return (
-    import.meta.env.VITE_GEMINI_API_KEY ||
-    localStorage.getItem('prescripto_gemini_api_key') ||
-    ''
-  ).trim();
+  const localKey = typeof window !== 'undefined' ? (localStorage.getItem('prescripto_gemini_api_key') || '') : '';
+  return (localKey || import.meta.env.VITE_GEMINI_API_KEY || '').trim();
 }
 
 /**
@@ -109,49 +106,32 @@ function extractPatientSearchTerm(input: string): string {
  * Detects if the query is asking about a specific patient
  */
 function isPatientLookupIntent(input: string): boolean {
-  const q = input.toLowerCase();
+  const q = input.toLowerCase().trim();
 
-  // If asking about analytics or software features -> NEVER a patient search!
+  // If asking about analytics or software/clinical features -> NEVER a patient search!
   if (isAnalyticsIntent(q)) return false;
 
-  const isSoftwareTopic = (
-    q.includes('feature') ||
-    q.includes('pudhu') ||
-    q.includes('v1.5') ||
-    q.includes('v1.4') ||
-    q.includes('update') ||
-    q.includes('changelog') ||
-    q.includes('how to') ||
-    q.includes('epdi') ||
-    q.includes('chime') ||
-    q.includes('bell') ||
-    q.includes('sound') ||
-    q.includes('print queue') ||
-    q.includes('tv display') ||
-    q.includes('dock') ||
-    q.includes('launcher') ||
-    q.includes('prescription guide') ||
-    q.includes('explain')
+  const isClinicalOrGeneralQuestion = (
+    /\b(how to|what is|what are|why|when|treatment|medicine|tablet|syrup|dosage|dose|diet|fever|diabetes|diabetic|bp|hypertension|asthma|pain|allergy|infection|pregnant|symptom|side effect|guide|steps|explain|difference|meaning|epdi|yen|enna panrathu|enna medicine)\b/i.test(q)
   );
 
-  if (isSoftwareTopic && !q.includes('patient') && !q.includes('நோயாளி')) {
+  // Explicit lookup phrases
+  const isExplicitPatientCommand = (
+    /^(find|search|lookup|open|show|fetch|get)\s+(patient|record|details)\b/i.test(q) ||
+    /\b(search patient|find patient|lookup patient|patient details|patient record|patient profile|patient history|details for patient|details of patient|give me the details for the patient|patient pathi|patient oda)\b/i.test(q) ||
+    /\b(mr\.|mrs\.|miss\.|mast\.|baby)\s+[a-z]{2,}/i.test(q)
+  );
+
+  if (!isExplicitPatientCommand) {
     return false;
   }
 
-  // Must have clear patient indicator
-  return (
-    q.includes('patient') ||
-    q.includes('நோயாளி') ||
-    q.includes('whose name is') ||
-    q.includes('patient pathi') ||
-    q.includes('patient details') ||
-    q.includes('details for') ||
-    q.includes('details of') ||
-    /\b(mr\.|mrs\.|miss\.|dr\.|master\.|baby\.)\s+[a-z]+/i.test(q) ||
-    q.startsWith('find patient') ||
-    q.startsWith('search patient') ||
-    q.startsWith('give me the details for the patient')
-  );
+  // If it clearly asks a medical/operational question like "how to delete patient history", let AI answer
+  if (isClinicalOrGeneralQuestion && !/^(find|search|lookup)\s+patient\b/i.test(q)) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -197,6 +177,60 @@ function isTamilRequested(input: string): boolean {
   );
 }
 
+interface GeminiResult {
+  text: string | null;
+  error?: string;
+}
+
+/**
+ * Extracts text parts cleanly from Gemini response (skipping internal thinking parts on 2.5 models)
+ */
+function extractGeminiText(data: any): string {
+  const parts = data?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return '';
+  return parts
+    .filter((p: any) => !p?.thought && typeof p?.text === 'string')
+    .map((p: any) => p.text)
+    .join('')
+    .trim();
+}
+
+/**
+ * Builds valid alternating Gemini conversation turns starting strictly with a 'user' turn.
+ */
+function buildGeminiContents(history: NovaMessage[], userPrompt: string) {
+  const cleanHistory = history
+    .filter(m => m && m.text && !m.id?.startsWith('init-') && !m.id?.startsWith('err-'))
+    .slice(-8)
+    .map(m => ({
+      role: m.sender === 'user' ? 'user' : 'model',
+      text: m.text.trim()
+    }));
+
+  // Drop leading 'model' turns so contents[0] is always 'user' (required by Gemini API)
+  while (cleanHistory.length > 0 && cleanHistory[0].role !== 'user') {
+    cleanHistory.shift();
+  }
+
+  // Ensure strict alternating user / model roles
+  const turns: { role: 'user' | 'model'; parts: { text: string }[] }[] = [];
+  for (const item of cleanHistory) {
+    if (turns.length > 0 && turns[turns.length - 1].role === item.role) {
+      turns[turns.length - 1].parts[0].text += `\n${item.text}`;
+    } else {
+      turns.push({ role: item.role as 'user' | 'model', parts: [{ text: item.text }] });
+    }
+  }
+
+  if (turns.length > 0 && turns[turns.length - 1].role === 'user') {
+    turns[turns.length - 1].parts[0].text += `\n${userPrompt}`;
+  } else {
+    turns.push({ role: 'user', parts: [{ text: userPrompt }] });
+  }
+
+  return turns;
+}
+
 /**
  * Calls Gemini via REST API with multi-model fallback and strict timeout
  */
@@ -205,26 +239,25 @@ async function callGeminiAI(
   userPrompt: string,
   systemInstructions: string,
   history: NovaMessage[] = []
-): Promise<string | null> {
-  // Official active Google Gemini models with fallback
+): Promise<GeminiResult> {
+  // Active Google Gemini models ordered from fastest/newest to legacy fallback
   const candidateModels = [
-    'gemini-1.5-flash',
-    'gemini-2.0-flash',
     'gemini-2.5-flash',
-    'gemini-1.5-pro'
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+    'gemini-1.5-flash'
   ];
 
-  const formattedHistory = history.slice(-6).map(m => ({
-    role: m.sender === 'user' ? 'user' : 'model',
-    parts: [{ text: m.text }]
-  }));
+  const contents = buildGeminiContents(history, userPrompt);
+  let lastError = '';
 
   for (const model of candidateModels) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 9000);
+    const timer = setTimeout(() => controller.abort(), 14000);
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
       const response = await fetch(url, {
         method: 'POST',
@@ -234,16 +267,10 @@ async function callGeminiAI(
           systemInstruction: {
             parts: [{ text: systemInstructions }]
           },
-          contents: [
-            ...formattedHistory,
-            {
-              role: 'user',
-              parts: [{ text: userPrompt }]
-            }
-          ],
+          contents,
           generationConfig: {
-            temperature: 0.35,
-            maxOutputTokens: 800,
+            temperature: 0.4,
+            maxOutputTokens: 2048,
           }
         })
       });
@@ -252,18 +279,25 @@ async function callGeminiAI(
 
       if (response.ok) {
         const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = extractGeminiText(data);
         if (text) {
-          return text;
+          return { text };
         }
       } else {
         const errJson = await response.json().catch(() => ({}));
+        const errMsg = errJson?.error?.message || `HTTP ${response.status}`;
+        lastError = `${model}: ${errMsg}`;
         console.warn(`[Nova AI] ${model} returned ${response.status}:`, errJson);
 
-        // Fallback for models or API keys that don't support systemInstruction field directly
+        // If key itself is invalid or blocked (401/403), don't waste requests looping models
+        if (response.status === 401 || response.status === 403) {
+          return { text: null, error: errMsg };
+        }
+
+        // Fallback if a model rejects systemInstruction or multi-turn format
         if (response.status === 400) {
           const fallbackController = new AbortController();
-          const fallbackTimer = setTimeout(() => fallbackController.abort(), 8000);
+          const fallbackTimer = setTimeout(() => fallbackController.abort(), 12000);
           try {
             const fallbackRes = await fetch(url, {
               method: 'POST',
@@ -277,16 +311,23 @@ async function callGeminiAI(
                   }
                 ],
                 generationConfig: {
-                  temperature: 0.35,
-                  maxOutputTokens: 800,
+                  temperature: 0.4,
+                  maxOutputTokens: 2048,
                 }
               })
             });
             clearTimeout(fallbackTimer);
             if (fallbackRes.ok) {
               const fbData = await fallbackRes.json();
-              const fbText = fbData.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (fbText) return fbText;
+              const fbText = extractGeminiText(fbData);
+              if (fbText) return { text: fbText };
+            } else {
+              const fbErr = await fallbackRes.json().catch(() => ({}));
+              const fbMsg = fbErr?.error?.message || `HTTP ${fallbackRes.status}`;
+              lastError = fbMsg;
+              if (fbMsg.toLowerCase().includes('api key')) {
+                return { text: null, error: fbMsg };
+              }
             }
           } catch {
             clearTimeout(fallbackTimer);
@@ -295,11 +336,12 @@ async function callGeminiAI(
       }
     } catch (err: any) {
       clearTimeout(timer);
+      lastError = err?.message || 'Network timeout';
       console.warn(`[Nova AI] Model ${model} request failed or timed out:`, err?.message || err);
     }
   }
 
-  return null;
+  return { text: null, error: lastError || 'Unable to reach Gemini AI service' };
 }
 
 // Security Guardrails: Client-side query rate limiter to prevent budget drain & spam
@@ -381,59 +423,66 @@ export async function sendNovaMessage(
   if (isPatientLookupIntent(query) && !isAnalyticsIntent(query)) {
     const searchTerm = extractPatientSearchTerm(query);
     if (!searchTerm || searchTerm.length < 2) {
-      return {
-        id: `msg-${Date.now()}`,
-        sender: 'assistant',
-        text: prefersTamil
-          ? 'தயவுசெய்து நோயாளியின் பெயர், தொலைபேசி எண் அல்லது பதிவு எண்ணை குறிப்பிடவும் (உதா: "Search patient Ram").'
-          : 'Please specify the patient name, phone number, or registration ID to search (e.g., "Search patient Ram").',
-        timestamp: new Date()
-      };
+      if (!apiKey) {
+        return {
+          id: `msg-${Date.now()}`,
+          sender: 'assistant',
+          text: prefersTamil
+            ? 'தயவுசெய்து நோயாளியின் பெயர், தொலைபேசி எண் அல்லது பதிவு எண்ணை குறிப்பிடவும் (உதா: "Search patient Ram").'
+            : 'Please specify the patient name, phone number, or registration ID to search (e.g., "Search patient Ram").',
+          timestamp: new Date()
+        };
+      }
+    } else {
+      const matches = await searchPatientsTool(clinicId, searchTerm);
+
+      if (matches.length === 1) {
+        const profile = await getPatientFullProfileTool(matches[0].id, clinicId);
+        return {
+          id: `msg-${Date.now()}`,
+          sender: 'assistant',
+          text: prefersTamil
+            ? `**${matches[0].name}** க்கான மருத்துவ விவரங்கள்:`
+            : `Found 1 exact match for **${matches[0].name}**. Here is the clinical summary:`,
+          timestamp: new Date(),
+          patientDetail: profile || undefined,
+          actionLink: {
+            label: prefersTamil ? 'ஆலோசனை மேஜையை திற' : 'Open Consultation Desk',
+            path: prefixPath('/consultation')
+          }
+        };
+      }
+
+      if (matches.length > 1) {
+        return {
+          id: `msg-${Date.now()}`,
+          sender: 'assistant',
+          text: prefersTamil
+            ? `**"${searchTerm}"** என்ற பெயரில் **${matches.length} நோயாளிகள்** கண்டறியப்பட்டுள்ளனர். தேவையான நபரை தேர்ந்தெடுக்கவும்:`
+            : `Found **${matches.length} patients** matching **"${searchTerm}"**. Please select the matching patient below:`,
+          timestamp: new Date(),
+          patientCards: matches
+        };
+      }
+
+      // If explicit "search patient ..." / "find patient ..." returned 0 matches, tell the user;
+      // otherwise let Gemini AI answer in case it was a clinical/general question!
+      const isExplicitSearch = /^(find|search|lookup)\s+patient\b/i.test(query.trim());
+      if (!apiKey || isExplicitSearch) {
+        return {
+          id: `msg-${Date.now()}`,
+          sender: 'assistant',
+          text: prefersTamil
+            ? `உங்கள் கிளினிக்கில் **"${searchTerm}"** என்ற பெயரில் எந்த நோயாளியும் கிடைக்கவில்லை. எழுத்துப் பிழையை சரிபார்க்கவும் அல்லது நோயாளிகள் பட்டியலில் தேடவும்.`
+            : `No patient records found matching **"${searchTerm}"** in this clinic. Please verify spelling or search by registration ID.`,
+          timestamp: new Date(),
+          actionLink: {
+            label: prefersTamil ? 'நோயாளிகள் பட்டியலை திற' : 'Open Patients Directory',
+            path: prefixPath('/patients')
+          }
+        };
+      }
     }
-
-    const matches = await searchPatientsTool(clinicId, searchTerm);
-
-    if (matches.length === 0) {
-      return {
-        id: `msg-${Date.now()}`,
-        sender: 'assistant',
-        text: prefersTamil
-          ? `உங்கள் கிளினிக்கில் **"${searchTerm}"** என்ற பெயரில் எந்த நோயாளியும் கிடைக்கவில்லை. எழுத்துப் பிழையை சரிபார்க்கவும் அல்லது நோயாளிகள் பட்டியலில் தேடவும்.`
-          : `No patient records found matching **"${searchTerm}"** in this clinic. Please verify spelling or search by registration ID.`,
-        timestamp: new Date(),
-        actionLink: {
-          label: prefersTamil ? 'நோயாளிகள் பட்டியலை திற' : 'Open Patients Directory',
-          path: prefixPath('/patients')
-        }
-      };
-    }
-
-    if (matches.length === 1) {
-      const profile = await getPatientFullProfileTool(matches[0].id, clinicId);
-      return {
-        id: `msg-${Date.now()}`,
-        sender: 'assistant',
-        text: prefersTamil
-          ? `**${matches[0].name}** க்கான மருத்துவ விவரங்கள்:`
-          : `Found 1 exact match for **${matches[0].name}**. Here is the clinical summary:`,
-        timestamp: new Date(),
-        patientDetail: profile || undefined,
-        actionLink: {
-          label: prefersTamil ? 'ஆலோசனை மேஜையை திற' : 'Open Consultation Desk',
-          path: prefixPath('/consultation')
-        }
-      };
-    }
-
-    return {
-      id: `msg-${Date.now()}`,
-      sender: 'assistant',
-      text: prefersTamil
-        ? `**"${searchTerm}"** என்ற பெயரில் **${matches.length} நோயாளிகள்** கண்டறியப்பட்டுள்ளனர். தேவையான நபரை தேர்ந்தெடுக்கவும்:`
-        : `Found **${matches.length} patients** matching **"${searchTerm}"**. Please select the matching patient below:`,
-      timestamp: new Date(),
-      patientCards: matches
-    };
   }
 
   // 3. Build Real-time Operational Context for Gemini AI Reasoning
@@ -460,33 +509,32 @@ PRESCRIPTO APP MODULES & URLS:
 - /about : System details and v1.5 changelog.
 `;
 
-  // 4. If Gemini API Key is configured, use Real AI LLM Reasoning with Live Data
+  // 4. If Gemini API Key is configured, use Real AI LLM Reasoning for ANY question
+  let geminiFailureReason = '';
   if (apiKey) {
-    const systemPrompt = `You are "Nova", the intelligent clinical & operations AI created by Zevox.
-You power PreScripto (a flagship healthcare product by Zevox for modern hospitals and healthcare providers).
+    const systemPrompt = `You are "Nova", the intelligent clinical, medical, and clinic-operations AI assistant created by Zevox for PreScripto.
 
 ${clinicContextText}
 
 PRIMARY INSTRUCTIONS:
-- Directly answer the user's question without repetitive introductory boilerplate (do NOT start with "I am Nova by Zevox").
+- Answer ANY question the user asks clearly, accurately, and directly (whether clinical/medical, pharmacology/dosages, differential diagnosis, general knowledge, Tamil/Tanglish/English conversation, or PreScripto software operations & live clinic stats). Never refuse a valid question or reply with generic app-navigation boilerplate unless the user actually asked about PreScripto app modules.
+- Do NOT start responses with repetitive introductory boilerplate (do NOT say "I am Nova by Zevox").
 - MULTILINGUAL MASTERY:
   * If the user writes in Tamil or Tanglish (e.g. "staff password marandhuta enna panradhu", "tamil la sollu", "enaku nethu ethana patients vandhanga"): Respond fluently, warmly, and naturally in Tamil (தமிழ்) or conversational Tanglish matching their tone!
   * If the user writes in English: Respond in clean, professional, structured English.
-- OPERATIONAL & CLINIC MANAGEMENT QUESTIONS:
-  * If asked about staff forgot password / password reset: Explain that the Clinic Owner can reset or re-create credentials from /users, or staff can use the Forgot Password link on the login screen.
-  * If asked about user roles, adding doctors/staff, or access control: Explain Owner vs Doctor vs Staff permissions at /users.
-  * If asked about clinic branding, letterhead, phone, address, or fees: Refer them to /settings and /profile.
-  * If asked about appearance, colors, or dark mode: Explain per-device themes and custom hex color picker at /settings.
-  * If asked about patient entry, vitals, queues, printing, or TV display: Give concrete operational steps and recommend the right path (/nurse, /consultation, /print, /display, /analytics).
-- CLINICAL & MEDICAL QUESTIONS:
-  * Answer with clinical accuracy, standard dosages, triage red flags, and precautions.
+- WHEN ASKED ABOUT PRESCRIPTO APP OPERATIONS:
+  * Staff password reset / user roles: Clinic Owner can manage/reset under /users, or use Forgot Password on the login screen.
+  * Clinic branding, letterhead, phone, address, themes, colors: Refer to /settings and /profile.
+  * Patient registration / vitals / queue / printing / TV display / analytics: Give concrete steps referencing /nurse, /consultation, /print, /display, /analytics, or /patients.
+- WHEN ASKED CLINICAL, MEDICAL, OR GENERAL QUESTIONS:
+  * Provide thorough, medically sound guidance (standard adult/pediatric considerations, red flags, precautions, or general explanation) tailored to the question asked.
 - FORMATTING:
-  * Use bold headers, bullet lists, and markdown tables when comparing or presenting structured data.`;
+  * Use clean bold headers, bullet lists, and markdown tables when helpful.`;
 
-    const aiResponse = await callGeminiAI(apiKey, query, systemPrompt, history);
-    if (aiResponse) {
+    const aiResult = await callGeminiAI(apiKey, query, systemPrompt, history);
+    if (aiResult.text) {
       let actionLink: { label: string; path: string } | undefined;
-      const lowerAi = aiResponse.toLowerCase();
+      const lowerAi = aiResult.text.toLowerCase();
 
       if (lowerAi.includes('user') || lowerAi.includes('password') || lowerAi.includes('staff') || lowerQuery.includes('user') || lowerQuery.includes('password') || lowerQuery.includes('staff') || lowerQuery.includes('doctor') || lowerQuery.includes('role')) {
         actionLink = { label: prefersTamil ? 'பணியாளர் மேலாண்மை' : 'Open Team Management', path: prefixPath('/users') };
@@ -507,33 +555,34 @@ PRIMARY INSTRUCTIONS:
       return {
         id: `msg-${Date.now()}`,
         sender: 'assistant',
-        text: aiResponse,
+        text: aiResult.text,
         timestamp: new Date(),
         actionLink
       };
     }
-  } else {
-    // Try calling Supabase Edge Function 'prescripto-nova' (server-side Gemini with zero client secrets)
-    try {
-      const { data: edgeRes, error: edgeErr } = await supabase.functions.invoke('prescripto-nova', {
-        body: {
-          message: query,
-          clinicId: clinicId,
-          userRole: context.userRole || 'doctor'
-        }
-      });
-      if (!edgeErr && edgeRes?.text) {
-        return {
-          id: `msg-${Date.now()}`,
-          sender: 'assistant',
-          text: edgeRes.text,
-          timestamp: new Date(),
-          patientCards: edgeRes.patientCards
-        };
+    geminiFailureReason = aiResult.error || 'Gemini AI request failed';
+  }
+
+  // Try Supabase Edge Function 'prescripto-nova' (when no client key or if direct call failed)
+  try {
+    const { data: edgeRes, error: edgeErr } = await supabase.functions.invoke('prescripto-nova', {
+      body: {
+        message: query,
+        clinicId: clinicId,
+        userRole: context.userRole || 'doctor'
       }
-    } catch (edgeCallErr) {
-      console.warn('Edge function nova fallback notice:', edgeCallErr);
+    });
+    if (!edgeErr && edgeRes?.text && !edgeRes?.fallback) {
+      return {
+        id: `msg-${Date.now()}`,
+        sender: 'assistant',
+        text: edgeRes.text,
+        timestamp: new Date(),
+        patientCards: edgeRes.patientCards
+      };
     }
+  } catch (edgeCallErr) {
+    console.warn('Edge function nova fallback notice:', edgeCallErr);
   }
 
   // 5. Fallback: Intelligent Deterministic Analytics Engine (Offline / API failure)
@@ -667,7 +716,20 @@ PRIMARY INSTRUCTIONS:
     };
   }
 
-  // Contextual Smart Guidance for Any Other Query
+  // If an API key WAS provided but Gemini failed for a general/open-ended question,
+  // tell the user clearly why the AI call failed instead of masking it with predefined app tips.
+  if (apiKey && geminiFailureReason) {
+    return {
+      id: `err-${Date.now()}`,
+      sender: 'assistant',
+      text: prefersTamil
+        ? `⚠️ **Gemini AI பதில் பெற முடியவில்லை:**\n\`${geminiFailureReason}\`\n\nதயவுசெய்து Nova தலைப்பில் உள்ள **Key** ஐகானை அழுத்தி உங்கள் Gemini API Key சரியானதா என சரிபார்க்கவும் (அல்லது \`.env\` மாற்றியிருந்தால் dev server / build-ஐ restart செய்யவும்).`
+        : `⚠️ **Gemini AI could not respond:**\n\`${geminiFailureReason}\`\n\nPlease verify your Gemini API key using the **Key** icon in the Nova header (if you updated \`.env\`, restart \`npm run dev\` or rebuild so Vite loads the new key).`,
+      timestamp: new Date()
+    };
+  }
+
+  // Contextual Smart Guidance for Any Other Query (when no Gemini key is connected)
   if (prefersTamil) {
     return {
       id: `msg-${Date.now()}`,
