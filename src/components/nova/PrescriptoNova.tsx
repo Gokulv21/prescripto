@@ -4,11 +4,7 @@ import {
   X, 
   Send, 
   Trash2, 
-  ArrowRight,
-  Key,
-  Sparkles,
-  Check,
-  ExternalLink
+  ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -16,11 +12,8 @@ import { useAuth } from '@/lib/auth';
 import { 
   NovaMessage, 
   sendNovaMessage, 
-  selectPatientProfile,
-  getGeminiApiKey,
-  setGeminiApiKey
+  selectPatientProfile
 } from '@/lib/nova/novaService';
-import { toast } from 'sonner';
 import { PatientSelectCard } from './PatientSelectCard';
 import { PatientSummaryCard } from './PatientSummaryCard';
 import { RichMarkdownContent } from './RichMarkdownContent';
@@ -107,21 +100,6 @@ export const PrescriptoNova: React.FC<PrescriptoNovaProps> = ({ clinicId }) => {
 
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [showKeyModal, setShowKeyModal] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState(() => getGeminiApiKey());
-  const [hasApiKey, setHasApiKey] = useState(() => Boolean(getGeminiApiKey()));
-
-  const handleSaveApiKey = () => {
-    setGeminiApiKey(apiKeyInput.trim());
-    const saved = Boolean(apiKeyInput.trim());
-    setHasApiKey(saved);
-    setShowKeyModal(false);
-    if (saved) {
-      toast.success('Gemini AI key connected! Full multi-lingual AI reasoning enabled.');
-    } else {
-      toast.info('Gemini AI key removed. Using built-in local clinical intelligence.');
-    }
-  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -275,18 +253,6 @@ export const PrescriptoNova: React.FC<PrescriptoNovaProps> = ({ clinicId }) => {
               </div>
 
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setShowKeyModal(v => !v)}
-                  title={hasApiKey ? "Gemini AI Connected (Click to manage)" : "Connect Gemini AI Key (Optional)"}
-                  className={`p-1.5 rounded-lg transition-colors flex items-center gap-1 text-[10px] font-bold ${
-                    hasApiKey
-                      ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
-                      : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  <Key className="w-3.5 h-3.5" />
-                  {hasApiKey && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
-                </button>
 
                 <button
                   onClick={handleClearChat}
@@ -305,51 +271,6 @@ export const PrescriptoNova: React.FC<PrescriptoNovaProps> = ({ clinicId }) => {
                 </button>
               </div>
             </div>
-
-            {/* Optional Gemini API Key Drawer */}
-            <AnimatePresence>
-              {showKeyModal && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-3 shrink-0"
-                >
-                  <div className="flex items-center justify-between pb-1.5">
-                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-                      Google Gemini AI Key
-                    </span>
-                    <a
-                      href="https://aistudio.google.com/app/apikey"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[10px] text-blue-600 hover:underline flex items-center gap-0.5"
-                    >
-                      Get Free Key <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
-                  </div>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-2">
-                    Enter your Gemini API key for open-domain clinical discussions, prescription checking, and fluent multilingual AI.
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="password"
-                      value={apiKeyInput}
-                      onChange={e => setApiKeyInput(e.target.value)}
-                      placeholder="AQ... or AIzaSy..."
-                      className="flex-1 h-8 text-xs px-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono"
-                    />
-                    <button
-                      onClick={handleSaveApiKey}
-                      className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold shadow-2xs"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
 
             {/* Quick Prompt Suggestions - Scrollbar fully hidden */}
             <div className="px-3 py-2 border-b border-slate-200/50 dark:border-slate-800/50 bg-slate-50/50 dark:bg-slate-950/40 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] flex items-center gap-1.5 shrink-0">

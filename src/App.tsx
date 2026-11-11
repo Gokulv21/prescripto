@@ -415,7 +415,7 @@ const App = () => (
                     <Route path="consultation" element={<ProtectedRoute allowedRoles={['doctor', 'superadmin', 'owner']}><DoctorConsultation /></ProtectedRoute>} />
                     <Route path="print" element={<ProtectedRoute allowedRoles={['staff', 'doctor', 'superadmin', 'owner']}><PrintQueue /></ProtectedRoute>} />
                     <Route path="patients" element={<ProtectedRoute allowedRoles={['staff', 'doctor', 'superadmin', 'owner']}><PatientList /></ProtectedRoute>} />
-                    <Route path="analytics" element={<ProtectedRoute allowedRoles={['doctor', 'superadmin', 'owner']}><Analytics /></ProtectedRoute>} />
+                    <Route path="analytics" element={<ProtectedRoute allowedRoles={['superadmin', 'owner']}><Analytics /></ProtectedRoute>} />
                     <Route path="profile" element={<ProtectedRoute allowedRoles={['doctor', 'superadmin', 'owner']}><DoctorProfile /></ProtectedRoute>} />
                     <Route path="settings" element={<ProtectedRoute allowedRoles={['doctor', 'superadmin', 'owner']}><ClinicSettings /></ProtectedRoute>} />
                     <Route path="users" element={<ProtectedRoute allowedRoles={['superadmin', 'owner']}><UserManagement /></ProtectedRoute>} />

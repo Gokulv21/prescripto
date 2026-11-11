@@ -3,8 +3,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 // 1. Strict CORS Allowlist
 const ALLOWED_ORIGIN_PATTERNS = [
-  /^http:\/\/localhost(:\d+)?$/,
-  /^http:\/\/127\.0\.0\.1(:\d+)?$/,
+  /^https?:\/\/localhost(:\d+)?$/,
+  /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
+  /^capacitor:\/\/localhost$/,
+  /^ionic:\/\/localhost$/,
   /^https:\/\/([a-zA-Z0-9-]+\.)?github\.io$/,
   /^https:\/\/([a-zA-Z0-9-]+\.)?vercel\.app$/,
 ]
@@ -82,9 +84,9 @@ serve(async (req) => {
       })
     }
 
-    // Input length limit: Cap to 500 characters to prevent token exhaustion attacks
-    if (message.length > 500) {
-      return new Response(JSON.stringify({ error: 'Query exceeds max length limit of 500 characters.' }), {
+    // Input length limit: Cap to 2000 characters to prevent token exhaustion attacks
+    if (message.length > 2000) {
+      return new Response(JSON.stringify({ error: 'Query exceeds max length limit of 2000 characters.' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -105,10 +107,18 @@ serve(async (req) => {
       )
     }
 
-    // 4. Query patients with strict clinic multi-tenant isolation
+    // 4. Explicit patient lookup with strict clinic multi-tenant isolation
+    const qLower = message.toLowerCase().trim()
+    const isExplicitPatientLookup =
+      /^(find|search|lookup|open|show|fetch|get)\s+(patient|record|details)\b/i.test(qLower) ||
+      /\b(search patient|find patient|lookup patient|patient details|patient record|patient profile|patient history|details for patient|details of patient|patient pathi|patient oda)\b/i.test(qLower)
+
     let patientMatches: any[] = []
-    if (message && clinicId && typeof clinicId === 'string') {
-      const clean = message.replace(/(search|patient|find|details for)/gi, '').trim()
+    if (isExplicitPatientLookup && clinicId && typeof clinicId === 'string') {
+      const clean = message
+        .replace(/\b(search|patient|find|lookup|open|show|fetch|get|details|record|history|profile|for|of|the|give|me|please|pathi|oda|venum)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
       if (clean.length >= 2) {
         const { data } = await supabaseClient
           .from('patients')
@@ -121,19 +131,19 @@ serve(async (req) => {
     }
 
     // 5. Call Google Gemini AI with server-side secret API key (zero client leakage)
+    let lastGeminiError = ''
     if (geminiApiKey) {
-      const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
+      const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-flash-lite']
 
-      const systemInstruction = `You are "Nova", the clinical, medical, and clinic-operations AI assistant created by Zevox for PreScripto.
-Assisting clinic doctors, owners, and reception staff.
-Clinic ID: ${clinicId || 'Unknown'}
+      const systemInstruction = `You are Google Gemini acting as "Nova", a helpful clinical, medical, and clinic-operations AI assistant for PreScripto.
 User Role: ${userRole || 'Staff'}
-${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(0, 2000)}\n` : ''}
+
 Rules:
-1. Answer ANY question the user asks clearly, accurately, and directly (clinical/medical, dosages, general questions, or PreScripto operations).
-2. If asked in Tamil or Tanglish, reply fluently in Tamil/Tanglish.
-3. If asked about features, highlight Prescripto v1.5 features (Nova Clinical AI Copilot, custom themes & HEX picker, VisionOS floating dock, TV token audio chime, strict multi-clinic isolation).
-4. If matching patient records are provided, summarize them accurately.`
+1. Answer ANY question directly, accurately, and naturally — just as Google Gemini would answer it (clinical/medical, pharmacology/dosing, general knowledge, coding, daily topics, or PreScripto operations).
+2. NEVER inject unrelated PreScripto UI instructions, clinic boilerplate, or navigation steps unless the user specifically asked about PreScripto software or their clinic/patients.
+3. Match the user's language naturally (Tamil script, Tanglish, or English).
+4. Use the PreScripto context below ONLY when relevant to a clinic/patient/software question:
+${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(0, 2000)}\n` : ''}`
 
       const turns: { role: 'user' | 'model'; parts: { text: string }[] }[] = []
       if (Array.isArray(history)) {
@@ -156,12 +166,12 @@ Rules:
       } else {
         turns.push({ role: 'user', parts: [{ text: userPrompt }] })
       }
-      
+
       for (const model of candidateModels) {
         try {
           const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiApiKey)}`
 
-          const geminiRes = await fetch(geminiUrl, {
+          let geminiRes = await fetch(geminiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -173,6 +183,26 @@ Rules:
               }
             })
           })
+
+          // Fallback without systemInstruction if model rejects it with HTTP 400
+          if (!geminiRes.ok && geminiRes.status === 400) {
+            const fallbackTurns = turns.map((t, idx) =>
+              idx === 0
+                ? { role: t.role, parts: [{ text: `${systemInstruction}\n\nUSER QUERY:\n${t.parts[0].text}` }] }
+                : t
+            )
+            geminiRes = await fetch(geminiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: fallbackTurns,
+                generationConfig: {
+                  temperature: 0.4,
+                  maxOutputTokens: 2048,
+                }
+              })
+            })
+          }
 
           if (geminiRes.ok) {
             const geminiData = await geminiRes.json()
@@ -191,14 +221,24 @@ Rules:
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
               )
             }
+            lastGeminiError = `Empty response from ${model}`
+          } else {
+            const errJson = await geminiRes.json().catch(() => ({}))
+            const errMsg = errJson?.error?.message || `HTTP ${geminiRes.status}`
+            lastGeminiError = `${model}: ${errMsg}`
+            if (geminiRes.status === 403 || geminiRes.status === 401) {
+              break
+            }
           }
-        } catch {
-          // Model fallback loop
+        } catch (err: any) {
+          lastGeminiError = err?.message || `Network failure calling ${model}`
         }
       }
+    } else {
+      lastGeminiError = 'GEMINI_API_KEY secret is not configured in Supabase Edge Functions'
     }
 
-    // 6. Fast deterministic fallback if Gemini key is not configured or temporary model outage
+    // 6. Diagnostic fallback if Gemini key is not configured or all models failed
     let replyText = `Received your query: "${message}".`
     if (patientMatches.length > 0) {
       replyText = `Found ${patientMatches.length} patient record(s) matching your request in this clinic.`
@@ -208,6 +248,7 @@ Rules:
       JSON.stringify({
         text: replyText,
         fallback: true,
+        geminiError: lastGeminiError || undefined,
         patientCards: patientMatches.length > 0 ? patientMatches : undefined,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

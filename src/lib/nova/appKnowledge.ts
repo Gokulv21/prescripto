@@ -57,7 +57,7 @@ export const APP_MODULES: AppModuleInfo[] = [
     id: 'analytics',
     name: 'Analytics & Reports',
     path: '/analytics',
-    roles: ['doctor', 'owner', 'superadmin'],
+    roles: ['owner', 'superadmin'],
     description: 'Clinical and business intelligence reports including patient visit trends, peak hours, top diagnoses, and medicine statistics.',
     keywords: ['analytics', 'reports', 'charts', 'revenue', 'trends', 'statistics', 'metrics']
   },
