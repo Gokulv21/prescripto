@@ -9,7 +9,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   roles: AppRole[];
-  profile: { id?: string; full_name: string; clinic_id?: string; role?: string; is_superadmin?: boolean; avatar_url?: string; registration_id?: string; qualifications?: string } | null;
+  profile: { id?: string; full_name: string; clinic_id?: string; role?: string; is_superadmin?: boolean; avatar_url?: string; registration_id?: string; qualifications?: string; bio?: string; signature_data?: string } | null;
   loading: boolean;
   error: string | null;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
@@ -34,15 +34,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [roles, setRoles] = useState<AppRole[]>(() => getSafeStorageItem<AppRole[]>('app_roles', []));
-  const [profile, setProfile] = useState<{ id?: string; full_name: string; clinic_id?: string; role?: string; is_superadmin?: boolean; avatar_url?: string; registration_id?: string; qualifications?: string } | null>(() => 
-    getSafeStorageItem<{ id?: string; full_name: string; clinic_id?: string; role?: string; is_superadmin?: boolean; avatar_url?: string; registration_id?: string; qualifications?: string } | null>('user_profile', null)
+  const [profile, setProfile] = useState<{ id?: string; full_name: string; clinic_id?: string; role?: string; is_superadmin?: boolean; avatar_url?: string; registration_id?: string; qualifications?: string; bio?: string; signature_data?: string } | null>(() => 
+    getSafeStorageItem<{ id?: string; full_name: string; clinic_id?: string; role?: string; is_superadmin?: boolean; avatar_url?: string; registration_id?: string; qualifications?: string; bio?: string; signature_data?: string } | null>('user_profile', null)
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const lastFetchedId = useRef<string | null>(null);
   const isFetching = useRef(false);
 
-  const fetchUserData = async (userId: string, force = false) => {
+  const fetchUserData = async (userId: string, force = false, background = false) => {
     if (!userId) {
       setLoading(false);
       return;
@@ -56,7 +56,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     isFetching.current = true;
-    setLoading(true);
+    // Never show full-screen loading spinner during background token refreshes (prevents unmounting Consultation canvas)
+    if (!background && roles.length === 0) {
+      setLoading(true);
+    }
     setError(null);
 
     // Hard 6-second timeout promise to prevent infinite hanging
@@ -67,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const fetchPromise = Promise.all([
         supabase.from('user_roles').select('role').eq('user_id', userId),
-        supabase.from('profiles').select('id, full_name, is_superadmin, clinic_id, role, avatar_url, registration_id, qualifications').eq('user_id', userId).maybeSingle(),
+        supabase.from('profiles').select('id, full_name, is_superadmin, clinic_id, role, avatar_url, registration_id, qualifications, bio, signature_data').eq('user_id', userId).maybeSingle(),
       ]);
 
       const raceResult = await Promise.race([fetchPromise, timeoutPromise]);
@@ -141,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => signOut(), 3600000); // 1 hour
     };
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'];
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove', 'pointerdown', 'pointermove'];
     events.forEach(e => document.addEventListener(e, resetTimer));
     resetTimer();
     return () => {
@@ -184,9 +187,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (currentUser) {
           if (event === 'SIGNED_IN') {
              logSecurityEvent('LOGIN_SUCCESS', { method: 'password' }, undefined, currentUser.id);
-             fetchUserData(currentUser.id);
+             fetchUserData(currentUser.id, false, roles.length > 0);
           } else if (event === 'TOKEN_REFRESHED') {
-            fetchUserData(currentUser.id);
+            fetchUserData(currentUser.id, false, true);
           }
         } else if (event === 'SIGNED_OUT') {
           logSecurityEvent('LOGOUT');

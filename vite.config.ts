@@ -18,11 +18,13 @@ export default defineConfig(({ mode }) => ({
     // mode === 'development' &&
     // componentTagger(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       injectRegister: 'auto',
       strategies: 'generateSW',
       includeAssets: ['favicon.ico', 'prescriptionLogo.png', 'logo.png'],
       workbox: {
+        skipWaiting: false,
+        clientsClaim: false,
         maximumFileSizeToCacheInBytes: 5000000,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webmanifest}']
       },
@@ -51,6 +53,17 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 1000,
     emptyOutDir: true,
     sourcemap: false,
+  },
+  optimizeDeps: {
+    include: [
+      '@radix-ui/react-switch',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-select',
+      '@radix-ui/react-popover',
+      'recharts',
+      'framer-motion',
+      'lucide-react',
+    ],
   },
   resolve: {
     alias: {

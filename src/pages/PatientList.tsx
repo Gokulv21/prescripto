@@ -17,6 +17,7 @@ import { printPrescription } from '@/lib/printPrescription';
 import { formatAge, getPatientCurrentAge, calculateDobFromAge } from '@/lib/utils';
 import { buildPatientSearchFilter } from '@/lib/patientSearch';
 import { validateNumericRange } from '@/lib/security-sanitize';
+import { useModalBackHandler } from '@/lib/backNavigation';
 import {
   Pagination,
   PaginationContent,
@@ -63,6 +64,14 @@ export default function PatientList() {
 
   // Vitals input refs for Enter key navigation
   const weightRef = useRef<HTMLInputElement>(null);
+
+  // Mobile Back Button: close topmost open modal (Prescription -> Add Visit -> Patient Detail) instead of leaving the page
+  useModalBackHandler(!!selectedPatient, () => {
+    setSelectedPatient(null);
+    setEditing(false);
+  });
+  useModalBackHandler(addVisitOpen, () => setAddVisitOpen(false));
+  useModalBackHandler(!!viewingRx, () => setViewingRx(null));
   const bpRef = useRef<HTMLInputElement>(null);
   const pulseRef = useRef<HTMLInputElement>(null);
   const spo2Ref = useRef<HTMLInputElement>(null);

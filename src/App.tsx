@@ -1,4 +1,4 @@
-import { useState, ReactNode, useEffect, lazy, Suspense } from "react";
+import React, { useState, ReactNode, useEffect, lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate, useParams, Outlet } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,24 +13,64 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { logSecurityEvent } from "@/lib/security";
 
+// Resilient lazy loader: retries transient dev/network import hiccups and performs one safe reload if chunk hashes rotated
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  importer: () => Promise<{ default: T }>
+) {
+  return lazy(async () => {
+    const CHUNK_RELOAD_KEY = 'prescripto_chunk_retry_at';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const mod = await importer();
+        return mod;
+      } catch (err: any) {
+        const msg = String(err?.message || err || '');
+        const isChunkErr =
+          msg.includes('Failed to fetch dynamically imported module') ||
+          msg.includes('Importing a module script failed') ||
+          msg.includes('Loading chunk') ||
+          msg.includes('error loading dynamically imported module');
+
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+          continue;
+        }
+
+        if (isChunkErr && typeof window !== 'undefined') {
+          try {
+            const lastRetry = parseInt(sessionStorage.getItem(CHUNK_RELOAD_KEY) || '0', 10);
+            if (!lastRetry || Date.now() - lastRetry > 15000) {
+              sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
+              window.location.reload();
+              return new Promise<{ default: T }>(() => {});
+            }
+          } catch {}
+        }
+        throw err;
+      }
+    }
+    return importer();
+  });
+}
+
 // Lazy-Loaded Route Components for Ultra-Fast Initial Load
-const Login = lazy(() => import("@/pages/Login"));
-const Dashboard = lazy(() => import("@/pages/Dashboard"));
-const NurseEntry = lazy(() => import("@/pages/NurseEntry"));
-const DoctorConsultation = lazy(() => import("@/pages/DoctorConsultation"));
-const PrintQueue = lazy(() => import("@/pages/PrintQueue"));
-const PatientList = lazy(() => import("@/pages/PatientList"));
-const Analytics = lazy(() => import("@/pages/Analytics"));
-const UserManagement = lazy(() => import("@/pages/UserManagement"));
-const DoctorProfile = lazy(() => import("@/pages/DoctorProfile"));
-const ClinicSelection = lazy(() => import("@/pages/ClinicSelection"));
-const SaaSManagement = lazy(() => import("@/pages/SaaSManagement"));
-const PublicPrescription = lazy(() => import("@/pages/PublicPrescription"));
-const TVDisplay = lazy(() => import("@/pages/TVDisplay"));
-const ClinicSettings = lazy(() => import("@/pages/ClinicSettings"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const About = lazy(() => import("@/pages/About"));
-const Help = lazy(() => import("@/pages/Help"));
+const Login = lazyWithRetry(() => import("@/pages/Login"));
+const Dashboard = lazyWithRetry(() => import("@/pages/Dashboard"));
+const NurseEntry = lazyWithRetry(() => import("@/pages/NurseEntry"));
+const DoctorConsultation = lazyWithRetry(() => import("@/pages/DoctorConsultation"));
+const PrintQueue = lazyWithRetry(() => import("@/pages/PrintQueue"));
+const PatientList = lazyWithRetry(() => import("@/pages/PatientList"));
+const Analytics = lazyWithRetry(() => import("@/pages/Analytics"));
+const UserManagement = lazyWithRetry(() => import("@/pages/UserManagement"));
+const DoctorProfile = lazyWithRetry(() => import("@/pages/DoctorProfile"));
+const ClinicSelection = lazyWithRetry(() => import("@/pages/ClinicSelection"));
+const SaaSManagement = lazyWithRetry(() => import("@/pages/SaaSManagement"));
+const PublicPrescription = lazyWithRetry(() => import("@/pages/PublicPrescription"));
+const TVDisplay = lazyWithRetry(() => import("@/pages/TVDisplay"));
+const ClinicSettings = lazyWithRetry(() => import("@/pages/ClinicSettings"));
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
+const About = lazyWithRetry(() => import("@/pages/About"));
+const Help = lazyWithRetry(() => import("@/pages/Help"));
 
 function PageLoader() {
   return (

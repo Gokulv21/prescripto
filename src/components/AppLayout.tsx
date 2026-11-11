@@ -12,6 +12,7 @@ import logo from '@/assets/logo.png';
 import { motion, AnimatePresence } from 'framer-motion';
 import NotificationCenter from './NotificationCenter';
 import { PrescriptoNova } from './nova/PrescriptoNova';
+import { useModalBackHandler, wasHandledByModalBack } from '@/lib/backNavigation';
 
 interface NavItem {
   label: string;
@@ -120,18 +121,27 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
   };
 
+  // Ensure mobile drawer closes cleanly on Back press
+  useModalBackHandler(isMobileMenuOpen, () => setIsMobileMenuOpen(false));
+
   // Instagram-style Back Button listener:
   // Catches Android back button, mobile browser back, or swipe gestures.
-  // Whichever secondary tab the user was on, pressing Back immediately returns to Dashboard.
+  // If an overlay/modal (like a prescription preview or menu sheet) was open, only that overlay closes.
+  // Otherwise, whichever secondary page the user was on, pressing Back jumps directly to Home (Dashboard).
   useEffect(() => {
     const handlePopState = () => {
-      // 1. If mobile menu sheet was open, close it
+      // 1. If a modal/overlay/menu just handled this Back press, stay on the current page
+      if (wasHandledByModalBack()) {
+        return;
+      }
+
+      // 2. If mobile menu sheet was open, close it
       if (isMobileMenuOpenRef.current) {
         setIsMobileMenuOpen(false);
         return;
       }
 
-      // 2. Instagram Rule: Whichever tab the user was on, pressing Back goes to Dashboard
+      // 3. Instagram Rule: Whichever non-Home tab/page the user was on, pressing Back goes straight to Home (Dashboard)
       const currentPath = window.location.pathname;
       const isDestinationDashboard =
         currentPath.endsWith('/dashboard') ||
@@ -139,7 +149,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         currentPath.endsWith('/prescripto');
 
       if (!isDestinationDashboard && !isCurrentlyDashboardRef.current) {
-        navigate(dashboardPath, { replace: true });
+        // Defer slightly so React Router's own popstate update completes first, then replace directly with Home
+        setTimeout(() => {
+          navigate(dashboardPath, { replace: true });
+        }, 0);
       }
     };
 

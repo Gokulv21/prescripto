@@ -26,13 +26,15 @@ import { AlertTriangle } from 'lucide-react';
 interface SignaturePadProps {
     onSave: (signature: string) => void;
     initialSignature?: string;
+    disabled?: boolean;
 }
 
-export default function SignaturePad({ onSave, initialSignature }: SignaturePadProps) {
+export default function SignaturePad({ onSave, initialSignature, disabled = false }: SignaturePadProps) {
     const [isDrawModalOpen, setIsDrawModalOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (disabled) return;
         const file = e.target.files?.[0];
         if (!file) return;
 
@@ -56,8 +58,9 @@ export default function SignaturePad({ onSave, initialSignature }: SignaturePadP
                 <Button 
                     type="button" 
                     variant="outline" 
-                    className="h-24 rounded-2xl border-2 border-dashed border-slate-200 hover:border-blue-500 hover:bg-blue-50 flex flex-col gap-2 transition-all group"
-                    onClick={() => fileInputRef.current?.click()}
+                    disabled={disabled}
+                    className="h-24 rounded-2xl border-2 border-dashed border-slate-200 hover:border-blue-500 hover:bg-blue-50 flex flex-col gap-2 transition-all group disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:border-slate-200 disabled:hover:bg-transparent"
+                    onClick={() => !disabled && fileInputRef.current?.click()}
                 >
                     <div className="p-3 bg-slate-100 rounded-xl group-hover:bg-blue-100 transition-colors">
                         <Upload className="w-5 h-5 text-slate-500 group-hover:text-blue-600" />
@@ -69,14 +72,16 @@ export default function SignaturePad({ onSave, initialSignature }: SignaturePadP
                     ref={fileInputRef} 
                     className="hidden" 
                     accept="image/*" 
+                    disabled={disabled}
                     onChange={handleFileUpload} 
                 />
 
                 <Button 
                     type="button" 
                     variant="outline" 
-                    className="h-24 rounded-2xl border-2 border-dashed border-slate-200 hover:border-purple-500 hover:bg-purple-50 flex flex-col gap-2 transition-all group"
-                    onClick={() => setIsDrawModalOpen(true)}
+                    disabled={disabled}
+                    className="h-24 rounded-2xl border-2 border-dashed border-slate-200 hover:border-purple-500 hover:bg-purple-50 flex flex-col gap-2 transition-all group disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:border-slate-200 disabled:hover:bg-transparent"
+                    onClick={() => !disabled && setIsDrawModalOpen(true)}
                 >
                     <div className="p-3 bg-slate-100 rounded-xl group-hover:bg-purple-100 transition-colors">
                         <Pencil className="w-5 h-5 text-slate-500 group-hover:text-purple-600" />

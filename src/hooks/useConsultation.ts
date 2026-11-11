@@ -134,7 +134,8 @@ export function useConsultation(clinic: any) {
       timestamp: Date.now()
     };
 
-    const hasContent = diagnosis || clinicalNotes || medicines.some(m => m.name) || advice || prescriptionImage;
+    const hasPaths = Array.isArray(prescriptionPaths) && prescriptionPaths.some(pg => Array.isArray(pg) && pg.length > 0);
+    const hasContent = diagnosis || (diagnoses && diagnoses.length > 0) || clinicalNotes || medicines.some(m => m.name) || advice || prescriptionImage || hasPaths;
     if (!hasContent) return;
 
     // 1. Back up locally (contains full data including drawings)
@@ -302,6 +303,23 @@ export function useConsultation(clinic: any) {
       }
     }
   };
+
+  // Auto-restore in-progress consultation draft if tab recovered after an unexpected reload
+  const hasAttemptedAutoRestore = useRef(false);
+  useEffect(() => {
+    if (hasAttemptedAutoRestore.current || selectedVisit || !queue || queue.length === 0) return;
+    hasAttemptedAutoRestore.current = true;
+    try {
+      const activeId = localStorage.getItem('active_consultation_id');
+      if (!activeId) return;
+      const savedDraft = localStorage.getItem(`draft_${activeId}`);
+      if (!savedDraft) return;
+      const matchingVisit = queue.find((v: any) => v.id === activeId);
+      if (matchingVisit) {
+        selectVisit(matchingVisit, true);
+      }
+    } catch {}
+  }, [queue, selectedVisit]);
 
   // Medicine details manipulation helpers
   const addMedicine = () => setMedicines(m => [...m, { type: 'Tab.', name: '', dosage: '', frequency: '', duration: '', route: '' }]);
@@ -587,6 +605,7 @@ export function useConsultation(clinic: any) {
     setSelectedVisit,
     selectVisit,
     patient,
+    setPatient,
     history,
     setHistory,
     diagnosis,

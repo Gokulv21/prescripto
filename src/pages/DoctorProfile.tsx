@@ -18,9 +18,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
-import { getPatientCurrentAge, formatAge } from '@/lib/utils';
+import { getPatientCurrentAge, formatAge, parseProfileBio, isDigitalSignatureEnabled } from '@/lib/utils';
+import { clearPrescriptionProfileCache } from '@/components/PrescriptionTemplate';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart as RePieChart, Pie, Cell, LineChart, Line, AreaChart, Area, Legend
@@ -53,6 +55,7 @@ type ProfileData = {
     signature_data?: string;
     avatar_url?: string;
     theme?: string;
+    bio?: string;
 };
 
 const AVATAR_OPTIONS = [
@@ -187,6 +190,7 @@ export default function DoctorProfile() {
     const [watermarkUploading, setWatermarkUploading] = useState(false);
     const [headerMode, setHeaderMode] = useState<'name' | 'logo' | 'both'>('both');
     const [clinicCaption, setClinicCaption] = useState<string>('24/7 Emergency · ECG · Lab');
+    const [digitalSignatureEnabled, setDigitalSignatureEnabled] = useState<boolean>(false);
     const [settingsSection, setSettingsSection] = useState<'template' | 'identity' | 'appearance'>('template');
     const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -211,8 +215,10 @@ export default function DoctorProfile() {
     const [openFreqPopoverIndex, setOpenFreqPopoverIndex] = useState<number | null>(null);
 
     useEffect(() => {
-        fetchData();
-    }, [user?.id]);
+        if (user?.id) {
+            fetchData();
+        }
+    }, [user?.id, clinic?.id]);
 
     async function fetchData() {
         if (!user?.id) return;
@@ -230,6 +236,11 @@ export default function DoctorProfile() {
                     ...profData,
                     email: user.email
                 });
+                const sigEnabled = isDigitalSignatureEnabled(profData);
+                setDigitalSignatureEnabled(sigEnabled);
+                try {
+                    localStorage.setItem(`prescripto_sig_enabled_${user.id}`, String(sigEnabled));
+                } catch {}
             }
 
             // Fetch Clinic branding & Watermark from Supabase Storage avatars bucket & profile metadata
@@ -345,58 +356,54 @@ export default function DoctorProfile() {
             }
 
             // 2. Account-Specific Stats (Personalized for this logged-in account, NOT entire clinic)
-            const todayStart = startOfDay(new Date()).toISOString();
+            if (!clinic?.id) {
+                setLoading(false);
+                return;
+            }
             const sevenDaysAgo = startOfDay(subDays(new Date(), 6)).toISOString();
+            const activeDocProfileId = profData?.id || profile?.id;
+            const doctorFilter = activeDocProfileId && activeDocProfileId !== user.id
+                ? `assigned_doctor_id.eq.${user.id},assigned_doctor_id.eq.${activeDocProfileId}`
+                : `assigned_doctor_id.eq.${user.id}`;
 
-            // Total Unique Patients treated by THIS logged-in account
-            const { count: myTotalRxCount, data: firstBatch } = await supabase
-                .from('prescriptions')
-                .select('patient_id, created_at', { count: 'exact' })
-                .eq('clinic_id', clinic?.id)
-                .eq('doctor_id', user.id)
-                .order('created_at', { ascending: false })
-                .limit(1000);
-
+            // Total Unique Patients treated by THIS logged-in account (paginate all prescriptions)
             const myUniquePatients = new Set<string>();
+            let rxOffset = 0;
+            const RX_PAGE_SIZE = 1000;
+            while (true) {
+                const { data: rxBatch, error: rxErr } = await supabase
+                    .from('prescriptions')
+                    .select('patient_id')
+                    .eq('clinic_id', clinic.id)
+                    .eq('doctor_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .range(rxOffset, rxOffset + RX_PAGE_SIZE - 1);
 
-            if (firstBatch && firstBatch.length > 0) {
-                firstBatch.forEach(r => {
+                if (rxErr || !rxBatch || rxBatch.length === 0) break;
+                rxBatch.forEach(r => {
                     if (r.patient_id) myUniquePatients.add(r.patient_id);
                 });
-
-                // Fetch remaining patient_ids in chunks if doctor has > 1000 prescriptions
-                if (myTotalRxCount && myTotalRxCount > 1000) {
-                    let offset = 1000;
-                    while (offset < myTotalRxCount && offset < 10000) {
-                        const { data: nextChunk } = await supabase
-                            .from('prescriptions')
-                            .select('patient_id')
-                            .eq('clinic_id', clinic?.id)
-                            .eq('doctor_id', user.id)
-                            .range(offset, offset + 999);
-                        if (!nextChunk || nextChunk.length === 0) break;
-                        nextChunk.forEach(r => {
-                            if (r.patient_id) myUniquePatients.add(r.patient_id);
-                        });
-                        if (nextChunk.length < 1000) break;
-                        offset += 1000;
-                    }
-                }
+                if (rxBatch.length < RX_PAGE_SIZE) break;
+                rxOffset += RX_PAGE_SIZE;
             }
 
-            // Also check completed visits assigned specifically to this doctor account
-            const { data: myVisits } = await supabase
-                .from('visits')
-                .select('patient_id')
-                .eq('clinic_id', clinic?.id)
-                .eq('status', 'completed')
-                .or(`assigned_doctor_id.eq.${user.id}${profile?.id ? `,assigned_doctor_id.eq.${profile.id}` : ''}`)
-                .limit(1000);
+            // Also include completed visits assigned specifically to this doctor account (paginated)
+            let visitOffset = 0;
+            while (true) {
+                const { data: visitBatch, error: visitErr } = await supabase
+                    .from('visits')
+                    .select('patient_id')
+                    .eq('clinic_id', clinic.id)
+                    .eq('status', 'completed')
+                    .or(doctorFilter)
+                    .range(visitOffset, visitOffset + RX_PAGE_SIZE - 1);
 
-            if (myVisits) {
-                myVisits.forEach(v => {
+                if (visitErr || !visitBatch || visitBatch.length === 0) break;
+                visitBatch.forEach(v => {
                     if (v.patient_id) myUniquePatients.add(v.patient_id);
                 });
+                if (visitBatch.length < RX_PAGE_SIZE) break;
+                visitOffset += RX_PAGE_SIZE;
             }
 
             // 3. Weekly Traffic (Last 7 days) — Filtered exclusively for THIS doctor account
@@ -413,15 +420,15 @@ export default function DoctorProfile() {
                 supabase
                     .from('prescriptions')
                     .select('created_at, patient_id')
-                    .eq('clinic_id', clinic?.id)
+                    .eq('clinic_id', clinic.id)
                     .eq('doctor_id', user.id)
                     .gte('created_at', sevenDaysAgo),
                 supabase
                     .from('visits')
                     .select('created_at, status')
-                    .eq('clinic_id', clinic?.id)
+                    .eq('clinic_id', clinic.id)
                     .eq('status', 'completed')
-                    .or(`assigned_doctor_id.eq.${user.id}${profile?.id ? `,assigned_doctor_id.eq.${profile.id}` : ''}`)
+                    .or(doctorFilter)
                     .gte('created_at', sevenDaysAgo)
             ]);
 
@@ -452,32 +459,61 @@ export default function DoctorProfile() {
                 d.count = seenCountPerDay[d.fullDate] || 0;
             });
 
-            // 4. Demographics (Age + Gender) — Filtered ONLY for this doctor's treated patients
-            const myPatientIdsSample = Array.from(myUniquePatients).slice(0, 300);
-            let demoData: any[] = [];
-            if (myPatientIdsSample.length > 0) {
-                const { data: docPatients } = await supabase
+            // 4. Demographics (Age + Gender) — Fetch ALL unique treated patients in safe batches of 200
+            const allPatientIds = Array.from(myUniquePatients);
+            const allDocPatients: any[] = [];
+            const BATCH_SIZE = 200;
+            for (let i = 0; i < allPatientIds.length; i += BATCH_SIZE) {
+                const batchIds = allPatientIds.slice(i, i + BATCH_SIZE);
+                const { data: batchPatients } = await supabase
                     .from('patients')
                     .select('id, sex, age, dob, created_at')
-                    .in('id', myPatientIdsSample);
-
-                if (docPatients && docPatients.length > 0) {
-                    const ageThreshold = 18;
-                    demoData = [
-                        { name: 'Men (>= 18)', value: docPatients.filter(p => p.sex === 'Male' && (getPatientCurrentAge(p) ?? p.age ?? 0) >= ageThreshold).length, color: '#0ea5e9' },
-                        { name: 'Women (>= 18)', value: docPatients.filter(p => p.sex === 'Female' && (getPatientCurrentAge(p) ?? p.age ?? 0) >= ageThreshold).length, color: '#ec4899' },
-                        { name: 'Boys (< 18)', value: docPatients.filter(p => p.sex === 'Male' && (getPatientCurrentAge(p) ?? p.age ?? 0) < ageThreshold).length, color: '#10b981' },
-                        { name: 'Girls (< 18)', value: docPatients.filter(p => p.sex === 'Female' && (getPatientCurrentAge(p) ?? p.age ?? 0) < ageThreshold).length, color: '#f59e0b' },
-                        { name: 'Other', value: docPatients.filter(p => p.sex === 'Other').length, color: '#8b5cf6' }
-                    ].filter(d => d.value > 0);
+                    .eq('clinic_id', clinic.id)
+                    .in('id', batchIds);
+                if (batchPatients && batchPatients.length > 0) {
+                    allDocPatients.push(...batchPatients);
                 }
+            }
+
+            let demoData: any[] = [];
+            if (allDocPatients.length > 0) {
+                const ageThreshold = 18;
+                let men = 0;
+                let women = 0;
+                let boys = 0;
+                let girls = 0;
+                let other = 0;
+
+                allDocPatients.forEach(p => {
+                    const sexNorm = String(p.sex || '').trim().toLowerCase();
+                    const ageVal = getPatientCurrentAge(p) ?? p.age ?? 0;
+                    const isAdult = ageVal >= ageThreshold;
+
+                    if (sexNorm === 'male') {
+                        if (isAdult) men++;
+                        else boys++;
+                    } else if (sexNorm === 'female') {
+                        if (isAdult) women++;
+                        else girls++;
+                    } else {
+                        other++;
+                    }
+                });
+
+                demoData = [
+                    { name: 'Men (>= 18)', value: men, color: '#0ea5e9' },
+                    { name: 'Women (>= 18)', value: women, color: '#ec4899' },
+                    { name: 'Boys (< 18)', value: boys, color: '#10b981' },
+                    { name: 'Girls (< 18)', value: girls, color: '#f59e0b' },
+                    { name: 'Other', value: other, color: '#8b5cf6' }
+                ].filter(d => d.value > 0);
             }
 
             // 5. Recent Activity — Filtered exclusively for this doctor account
             const { data: myActivityRx } = await supabase
                 .from('prescriptions')
                 .select('id, created_at, visit_id, patient_id, patients(name, age, dob, created_at, sex)')
-                .eq('clinic_id', clinic?.id)
+                .eq('clinic_id', clinic.id)
                 .eq('doctor_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(8);
@@ -494,8 +530,8 @@ export default function DoctorProfile() {
                 const { data: myActivityVisits } = await supabase
                     .from('visits')
                     .select('id, created_at, status, patients(name, age, dob, created_at, sex)')
-                    .eq('clinic_id', clinic?.id)
-                    .or(`assigned_doctor_id.eq.${user.id}${profile?.id ? `,assigned_doctor_id.eq.${profile.id}` : ''}`)
+                    .eq('clinic_id', clinic.id)
+                    .or(doctorFilter)
                     .order('created_at', { ascending: false })
                     .limit(8);
                 recentActivityList = myActivityVisits || [];
@@ -505,12 +541,12 @@ export default function DoctorProfile() {
             const { data: protocolData } = await supabase
                 .from('medicine_protocols')
                 .select('*')
-                .eq('clinic_id', clinic?.id)
+                .eq('clinic_id', clinic.id)
                 .order('name');
             setProtocols(protocolData || []);
 
             setStats({
-                totalPatients: myUniquePatients.size,
+                totalPatients: allDocPatients.length > 0 ? allDocPatients.length : myUniquePatients.size,
                 todayPatients: myTodayCount,
                 weeklyData: last7Days,
                 demographics: demoData,
@@ -568,23 +604,21 @@ export default function DoctorProfile() {
                 theme: theme
             };
 
-            // Only update clinic branding columns in profiles if current user is the owner
+            // Always update bio JSON for all doctors (preserving clinic branding fields + digital signature toggle)
+            const curBio: any = parseProfileBio(profile.bio);
+            curBio.digital_signature_enabled = digitalSignatureEnabled;
+
             if (isClinicOwner) {
                 profilePayload.clinic_name = sData.clinic_name;
                 profilePayload.clinic_address = sData.clinic_address;
                 profilePayload.clinic_phone = sData.clinic_phone;
-                try {
-                    let curBio: any = {};
-                    if (profile.bio) {
-                        try { curBio = JSON.parse(profile.bio); } catch(e) {}
-                    }
-                    if (profile.clinic_photo) curBio.clinic_photo = profile.clinic_photo;
-                    if (watermarkUrl) curBio.clinic_watermark = watermarkUrl;
-                    curBio.prescription_header_mode = headerMode;
-                    curBio.clinic_caption = clinicCaption;
-                    profilePayload.bio = JSON.stringify(curBio);
-                } catch (e) {}
+                if (profile.clinic_photo) curBio.clinic_photo = profile.clinic_photo;
+                if (watermarkUrl) curBio.clinic_watermark = watermarkUrl;
+                curBio.prescription_header_mode = headerMode;
+                curBio.clinic_caption = clinicCaption;
             }
+            const nextBioStr = JSON.stringify(curBio);
+            profilePayload.bio = nextBioStr;
 
             const { error } = await supabase
                 .from('profiles')
@@ -592,6 +626,12 @@ export default function DoctorProfile() {
                 .eq('user_id', user.id);
 
             if (error) throw error;
+
+            try {
+                localStorage.setItem(`prescripto_sig_enabled_${user.id}`, String(digitalSignatureEnabled));
+            } catch {}
+            setProfile(p => p ? { ...p, bio: nextBioStr } : p);
+            clearPrescriptionProfileCache(user.id);
 
             // 2. Update Clinic Branding (ONLY if true owner of this clinic and only existing columns)
             if (isClinicOwner && clinic?.id) {
@@ -619,6 +659,38 @@ export default function DoctorProfile() {
             toast.error(err.message || 'Failed to update profile');
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleToggleDigitalSignature = async (checked: boolean) => {
+        setDigitalSignatureEnabled(checked);
+        if (!user?.id) return;
+
+        try {
+            localStorage.setItem(`prescripto_sig_enabled_${user.id}`, String(checked));
+        } catch {}
+        clearPrescriptionProfileCache(user.id);
+
+        try {
+            const curBio = parseProfileBio(profile?.bio);
+            curBio.digital_signature_enabled = checked;
+            const nextBioStr = JSON.stringify(curBio);
+            setProfile(p => p ? { ...p, bio: nextBioStr } : p);
+
+            const { error } = await supabase
+                .from('profiles')
+                .update({ bio: nextBioStr })
+                .eq('user_id', user.id);
+            if (error) throw error;
+
+            await refreshAuth().catch(() => {});
+            toast.success(
+                checked
+                    ? 'Digital Signature ON — You can upload/draw a signature and it will appear on prescriptions.'
+                    : 'Digital Signature OFF — Prescriptions will stay blank for manual signing.'
+            );
+        } catch (err: any) {
+            toast.error(err?.message || 'Failed to update digital signature setting');
         }
     };
 
@@ -1501,44 +1573,57 @@ export default function DoctorProfile() {
                                 </div>
                             ) : (
                                 <>
-                                    <div className="h-[300px] md:h-[450px] relative flex-1">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <RePieChart>
-                                                <Pie
-                                                    data={stats.demographics}
-                                                    innerRadius="65%"
-                                                    outerRadius="90%"
-                                                    paddingAngle={2}
-                                                    dataKey="value"
-                                                    stroke="none"
-                                                >
-                                                    {stats.demographics.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={entry.color} />
-                                                    ))}
-                                                </Pie>
-                                                <Tooltip
-                                                    contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                                                    itemStyle={{ fontWeight: 'bold' }}
-                                                />
-                                            </RePieChart>
-                                        </ResponsiveContainer>
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                            <p className="text-3xl md:text-5xl font-black dark:text-slate-100 leading-none">{stats.totalPatients}</p>
-                                            <p className="text-[8px] md:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1 text-center">Patients</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        {stats.demographics.map(d => (
-                                            <div key={d.name} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-3 h-3 rounded-full" style={{ background: d.color }} />
-                                                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{d.name}</span>
+                                    {(() => {
+                                        const demoTotal = stats.demographics.reduce((sum, item) => sum + item.value, 0);
+                                        return (
+                                            <>
+                                                <div className="h-[300px] md:h-[450px] relative flex-1">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <RePieChart>
+                                                            <Pie
+                                                                data={stats.demographics}
+                                                                innerRadius="65%"
+                                                                outerRadius="90%"
+                                                                paddingAngle={2}
+                                                                dataKey="value"
+                                                                stroke="none"
+                                                            >
+                                                                {stats.demographics.map((entry, index) => (
+                                                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                                                ))}
+                                                            </Pie>
+                                                            <Tooltip
+                                                                contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                                                itemStyle={{ fontWeight: 'bold' }}
+                                                            />
+                                                        </RePieChart>
+                                                    </ResponsiveContainer>
+                                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                                        <p className="text-3xl md:text-5xl font-black dark:text-slate-100 leading-none">{demoTotal}</p>
+                                                        <p className="text-[8px] md:text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1 text-center">Patients</p>
+                                                    </div>
                                                 </div>
-                                                <span className="text-sm font-black text-slate-900 dark:text-white">{stats.totalPatients > 0 ? Math.round((d.value / stats.totalPatients) * 100) : 0}%</span>
-                                            </div>
-                                        ))}
-                                    </div>
+
+                                                <div className="space-y-3">
+                                                    {stats.demographics.map(d => {
+                                                        const pct = demoTotal > 0 ? Math.round((d.value / demoTotal) * 100) : 0;
+                                                        return (
+                                                            <div key={d.name} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-3 h-3 rounded-full" style={{ background: d.color }} />
+                                                                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{d.name}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-xs font-bold text-muted-foreground tabular-nums">{d.value}</span>
+                                                                    <span className="text-sm font-black text-slate-900 dark:text-white tabular-nums">{pct}%</span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
                                 </>
                             )}
                         </Card>
@@ -1726,22 +1811,57 @@ export default function DoctorProfile() {
                             {/* Right Column: Digital Signature & Clinic Settings Guidance */}
                             <div className="space-y-6">
                                 <Card className="border-slate-200/80 dark:border-slate-800/80 rounded-[2rem] p-6 sm:p-8 space-y-6 bg-white/80 dark:bg-slate-900/80 shadow-xs backdrop-blur-sm">
-                                    <div className="flex items-center gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
-                                        <div className="p-2.5 bg-amber-50 dark:bg-amber-900/40 rounded-xl">
-                                            <FileSignature className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                                    <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="p-2.5 bg-amber-50 dark:bg-amber-900/40 rounded-xl shrink-0">
+                                                <FileSignature className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <h3 className="text-xl font-black tracking-tight dark:text-slate-100">Digital Signature</h3>
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={cn(
+                                                            "text-[10px] font-black uppercase tracking-wider px-2 py-0.5",
+                                                            digitalSignatureEnabled
+                                                                ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60"
+                                                                : "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                                                        )}
+                                                    >
+                                                        {digitalSignatureEnabled ? 'ON' : 'OFF'}
+                                                    </Badge>
+                                                </div>
+                                                <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+                                                    {digitalSignatureEnabled
+                                                        ? 'Enabled — auto-attached to your printed prescriptions'
+                                                        : 'Disabled by default — doctors sign manually on printouts'}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h3 className="text-xl font-black tracking-tight dark:text-slate-100">Digital Signature</h3>
-                                            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Used for validating digital prescriptions</p>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <Switch
+                                                checked={digitalSignatureEnabled}
+                                                onCheckedChange={handleToggleDigitalSignature}
+                                                aria-label="Toggle Digital Signature on Prescriptions"
+                                            />
                                         </div>
                                     </div>
                                     <div className="space-y-4">
                                         <SignaturePad
+                                            disabled={!digitalSignatureEnabled}
                                             initialSignature={profile?.signature_data}
                                             onSave={(data) => setProfile(p => ({ ...p!, signature_data: data }))}
                                         />
                                         <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center min-h-[120px]">
-                                            {profile?.signature_data ? (
+                                            {!digitalSignatureEnabled ? (
+                                                <div className="text-center space-y-1.5 px-2">
+                                                    <FileSignature className="w-8 h-8 mx-auto text-slate-400/70" />
+                                                    <p className="text-xs font-extrabold text-slate-600 dark:text-slate-300">Digital Signature is OFF</p>
+                                                    <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 max-w-xs mx-auto">
+                                                        Turn ON the toggle above to upload or draw a signature and include it automatically on prescriptions.
+                                                    </p>
+                                                </div>
+                                            ) : profile?.signature_data ? (
                                                 <div className="space-y-2 text-center w-full">
                                                     <div className="relative group/sig mx-auto w-fit">
                                                         <img src={profile.signature_data} className="max-h-16 mx-auto contrast-125 dark:invert" alt="Preview" />
@@ -1772,9 +1892,9 @@ export default function DoctorProfile() {
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="text-center space-y-1.5 opacity-30">
+                                                <div className="text-center space-y-1.5 opacity-50">
                                                     <FileSignature className="w-8 h-8 mx-auto" />
-                                                    <p className="text-xs font-bold text-slate-500">Sign above to generate your digital prescription seal</p>
+                                                    <p className="text-xs font-bold text-slate-500">Upload or draw above to set your digital signature</p>
                                                 </div>
                                             )}
                                         </div>

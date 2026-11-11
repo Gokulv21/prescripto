@@ -206,3 +206,34 @@ export function formatPrescriptionAge(
   return `${days}d`;
 }
 
+/**
+ * Safely parses a profile bio JSON string into a plain object.
+ */
+export function parseProfileBio(bio?: string | null): Record<string, any> {
+  if (!bio || typeof bio !== 'string') return {};
+  try {
+    const parsed = JSON.parse(bio);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Returns whether a doctor's digital signature is explicitly enabled (defaults to false/OFF).
+ */
+export function isDigitalSignatureEnabled(
+  prof: { bio?: string | null; user_id?: string } | null | undefined
+): boolean {
+  if (!prof) return false;
+  const parsed = parseProfileBio(prof.bio);
+  if (typeof parsed.digital_signature_enabled === 'boolean') {
+    return parsed.digital_signature_enabled;
+  }
+  if (prof.user_id && typeof window !== 'undefined') {
+    const cached = localStorage.getItem(`prescripto_sig_enabled_${prof.user_id}`);
+    if (cached !== null) return cached === 'true';
+  }
+  return false;
+}
+

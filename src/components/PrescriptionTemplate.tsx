@@ -3,7 +3,7 @@ import { MessageCircle } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { supabase } from "@/integrations/supabase/client";
 import { format, formatDistanceToNow } from "date-fns";
-import { formatAge, formatPrescriptionAge } from '@/lib/utils';
+import { formatAge, formatPrescriptionAge, isDigitalSignatureEnabled } from '@/lib/utils';
 import prescriptionLogo from '@/assets/prescriptionLogo.png';
 
 const EXPORT_W = 1240;
@@ -101,6 +101,16 @@ const clinicCache = new Map<string, ClinicCacheItem>();
 const profileCache = new Map<string, any>();
 const inFlightClinicPromises = new Map<string, Promise<any>>();
 const inFlightProfilePromises = new Map<string, Promise<any>>();
+
+export function clearPrescriptionProfileCache(userId?: string) {
+    if (userId) {
+        profileCache.delete(userId);
+        inFlightProfilePromises.delete(userId);
+    } else {
+        profileCache.clear();
+        inFlightProfilePromises.clear();
+    }
+}
 
 // Filter out invalid image data to prevent broken image icons
 const isValidImage = (src: any): src is string =>
@@ -528,7 +538,15 @@ Follow the instructions carefully.
                             doctorName={doctorName}
                             doctorQualifications={doctorQualifications}
                             doctorRegId={doctorRegId}
-                            doctorSignature={doctorSignature}
+                            doctorSignature={(() => {
+                                const sigDocId = doctorId || visit?.doctor_id || authUser?.id;
+                                const isSigEnabled = doctorProfile
+                                    ? isDigitalSignatureEnabled(doctorProfile)
+                                    : (sigDocId && typeof window !== 'undefined'
+                                        ? localStorage.getItem(`prescripto_sig_enabled_${sigDocId}`) === 'true'
+                                        : false);
+                                return isSigEnabled ? (doctorSignature || doctorProfile?.signature_data) : undefined;
+                            })()}
                             clinicName={clinicName || ownerProfile?.clinic_name}
                             clinicAddress={clinicAddress || ownerProfile?.clinic_address}
                             clinicPhone={clinicPhone || ownerProfile?.clinic_phone}
@@ -1050,9 +1068,9 @@ function PageOne({
                 <div style={{ height: '22mm', flexShrink: 0, background: '#fff' }} />
             ) : (
                 <div style={{ background: '#fff', borderTop: '2px solid #0f172a', padding: '1em 2em', display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, position: 'relative' }}>
-                    {(doctorSignature || doctorProfile?.signature_data) && !isWritingMode && (
+                    {doctorSignature && !isWritingMode && (
                         <div style={{ position: 'absolute', right: '3.5em', bottom: '4.5em', textAlign: 'center' }}>
-                            <img src={doctorSignature || doctorProfile?.signature_data} alt="Signature" style={{ maxHeight: '10em', width: 'auto', marginBottom: '0.3em', mixBlendMode: 'multiply' }} />
+                            <img src={doctorSignature} alt="Signature" style={{ maxHeight: '10em', width: 'auto', marginBottom: '0.3em', mixBlendMode: 'multiply' }} />
                             <div style={{ fontSize: '0.75em', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Digital Signature</div>
                         </div>
                     )}

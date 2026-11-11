@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { cn, formatAge } from '@/lib/utils';
+import { cn, formatAge, isDigitalSignatureEnabled, calculateDobFromAge, getPatientCurrentAge } from '@/lib/utils';
+import { sanitizeText, validatePhone } from '@/lib/security-sanitize';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Plus, History, Stethoscope, User, Users, Trash2, Printer, 
   Phone, Pencil, ArrowLeft, Activity, Scale, Wind, 
@@ -28,6 +30,7 @@ import { useConsultation } from '@/hooks/useConsultation';
 import QueuePanel from '@/components/consultation/QueuePanel';
 import HistoryViewer from '@/components/consultation/HistoryViewer';
 import ConsultationForm from '@/components/consultation/ConsultationForm';
+import { useModalBackHandler } from '@/lib/backNavigation';
 import type { Clinic } from '@/types/clinic';
 
 export default function DoctorConsultation() {
@@ -46,6 +49,7 @@ export default function DoctorConsultation() {
     setSelectedVisit,
     selectVisit,
     patient,
+    setPatient,
     history,
     setHistory,
     diagnosis,
@@ -95,6 +99,19 @@ export default function DoctorConsultation() {
   const [vitalsTemp, setVitalsTemp] = useState('');
   const [vitalsCBG, setVitalsCBG] = useState('');
 
+  // Patient Details Edit Modal State
+  const [showPatientEdit, setShowPatientEdit] = useState(false);
+  const [savingPatientEdit, setSavingPatientEdit] = useState(false);
+  const [patientEditForm, setPatientEditForm] = useState<{
+    title: string;
+    name: string;
+    age: string;
+    ageUnit: 'years' | 'months' | 'days';
+    sex: string;
+    phone: string;
+    address: string;
+  }>({ title: '', name: '', age: '', ageUnit: 'years', sex: 'Male', phone: '', address: '' });
+
   // Overlays / Preview States
   const [showDigitalRx, setShowDigitalRx] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -102,6 +119,47 @@ export default function DoctorConsultation() {
   const [loadingHistoryRx, setLoadingHistoryRx] = useState(false);
   const [currentHistoryRx, setCurrentHistoryRx] = useState<any>(null);
   const [printOnStationery, setPrintOnStationery] = useState(false);
+
+  // Mobile Back Button: close open overlay/canvas/preview before leaving Consultation
+  useModalBackHandler(showDigitalRx, () => setShowDigitalRx(false));
+  useModalBackHandler(showPreview, () => setShowPreview(false));
+  useModalBackHandler(!!viewingHistoryRx, () => setViewingHistoryRx(null));
+  useModalBackHandler(showVitalsEdit, () => setShowVitalsEdit(false));
+  useModalBackHandler(showPatientEdit, () => setShowPatientEdit(false));
+
+  // Initialize Patient Edit values when modal opens
+  useEffect(() => {
+    if (patient && showPatientEdit) {
+      const currentAge = getPatientCurrentAge(patient);
+      let displayAge = '';
+      let unit: 'years' | 'months' | 'days' = 'years';
+
+      if (currentAge !== null && !isNaN(currentAge)) {
+        if (currentAge < 1 / 12) {
+          displayAge = String(Math.max(0, Math.round(currentAge * 365.25)));
+          unit = 'days';
+        } else if (currentAge < 1) {
+          displayAge = String(Math.max(1, Math.round(currentAge * 12)));
+          unit = 'months';
+        } else {
+          displayAge = String(Math.floor(currentAge));
+          unit = 'years';
+        }
+      } else if (patient.age !== null && patient.age !== undefined) {
+        displayAge = String(patient.age);
+      }
+
+      setPatientEditForm({
+        title: patient.title || '',
+        name: patient.name || '',
+        age: displayAge,
+        ageUnit: unit,
+        sex: patient.sex || 'Male',
+        phone: patient.phone || '',
+        address: patient.address || '',
+      });
+    }
+  }, [patient, showPatientEdit]);
 
 
 
@@ -490,6 +548,16 @@ Wishing you a quick recovery!
                     <span className="text-lg sm:text-xl font-extrabold tracking-tight text-foreground truncate max-w-full">
                       {(patient?.title ? patient.title + ' ' : '') + patient?.name}
                     </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowPatientEdit(true)}
+                      className="h-8 w-8 rounded-full text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40 shrink-0"
+                      title="Edit Patient Details"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
                     {isDraftRestored && (
                       <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800/50 flex items-center gap-1.5 animate-pulse h-6 shrink-0">
                         <History className="w-3 h-3" />
@@ -702,7 +770,7 @@ Wishing you a quick recovery!
                  doctorName={activeDocName}
                  doctorQualifications={activeDocQual}
                  doctorRegId={activeDocReg}
-                 doctorSignature={(profile as any)?.signature_data}
+                 doctorSignature={isDigitalSignatureEnabled((myProfile || profile) as any) ? ((myProfile as any)?.signature_data || (profile as any)?.signature_data) : undefined}
                  clinicName={activeClinicName}
                  clinicAddress={activeClinicAddress}
                  clinicPhone={activeClinicPhone}
@@ -751,7 +819,7 @@ Wishing you a quick recovery!
                     doctorName={currentHistoryRx.doctor_id === user?.id ? activeDocName : undefined}
                     doctorQualifications={currentHistoryRx.doctor_id === user?.id ? activeDocQual : undefined}
                     doctorRegId={currentHistoryRx.doctor_id === user?.id ? activeDocReg : undefined}
-                    doctorSignature={currentHistoryRx.doctor_id === user?.id ? (profile as any)?.signature_data : undefined}
+                    doctorSignature={currentHistoryRx.doctor_id === user?.id && isDigitalSignatureEnabled((myProfile || profile) as any) ? ((myProfile as any)?.signature_data || (profile as any)?.signature_data) : undefined}
                     clinicName={activeClinicName}
                     clinicAddress={activeClinicAddress}
                     clinicPhone={activeClinicPhone}
@@ -905,9 +973,228 @@ Wishing you a quick recovery!
         </DialogContent>
       </Dialog>
 
+      {/* 5. Patient Details Edit Dialogue */}
+      <Dialog open={showPatientEdit} onOpenChange={(open) => !savingPatientEdit && setShowPatientEdit(open)}>
+        <DialogContent className="max-w-lg w-[95vw] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 font-black">
+              <Pencil className="w-4 h-4 text-blue-600" />
+              Edit Patient Details
+            </DialogTitle>
+            <DialogDescription>
+              Updates patient profile records across Consultation, Queue, Print Queue, and Patient Directory.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-4 gap-3">
+              <div className="col-span-1 space-y-1.5">
+                <Label>Title</Label>
+                <Select
+                  value={patientEditForm.title}
+                  onValueChange={(v) => setPatientEditForm((f) => ({ ...f, title: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Title" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Mr.">Mr.</SelectItem>
+                    <SelectItem value="Mast.">Mast.</SelectItem>
+                    <SelectItem value="Miss">Miss</SelectItem>
+                    <SelectItem value="Mrs.">Mrs.</SelectItem>
+                    <SelectItem value="Baby">Baby</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-3 space-y-1.5">
+                <Label>Full Name</Label>
+                <Input
+                  value={patientEditForm.name}
+                  onChange={(e) => setPatientEditForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="Patient full name"
+                />
+              </div>
+            </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Age</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={patientEditForm.age}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (val > 1000) return;
+                      setPatientEditForm((f) => ({ ...f, age: e.target.value }));
+                    }}
+                    className="flex-1"
+                  />
+                  <Select
+                    value={patientEditForm.ageUnit}
+                    onValueChange={(v: 'years' | 'months' | 'days') =>
+                      setPatientEditForm((f) => ({ ...f, ageUnit: v }))
+                    }
+                  >
+                    <SelectTrigger className="w-[82px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="years">Yrs</SelectItem>
+                      <SelectItem value="months">Mnt</SelectItem>
+                      <SelectItem value="days">Day</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Gender</Label>
+                <Select
+                  value={patientEditForm.sex}
+                  onValueChange={(v) => setPatientEditForm((f) => ({ ...f, sex: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Gender" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Male">Male</SelectItem>
+                    <SelectItem value="Female">Female</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
+            <div className="space-y-1.5">
+              <Label>Phone Number</Label>
+              <Input
+                value={patientEditForm.phone}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setPatientEditForm((f) => ({ ...f, phone: val }));
+                }}
+                placeholder="10-digit mobile number"
+              />
+            </div>
 
+            <div className="space-y-1.5">
+              <Label>Address</Label>
+              <Input
+                value={patientEditForm.address}
+                onChange={(e) => setPatientEditForm((f) => ({ ...f, address: e.target.value }))}
+                placeholder="Patient address"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-2">
+            <Button
+              variant="outline"
+              disabled={savingPatientEdit}
+              onClick={() => setShowPatientEdit(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={savingPatientEdit}
+              onClick={async () => {
+                if (!patient?.id) return;
+                const cleanName = sanitizeText(patientEditForm.name, 100);
+                if (cleanName.length < 2) {
+                  toast.error('Valid patient name is required (min 2 characters).');
+                  return;
+                }
+                const parsedAge = parseFloat(patientEditForm.age);
+                if (isNaN(parsedAge) || parsedAge < 0) {
+                  toast.error('Please enter a valid age.');
+                  return;
+                }
+                const cleanPhone = patientEditForm.phone.trim();
+                if (cleanPhone && !validatePhone(cleanPhone)) {
+                  toast.error('Please enter a valid phone number.');
+                  return;
+                }
+
+                setSavingPatientEdit(true);
+                try {
+                  let ageInYears = parsedAge;
+                  if (patientEditForm.ageUnit === 'months') ageInYears = parsedAge / 12;
+                  if (patientEditForm.ageUnit === 'days') ageInYears = parsedAge / 365;
+                  const calculatedDob = calculateDobFromAge(parsedAge, patientEditForm.ageUnit);
+                  const cleanAddress = sanitizeText(patientEditForm.address, 500) || null;
+
+                  const updatePayload: any = {
+                    title: patientEditForm.title || null,
+                    name: cleanName,
+                    age: ageInYears,
+                    sex: patientEditForm.sex,
+                    phone: cleanPhone,
+                    address: cleanAddress,
+                  };
+
+                  let { data: updatedRow, error } = await supabase
+                    .from('patients')
+                    .update({ ...updatePayload, dob: calculatedDob })
+                    .eq('id', patient.id)
+                    .select()
+                    .maybeSingle();
+
+                  if (error && (error.message?.includes('dob') || error.message?.includes('schema cache'))) {
+                    const retry = await supabase
+                      .from('patients')
+                      .update(updatePayload)
+                      .eq('id', patient.id)
+                      .select()
+                      .maybeSingle();
+                    updatedRow = retry.data;
+                    error = retry.error;
+                  }
+
+                  if (error) throw error;
+
+                  const mergedPatient = updatedRow || {
+                    ...patient,
+                    ...updatePayload,
+                    dob: calculatedDob,
+                  };
+
+                  setPatient(mergedPatient);
+                  setSelectedVisit((prev: any) => (prev ? { ...prev, patients: mergedPatient } : prev));
+
+                  queryClient.setQueryData(
+                    ['visitQueue', clinic?.id, user?.id, profile?.id || myProfile?.id],
+                    (oldQueue: any[]) =>
+                      (oldQueue || []).map((v) =>
+                        v.patient_id === patient.id || v.patients?.id === patient.id
+                          ? { ...v, patients: mergedPatient }
+                          : v
+                      )
+                  );
+                  queryClient.invalidateQueries({ queryKey: ['visitQueue'] });
+                  queryClient.invalidateQueries({ queryKey: ['printQueue'] });
+
+                  toast.success('Patient details updated across the app');
+                  setShowPatientEdit(false);
+                } catch (err: any) {
+                  toast.error(err?.message || 'Failed to update patient details');
+                } finally {
+                  setSavingPatientEdit(false);
+                }
+              }}
+            >
+              {savingPatientEdit ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Setup Profile Prompt Dialog for New Clinics */}
       <Dialog open={setupPromptOpen} onOpenChange={setSetupPromptOpen}>

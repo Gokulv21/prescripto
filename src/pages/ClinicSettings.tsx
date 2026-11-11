@@ -14,7 +14,7 @@ import {
   FileText, Check, Palette, Eye, ArrowRight, ShieldCheck, Lock, Info, LayoutTemplate,
   CheckCircle2, Stethoscope, ExternalLink, Settings, Shield, ChevronRight, Sun, Moon, Monitor, Wrench
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, isDigitalSignatureEnabled } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Clinic } from '@/types/clinic';
 import PrescriptionTemplate from '@/components/PrescriptionTemplate';
@@ -1163,10 +1163,11 @@ export default function ClinicSettings() {
                 templateId={templateId}
                 primaryColor={primaryColor}
                 showVitalsSidebar={showVitalsSidebar}
+                doctorId={user?.id}
                 doctorName={doctorDisplayName}
                 doctorQualifications={profile?.qualifications || "MBBS., MD."}
                 doctorRegId={profile?.registration_id || "152590"}
-                doctorSignature={(profile as any)?.signature_data}
+                doctorSignature={isDigitalSignatureEnabled(profile as any) ? (profile as any)?.signature_data : undefined}
                 patient={{
                   title: 'Mr.',
                   name: 'Kumar',
