@@ -131,9 +131,16 @@ serve(async (req) => {
     }
 
     // 5. Call Google Gemini AI with server-side secret API key (zero client leakage)
-    let lastGeminiError = ''
+    const modelErrors: string[] = []
     if (geminiApiKey) {
-      const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-flash-lite']
+      const candidateModels = [
+        'gemini-2.5-flash',
+        'gemini-2.5-flash-lite',
+        'gemini-flash-latest',
+        'gemini-flash-lite-latest',
+        'gemini-3.5-flash-lite',
+        'gemini-3.1-flash-lite',
+      ]
 
       const systemInstruction = `You are Google Gemini acting as "Nova", a helpful clinical, medical, and clinic-operations AI assistant for PreScripto.
 User Role: ${userRole || 'Staff'}
@@ -167,20 +174,16 @@ ${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(
         turns.push({ role: 'user', parts: [{ text: userPrompt }] })
       }
 
-      for (const model of candidateModels) {
+      const callModel = async (model: string): Promise<{ text?: string; authFatal?: boolean }> => {
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiApiKey)}`
         try {
-          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiApiKey)}`
-
           let geminiRes = await fetch(geminiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: systemInstruction }] },
               contents: turns,
-              generationConfig: {
-                temperature: 0.4,
-                maxOutputTokens: 2048,
-              }
+              generationConfig: { temperature: 0.4, maxOutputTokens: 4096 }
             })
           })
 
@@ -196,46 +199,102 @@ ${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 contents: fallbackTurns,
-                generationConfig: {
-                  temperature: 0.4,
-                  maxOutputTokens: 2048,
-                }
+                generationConfig: { temperature: 0.4, maxOutputTokens: 4096 }
               })
             })
           }
 
           if (geminiRes.ok) {
             const geminiData = await geminiRes.json()
-            const parts = geminiData.candidates?.[0]?.content?.parts || []
+            const candidate = geminiData.candidates?.[0]
+            const parts = candidate?.content?.parts || []
             const text = parts
               .filter((p: any) => !p?.thought && typeof p?.text === 'string')
               .map((p: any) => p.text)
               .join('')
               .trim()
-            if (text) {
-              return new Response(
-                JSON.stringify({
-                  text,
-                  patientCards: patientMatches.length > 1 ? patientMatches : undefined,
-                }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            if (text) return { text }
+            modelErrors.push(`${model}: Empty response (${candidate?.finishReason || 'NO_TEXT'})`)
+            return {}
+          }
+
+          const errJson = await geminiRes.json().catch(() => ({}))
+          const errMsg = errJson?.error?.message || `HTTP ${geminiRes.status}`
+          modelErrors.push(`${model}: ${errMsg}`)
+          return { authFatal: geminiRes.status === 403 || geminiRes.status === 401 }
+        } catch (err: any) {
+          modelErrors.push(`${model}: ${err?.message || 'Network failure'}`)
+          return {}
+        }
+      }
+
+      const tried = new Set<string>()
+      let authFatal = false
+      for (const model of candidateModels) {
+        tried.add(model)
+        const res = await callModel(model)
+        if (res.text) {
+          return new Response(
+            JSON.stringify({
+              text: res.text,
+              patientCards: patientMatches.length > 1 ? patientMatches : undefined,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+        if (res.authFatal) {
+          authFatal = true
+          break
+        }
+      }
+
+      // Dynamically discover currently active Gemini models for this API key if presets failed
+      if (!authFatal) {
+        try {
+          const listRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(geminiApiKey)}&pageSize=100`
+          )
+          if (listRes.ok) {
+            const listJson = await listRes.json()
+            const discovered: string[] = (listJson?.models || [])
+              .filter((m: any) =>
+                Array.isArray(m?.supportedGenerationMethods) &&
+                m.supportedGenerationMethods.includes('generateContent') &&
+                typeof m?.name === 'string' &&
+                m.name.includes('gemini-') &&
+                !/(embedding|imagen|veo|tts|audio|live|robotics|computer-use|image-generation|aqa|1\.5|2\.0)/i.test(m.name)
               )
-            }
-            lastGeminiError = `Empty response from ${model}`
-          } else {
-            const errJson = await geminiRes.json().catch(() => ({}))
-            const errMsg = errJson?.error?.message || `HTTP ${geminiRes.status}`
-            lastGeminiError = `${model}: ${errMsg}`
-            if (geminiRes.status === 403 || geminiRes.status === 401) {
-              break
+              .map((m: any) => String(m.name).replace(/^models\//, ''))
+              .filter((id: string) => !tried.has(id))
+              .sort((a: string, b: string) => {
+                const score = (id: string) =>
+                  (id.includes('flash') ? 10 : 0) +
+                  (id.includes('lite') ? 4 : 0) +
+                  (id.includes('latest') ? 3 : 0) -
+                  (id.includes('pro') ? 2 : 0)
+                return score(b) - score(a)
+              })
+              .slice(0, 4)
+
+            for (const model of discovered) {
+              const res = await callModel(model)
+              if (res.text) {
+                return new Response(
+                  JSON.stringify({
+                    text: res.text,
+                    patientCards: patientMatches.length > 1 ? patientMatches : undefined,
+                  }),
+                  { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+              }
             }
           }
-        } catch (err: any) {
-          lastGeminiError = err?.message || `Network failure calling ${model}`
+        } catch {
+          // ignore model list errors
         }
       }
     } else {
-      lastGeminiError = 'GEMINI_API_KEY secret is not configured in Supabase Edge Functions'
+      modelErrors.push('GEMINI_API_KEY secret is not configured in Supabase Edge Functions')
     }
 
     // 6. Diagnostic fallback if Gemini key is not configured or all models failed
@@ -248,7 +307,7 @@ ${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(
       JSON.stringify({
         text: replyText,
         fallback: true,
-        geminiError: lastGeminiError || undefined,
+        geminiError: modelErrors.slice(0, 3).join(' | ') || undefined,
         patientCards: patientMatches.length > 0 ? patientMatches : undefined,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

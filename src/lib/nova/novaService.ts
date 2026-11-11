@@ -229,108 +229,125 @@ async function callGeminiAI(
   systemInstructions: string,
   history: NovaMessage[] = []
 ): Promise<GeminiResult> {
-  // Active Google Gemini models ordered from fastest/newest to legacy fallback
+  // Active Google Gemini models ordered from fastest/newest to latest aliases
   const candidateModels = [
     'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-1.5-flash'
+    'gemini-flash-latest',
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite'
   ];
 
   const contents = buildGeminiContents(history, userPrompt);
-  let lastError = '';
+  const errors: string[] = [];
 
-  for (const model of candidateModels) {
+  const tryModel = async (model: string): Promise<{ text?: string; authFatal?: boolean }> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 14000);
-
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-      const response = await fetch(url, {
+      let response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemInstructions }]
-          },
+          systemInstruction: { parts: [{ text: systemInstructions }] },
           contents,
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 2048,
-          }
+          generationConfig: { temperature: 0.4, maxOutputTokens: 4096 }
         })
       });
-
       clearTimeout(timer);
+
+      if (!response.ok && response.status === 400) {
+        const fbController = new AbortController();
+        const fbTimer = setTimeout(() => fbController.abort(), 12000);
+        try {
+          response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: fbController.signal,
+            body: JSON.stringify({
+              contents: [{
+                role: 'user',
+                parts: [{ text: `[SYSTEM INSTRUCTIONS]\n${systemInstructions}\n\n[USER QUERY]\n${userPrompt}` }]
+              }],
+              generationConfig: { temperature: 0.4, maxOutputTokens: 4096 }
+            })
+          });
+        } finally {
+          clearTimeout(fbTimer);
+        }
+      }
 
       if (response.ok) {
         const data = await response.json();
         const text = extractGeminiText(data);
-        if (text) {
-          return { text };
-        }
-      } else {
-        const errJson = await response.json().catch(() => ({}));
-        const errMsg = errJson?.error?.message || `HTTP ${response.status}`;
-        lastError = `${model}: ${errMsg}`;
-        console.warn(`[Nova AI] ${model} returned ${response.status}:`, errJson);
-
-        // If key itself is invalid or blocked (401/403), don't waste requests looping models
-        if (response.status === 401 || response.status === 403) {
-          return { text: null, error: errMsg };
-        }
-
-        // Fallback if a model rejects systemInstruction or multi-turn format
-        if (response.status === 400) {
-          const fallbackController = new AbortController();
-          const fallbackTimer = setTimeout(() => fallbackController.abort(), 12000);
-          try {
-            const fallbackRes = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              signal: fallbackController.signal,
-              body: JSON.stringify({
-                contents: [
-                  {
-                    role: 'user',
-                    parts: [{ text: `[SYSTEM INSTRUCTIONS]\n${systemInstructions}\n\n[USER QUERY]\n${userPrompt}` }]
-                  }
-                ],
-                generationConfig: {
-                  temperature: 0.4,
-                  maxOutputTokens: 2048,
-                }
-              })
-            });
-            clearTimeout(fallbackTimer);
-            if (fallbackRes.ok) {
-              const fbData = await fallbackRes.json();
-              const fbText = extractGeminiText(fbData);
-              if (fbText) return { text: fbText };
-            } else {
-              const fbErr = await fallbackRes.json().catch(() => ({}));
-              const fbMsg = fbErr?.error?.message || `HTTP ${fallbackRes.status}`;
-              lastError = fbMsg;
-              if (fbMsg.toLowerCase().includes('api key')) {
-                return { text: null, error: fbMsg };
-              }
-            }
-          } catch {
-            clearTimeout(fallbackTimer);
-          }
-        }
+        if (text) return { text };
+        const reason = data?.candidates?.[0]?.finishReason || 'NO_TEXT';
+        errors.push(`${model}: Empty response (${reason})`);
+        return {};
       }
+
+      const errJson = await response.json().catch(() => ({}));
+      const errMsg = errJson?.error?.message || `HTTP ${response.status}`;
+      errors.push(`${model}: ${errMsg}`);
+      return { authFatal: response.status === 401 || response.status === 403 || errMsg.toLowerCase().includes('api key') };
     } catch (err: any) {
       clearTimeout(timer);
-      lastError = err?.message || 'Network timeout';
-      console.warn(`[Nova AI] Model ${model} request failed or timed out:`, err?.message || err);
+      errors.push(`${model}: ${err?.message || 'Network timeout'}`);
+      return {};
+    }
+  };
+
+  const tried = new Set<string>();
+  let authFatal = false;
+  for (const model of candidateModels) {
+    tried.add(model);
+    const res = await tryModel(model);
+    if (res.text) return { text: res.text };
+    if (res.authFatal) {
+      authFatal = true;
+      break;
     }
   }
 
-  return { text: null, error: lastError || 'Unable to reach Gemini AI service' };
+  if (!authFatal) {
+    try {
+      const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}&pageSize=100`);
+      if (listRes.ok) {
+        const listJson = await listRes.json();
+        const discovered: string[] = (listJson?.models || [])
+          .filter((m: any) =>
+            Array.isArray(m?.supportedGenerationMethods) &&
+            m.supportedGenerationMethods.includes('generateContent') &&
+            typeof m?.name === 'string' &&
+            m.name.includes('gemini-') &&
+            !/(embedding|imagen|veo|tts|audio|live|robotics|computer-use|image-generation|aqa|1\.5|2\.0)/i.test(m.name)
+          )
+          .map((m: any) => String(m.name).replace(/^models\//, ''))
+          .filter((id: string) => !tried.has(id))
+          .sort((a: string, b: string) => {
+            const score = (id: string) =>
+              (id.includes('flash') ? 10 : 0) +
+              (id.includes('lite') ? 4 : 0) +
+              (id.includes('latest') ? 3 : 0) -
+              (id.includes('pro') ? 2 : 0);
+            return score(b) - score(a);
+          })
+          .slice(0, 4);
+
+        for (const model of discovered) {
+          const res = await tryModel(model);
+          if (res.text) return { text: res.text };
+        }
+      }
+    } catch {
+      // ignore discovery failure
+    }
+  }
+
+  return { text: null, error: errors.slice(0, 3).join(' | ') || 'Unable to reach Gemini AI service' };
 }
 
 // Security Guardrails: Client-side query rate limiter to prevent budget drain & spam
