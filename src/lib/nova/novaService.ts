@@ -565,11 +565,18 @@ PRIMARY INSTRUCTIONS:
 
   // Try Supabase Edge Function 'prescripto-nova' (when no client key or if direct call failed)
   try {
+    const cleanHistory = history
+      .filter(m => m && m.text && !m.id?.startsWith('init-') && !m.id?.startsWith('err-'))
+      .slice(-8)
+      .map(m => ({ sender: m.sender, text: m.text.slice(0, 1000) }));
+
     const { data: edgeRes, error: edgeErr } = await supabase.functions.invoke('prescripto-nova', {
       body: {
         message: query,
         clinicId: clinicId,
-        userRole: context.userRole || 'doctor'
+        userRole: context.userRole || 'doctor',
+        clinicContext: clinicContextText,
+        history: cleanHistory
       }
     });
     if (!edgeErr && edgeRes?.text && !edgeRes?.fallback) {

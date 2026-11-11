@@ -73,7 +73,7 @@ serve(async (req) => {
 
     // 2. Validate request input & payload size
     const body = await req.json().catch(() => ({}))
-    const { message, clinicId, userRole } = body
+    const { message, clinicId, userRole, clinicContext, history } = body
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return new Response(JSON.stringify({ error: 'Invalid query: message content is required.' }), {
@@ -123,29 +123,50 @@ serve(async (req) => {
     // 5. Call Google Gemini AI with server-side secret API key (zero client leakage)
     if (geminiApiKey) {
       const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
-      
-      for (const model of candidateModels) {
-        try {
-          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiApiKey)}`
-          const prompt = `You are "Nova", the clinical, medical, and clinic-operations AI assistant created by Zevox for PreScripto.
+
+      const systemInstruction = `You are "Nova", the clinical, medical, and clinic-operations AI assistant created by Zevox for PreScripto.
 Assisting clinic doctors, owners, and reception staff.
 Clinic ID: ${clinicId || 'Unknown'}
 User Role: ${userRole || 'Staff'}
-
+${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(0, 2000)}\n` : ''}
 Rules:
 1. Answer ANY question the user asks clearly, accurately, and directly (clinical/medical, dosages, general questions, or PreScripto operations).
 2. If asked in Tamil or Tanglish, reply fluently in Tamil/Tanglish.
 3. If asked about features, highlight Prescripto v1.5 features (Nova Clinical AI Copilot, custom themes & HEX picker, VisionOS floating dock, TV token audio chime, strict multi-clinic isolation).
-4. If matching patient records are provided, summarize them accurately.
+4. If matching patient records are provided, summarize them accurately.`
 
-User Question: ${message}
-Matching Patients found in clinic: ${JSON.stringify(patientMatches)}`
+      const turns: { role: 'user' | 'model'; parts: { text: string }[] }[] = []
+      if (Array.isArray(history)) {
+        for (const h of history.slice(-8)) {
+          if (!h?.text) continue
+          const role = h.sender === 'user' ? 'user' : 'model'
+          if (turns.length === 0 && role !== 'user') continue
+          if (turns.length > 0 && turns[turns.length - 1].role === role) {
+            turns[turns.length - 1].parts[0].text += `\n${String(h.text)}`
+          } else {
+            turns.push({ role, parts: [{ text: String(h.text) }] })
+          }
+        }
+      }
+      const userPrompt = patientMatches.length > 0
+        ? `${message}\n\nMatching Patients found in clinic: ${JSON.stringify(patientMatches)}`
+        : message
+      if (turns.length > 0 && turns[turns.length - 1].role === 'user') {
+        turns[turns.length - 1].parts[0].text += `\n${userPrompt}`
+      } else {
+        turns.push({ role: 'user', parts: [{ text: userPrompt }] })
+      }
+      
+      for (const model of candidateModels) {
+        try {
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiApiKey)}`
 
           const geminiRes = await fetch(geminiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
+              systemInstruction: { parts: [{ text: systemInstruction }] },
+              contents: turns,
               generationConfig: {
                 temperature: 0.4,
                 maxOutputTokens: 2048,
