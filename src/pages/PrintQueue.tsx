@@ -225,21 +225,27 @@ export default function PrintQueue() {
 
         <div className="grid grid-cols-1 gap-3 max-w-4xl mx-auto">
           {prescriptions.map(rx => (
-            <Card key={rx.id} className="animate-fade-in border-border bg-card hover:bg-muted/20 transition-colors shadow-sm">
-              <CardContent className="py-4 flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-lg text-foreground">{(rx.patients?.title ? rx.patients.title + ' ' : '') + rx.patients?.name}</span>
-                    <Badge variant="secondary" className="bg-blue-500/10 text-blue-500 border-none font-bold">TOKEN #{rx.visits?.token_number}</Badge>
+            <Card key={rx.id} className="animate-fade-in border-border bg-card hover:bg-muted/20 transition-colors shadow-sm overflow-hidden">
+              <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className="font-bold text-base sm:text-lg text-foreground break-words">
+                      {(rx.patients?.title ? rx.patients.title + ' ' : '') + rx.patients?.name}
+                    </span>
+                    <Badge variant="secondary" className="bg-blue-500/10 text-blue-500 border-none font-bold shrink-0 whitespace-nowrap">
+                      TOKEN #{rx.visits?.token_number}
+                    </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5" />
-                    {new Date(rx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    {rx.diagnosis && <span className="text-muted-foreground/60">· {rx.diagnosis}</span>}
+                  <p className="text-xs sm:text-sm text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="inline-flex items-center gap-1.5 shrink-0">
+                      <Clock className="w-3.5 h-3.5" />
+                      {new Date(rx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    {rx.diagnosis && <span className="text-muted-foreground/70 break-words">· {rx.diagnosis}</span>}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                   <Button onClick={() => printPrescription(rx)} className="gap-2 px-6 shadow-md hover:shadow-lg transition-all" size="lg">
+                <div className="flex items-center sm:shrink-0">
+                   <Button onClick={() => printPrescription(rx)} className="w-full sm:w-auto gap-2 px-5 shadow-md hover:shadow-lg transition-all" size="lg">
                     <Printer className="w-4 h-4" />Print Prescription
                   </Button>
                 </div>
