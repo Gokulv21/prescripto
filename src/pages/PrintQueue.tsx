@@ -44,6 +44,7 @@ export default function PrintQueue() {
   // 1. Fetch Active Print Requests via React Query
   const { data: prescriptions = [], isLoading, refetch: refetchPrescriptions } = useQuery({
     queryKey: ['prescriptionsToPrint', clinic?.id],
+    enabled: !!clinic?.id,
     queryFn: async () => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -71,7 +72,8 @@ export default function PrintQueue() {
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
-        table: 'prescriptions'
+        table: 'prescriptions',
+        filter: `clinic_id=eq.${clinic.id}`
       }, () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
@@ -102,9 +104,18 @@ export default function PrintQueue() {
   }, [printData]);
 
   const markPrinted = async (id: string) => {
-    const { error } = await supabase.from('prescriptions').update({ is_printed: true }).eq('id', id);
-    if (error) toast.error('Failed to update');
-    else {
+    const { data, error } = await supabase
+      .from('prescriptions')
+      .update({ is_printed: true })
+      .eq('id', id)
+      .select('id');
+
+    if (error) {
+      toast.error(`Failed to update: ${error.message}`);
+    } else if (!data || data.length === 0) {
+      toast.error('Permission denied: Could not mark prescription as printed for this clinic.');
+      queryClient.invalidateQueries({ queryKey: ['prescriptionsToPrint', clinic?.id] });
+    } else {
       toast.success('Printed & Cleared');
       // Optimistically remove from list
       queryClient.setQueryData(['prescriptionsToPrint', clinic?.id], (old: any) => old?.filter((p: any) => p.id !== id));

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { sanitizeText, validatePhone, validateNumericRange } from '@/lib/security-sanitize';
@@ -129,6 +130,7 @@ const COMMON_FREQUENCIES = [
 
 export default function DoctorProfile() {
     const { user, roles, hasRole, refresh: refreshAuth } = useAuth();
+    const queryClient = useQueryClient();
     const { theme, setTheme, accent, setAccent, customColor, setCustomColor } = useTheme();
     const { slug } = useParams();
     const { clinic } = useOutletContext<{ clinic: Clinic }>();
@@ -224,12 +226,12 @@ export default function DoctorProfile() {
         if (!user?.id) return;
         setLoading(true);
         try {
-            // 1. Fetch Profile
+            // 1. Fetch Profile (use maybeSingle so new accounts without a stub never fail .single())
             const { data: profData } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('user_id', user.id)
-                .single();
+                .maybeSingle();
 
             if (profData) {
                 setProfile({
@@ -241,6 +243,14 @@ export default function DoctorProfile() {
                 try {
                     localStorage.setItem(`prescripto_sig_enabled_${user.id}`, String(sigEnabled));
                 } catch {}
+            } else {
+                const fallbackSigEnabled = isDigitalSignatureEnabled({ user_id: user.id, bio: null });
+                setProfile({
+                    id: user.id,
+                    full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Doctor',
+                    email: user.email
+                });
+                setDigitalSignatureEnabled(fallbackSigEnabled);
             }
 
             // Fetch Clinic branding & Watermark from Supabase Storage avatars bucket & profile metadata
@@ -620,18 +630,33 @@ export default function DoctorProfile() {
             const nextBioStr = JSON.stringify(curBio);
             profilePayload.bio = nextBioStr;
 
-            const { error } = await supabase
+            const { data: updatedProf, error } = await supabase
                 .from('profiles')
                 .update(profilePayload)
-                .eq('user_id', user.id);
+                .eq('user_id', user.id)
+                .select('id')
+                .maybeSingle();
 
             if (error) throw error;
+            if (!updatedProf) {
+                const { error: upsertErr } = await supabase
+                    .from('profiles')
+                    .upsert({
+                        user_id: user.id,
+                        email: user.email,
+                        clinic_id: clinic?.id || null,
+                        role: roles?.[0] || 'doctor',
+                        ...profilePayload
+                    }, { onConflict: 'user_id' });
+                if (upsertErr) throw upsertErr;
+            }
 
             try {
                 localStorage.setItem(`prescripto_sig_enabled_${user.id}`, String(digitalSignatureEnabled));
             } catch {}
             setProfile(p => p ? { ...p, bio: nextBioStr } : p);
             clearPrescriptionProfileCache(user.id);
+            queryClient.invalidateQueries({ queryKey: ['myProfile', user.id] });
 
             // 2. Update Clinic Branding (ONLY if true owner of this clinic and only existing columns)
             if (isClinicOwner && clinic?.id) {
@@ -675,14 +700,36 @@ export default function DoctorProfile() {
             const curBio = parseProfileBio(profile?.bio);
             curBio.digital_signature_enabled = checked;
             const nextBioStr = JSON.stringify(curBio);
-            setProfile(p => p ? { ...p, bio: nextBioStr } : p);
+            setProfile(p => p ? { ...p, bio: nextBioStr } : {
+                id: user.id,
+                full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Doctor',
+                email: user.email,
+                bio: nextBioStr
+            });
 
-            const { error } = await supabase
+            const { data: updatedRow, error } = await supabase
                 .from('profiles')
                 .update({ bio: nextBioStr })
-                .eq('user_id', user.id);
+                .eq('user_id', user.id)
+                .select('id')
+                .maybeSingle();
             if (error) throw error;
 
+            if (!updatedRow) {
+                const { error: upsertErr } = await supabase
+                    .from('profiles')
+                    .upsert({
+                        user_id: user.id,
+                        full_name: profile?.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Doctor',
+                        email: user.email,
+                        clinic_id: clinic?.id || null,
+                        role: roles?.[0] || 'doctor',
+                        bio: nextBioStr
+                    }, { onConflict: 'user_id' });
+                if (upsertErr) throw upsertErr;
+            }
+
+            queryClient.invalidateQueries({ queryKey: ['myProfile', user.id] });
             await refreshAuth().catch(() => {});
             toast.success(
                 checked

@@ -281,17 +281,16 @@ export default function ClinicSelection() {
 
       if (clinicError) throw clinicError;
 
-      // 4. Create Profile for Owner
+      // 4. Create or update Profile for Owner (handle_new_user trigger may already have created a stub row)
       const { error: profileError } = await supabase
         .from('profiles')
-        .insert({
-          id: authData.user.id,
+        .upsert({
           user_id: authData.user.id,
           full_name: formData.ownerName,
           email: formData.ownerEmail,
           clinic_id: newClinic.id,
           role: 'owner'
-        });
+        }, { onConflict: 'user_id' });
 
       if (profileError) throw profileError;
 

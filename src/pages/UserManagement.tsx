@@ -121,10 +121,9 @@ export default function UserManagement() {
         user_id: data.user.id,
         full_name: fullName.trim(),
         email: email.trim(),
-        id: data.user.id,
         role: role as AppRole,
         clinic_id: clinic?.id
-      });
+      }, { onConflict: 'user_id' });
       if (profileError) console.error("Profile Error:", profileError);
 
       toast.success(`${fullName} registered as ${role}`);

@@ -5,11 +5,11 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  searchPatientsTool, 
-  getPatientFullProfileTool, 
+import {
+  searchPatientsTool,
+  getPatientFullProfileTool,
   getClinicLiveStatsTool,
-  CandidatePatient, 
+  CandidatePatient,
   PatientDetailedProfile
 } from './novaTools';
 
@@ -578,14 +578,14 @@ ${clinicContextText}`;
       };
     }
 
-      if (false) {
-      } else if (canViewClinicAnalytics && (lowerAi.includes('analytics') || lowerQuery.includes('analytic') || lowerQuery.includes('nethu') || lowerQuery.includes('yesterday') || lowerQuery.includes('report'))) {
-        actionLink = { label: prefersTamil ? 'அனலிட்டிக்ஸ் பக்கம்' : 'Open Analytics Page', path: prefixPath('/analytics') };
-      } else if (lowerAi.includes('print') || lowerQuery.includes('print')) {
-        actionLink = { label: prefersTamil ? 'பிரிண்ட் வரிசைக்கு செல்' : 'Open Print Queue', path: prefixPath('/print') };
-      } else if (lowerAi.includes('tv') || lowerQuery.includes('tv') || lowerAi.includes('display')) {
-        actionLink = { label: prefersTamil ? 'டிவி காட்சியை திற' : 'Open TV Display', path: prefixPath('/display') };
-      }
+    if (false) {
+    } else if (canViewClinicAnalytics && (lowerAi.includes('analytics') || lowerQuery.includes('analytic') || lowerQuery.includes('nethu') || lowerQuery.includes('yesterday') || lowerQuery.includes('report'))) {
+      actionLink = { label: prefersTamil ? 'அனலிட்டிக்ஸ் பக்கம்' : 'Open Analytics Page', path: prefixPath('/analytics') };
+    } else if (lowerAi.includes('print') || lowerQuery.includes('print')) {
+      actionLink = { label: prefersTamil ? 'பிரிண்ட் வரிசைக்கு செல்' : 'Open Print Queue', path: prefixPath('/print') };
+    } else if (lowerAi.includes('tv') || lowerQuery.includes('tv') || lowerAi.includes('display')) {
+      actionLink = { label: prefersTamil ? 'டிவி காட்சியை திற' : 'Open TV Display', path: prefixPath('/display') };
+    }
 
     geminiFailureReason = aiResult.error || 'Gemini AI request failed';
   }
@@ -684,8 +684,8 @@ export const sendCopilotMessage = sendNovaMessage;
  * Handles selecting a specific patient from the candidate list
  */
 export async function selectPatientProfile(
-  patientId: string, 
-  clinicId?: string, 
+  patientId: string,
+  clinicId?: string,
   slug?: string
 ): Promise<NovaMessage> {
   const profile = await getPatientFullProfileTool(patientId, clinicId);
