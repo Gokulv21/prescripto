@@ -151,6 +151,10 @@ export default function DigitalPrescription({
     // Lasso and Selection State
     const [toolMode, setToolMode] = useState<'pen' | 'eraser' | 'lasso' | 'select'>('pen');
     const isEraser = toolMode === 'eraser';
+    const [eraserMode, setEraserMode] = useState<'precision' | 'stroke'>('precision');
+    const lastEraserPosRef = useRef<{ x: number; y: number } | null>(null);
+    const eraserModifiedRef = useRef<boolean>(false);
+    const currentPagePathsRef = useRef<DrawnPath[]>([]);
     const [lassoPath, setLassoPath] = useState<{x: number, y: number}[]>([]);
     const [selectedPathIndices, setSelectedPathIndices] = useState<number[]>([]);
     const [isDraggingSelection, setIsDraggingSelection] = useState(false);
@@ -301,16 +305,44 @@ export default function DigitalPrescription({
 
 
     // Multi-page State
-    type PathPoint = { x: number; y: number };
-    type DrawnPath = { points: PathPoint[]; color: string; size: number; isEraser: boolean };
+    type PathPoint = { x: number; y: number; pressure?: number };
+    type DrawnPath = { points: PathPoint[]; color: string; size: number; isEraser?: boolean };
 
     // Improved initialization: check if initialPaths is already structured as pages (array of arrays)
     const getInitialPages = () => {
-        if (initialPages) return initialPages;
-        if (Array.isArray(initialPaths) && initialPaths.length > 0 && Array.isArray(initialPaths[0])) {
-            return initialPaths as DrawnPath[][];
+        let initial: DrawnPath[][] = [[]];
+        if (initialPages) {
+            initial = initialPages;
+        } else if (Array.isArray(initialPaths) && initialPaths.length > 0 && Array.isArray(initialPaths[0])) {
+            initial = initialPaths as DrawnPath[][];
+        } else if (Array.isArray(initialPaths)) {
+            initial = [initialPaths] as DrawnPath[][];
         }
-        return [initialPaths] as DrawnPath[][];
+        // Sanitize: filter out any legacy ghost eraser paths
+        return initial.map(page => (page || []).filter(p => !p.isEraser));
+    };
+
+    const distToSegmentSquared = (
+        p: { x: number; y: number },
+        v: { x: number; y: number },
+        w: { x: number; y: number }
+    ) => {
+        const l2 = (v.x - w.x) ** 2 + (v.y - w.y) ** 2;
+        if (l2 === 0) return (p.x - v.x) ** 2 + (p.y - v.y) ** 2;
+        let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+        t = Math.max(0, Math.min(1, t));
+        return (p.x - (v.x + t * (w.x - v.x))) ** 2 + (p.y - (v.y + t * (w.y - v.y))) ** 2;
+    };
+
+    const segmentsIntersect = (
+        a: { x: number; y: number },
+        b: { x: number; y: number },
+        c: { x: number; y: number },
+        d: { x: number; y: number }
+    ) => {
+        const ccw = (p1: { x: number; y: number }, p2: { x: number; y: number }, p3: { x: number; y: number }) =>
+            (p3.y - p1.y) * (p2.x - p1.x) > (p2.y - p1.y) * (p3.x - p1.x);
+        return ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d);
     };
 
     const [pages, setPages] = useState<DrawnPath[][]>(getInitialPages());
@@ -401,6 +433,121 @@ export default function DigitalPrescription({
         isDirtyRef.current = true;
     }, []);
 
+    const performErase = useCallback((from: PathPoint, to: PathPoint) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const width = canvas.width;
+        const height = canvas.height;
+        const radiusPx = (eraserSize * 5) / 2;
+
+        const fromPx = { x: from.x * width, y: from.y * height };
+        const toPx = { x: to.x * width, y: to.y * height };
+
+        const currentPaths = currentPagePathsRef.current;
+        if (!currentPaths || currentPaths.length === 0) return;
+
+        let hasChange = false;
+        const nextPaths: DrawnPath[] = [];
+
+        const minEx = Math.min(fromPx.x, toPx.x) - radiusPx;
+        const maxEx = Math.max(fromPx.x, toPx.x) + radiusPx;
+        const minEy = Math.min(fromPx.y, toPx.y) - radiusPx;
+        const maxEy = Math.max(fromPx.y, toPx.y) + radiusPx;
+
+        for (const path of currentPaths) {
+            if (path.isEraser) {
+                hasChange = true;
+                continue;
+            }
+
+            const pts = path.points;
+            if (!pts || pts.length === 0) {
+                hasChange = true;
+                continue;
+            }
+
+            let sMinX = pts[0].x * width;
+            let sMaxX = sMinX;
+            let sMinY = pts[0].y * height;
+            let sMaxY = sMinY;
+            for (let i = 1; i < pts.length; i++) {
+                const px = pts[i].x * width;
+                const py = pts[i].y * height;
+                if (px < sMinX) sMinX = px;
+                if (px > sMaxX) sMaxX = px;
+                if (py < sMinY) sMinY = py;
+                if (py > sMaxY) sMaxY = py;
+            }
+
+            const strokeR = (path.size || 2) * 2;
+            sMinX -= strokeR;
+            sMaxX += strokeR;
+            sMinY -= strokeR;
+            sMaxY += strokeR;
+
+            if (maxEx < sMinX || minEx > sMaxX || maxEy < sMinY || minEy > sMaxY) {
+                nextPaths.push(path);
+                continue;
+            }
+
+            const rThresholdSq = (radiusPx + strokeR) ** 2;
+            const pxPts = pts.map(p => ({ x: p.x * width, y: p.y * height }));
+            const hitIndices = new Set<number>();
+
+            for (let i = 0; i < pts.length; i++) {
+                if (distToSegmentSquared(pxPts[i], fromPx, toPx) <= rThresholdSq) {
+                    hitIndices.add(i);
+                }
+            }
+
+            for (let i = 0; i < pts.length - 1; i++) {
+                if (segmentsIntersect(pxPts[i], pxPts[i + 1], fromPx, toPx)) {
+                    hitIndices.add(i);
+                    hitIndices.add(i + 1);
+                }
+            }
+
+            if (hitIndices.size === 0) {
+                nextPaths.push(path);
+                continue;
+            }
+
+            hasChange = true;
+
+            if (eraserMode === 'stroke') {
+                continue;
+            }
+
+            let currentCluster: PathPoint[] = [];
+            for (let i = 0; i < pts.length; i++) {
+                if (!hitIndices.has(i)) {
+                    currentCluster.push(pts[i]);
+                } else {
+                    if (currentCluster.length >= 2) {
+                        nextPaths.push({
+                            ...path,
+                            points: currentCluster
+                        });
+                    }
+                    currentCluster = [];
+                }
+            }
+            if (currentCluster.length >= 2) {
+                nextPaths.push({
+                    ...path,
+                    points: currentCluster
+                });
+            }
+        }
+
+        if (hasChange) {
+            currentPagePathsRef.current = nextPaths;
+            eraserModifiedRef.current = true;
+            redrawStatic(nextPaths);
+            isDirtyRef.current = true;
+        }
+    }, [eraserSize, eraserMode, redrawStatic]);
+
     const redrawPage = useCallback(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -429,12 +576,12 @@ export default function DigitalPrescription({
                 ctx.stroke();
                 ctx.setLineDash([]);
                 ctx.lineDashOffset = 0;
-            } else if (toolMode === 'pen' || toolMode === 'eraser') {
+            } else if (toolMode === 'pen') {
                 renderPath(ctx, {
                     points: currentPathRef.current,
                     color: penColor,
-                    size: toolMode === 'eraser' ? eraserSize : penSize,
-                    isEraser: toolMode === 'eraser'
+                    size: penSize,
+                    isEraser: false
                 }, canvas.width, canvas.height);
             }
         }
@@ -450,14 +597,14 @@ export default function DigitalPrescription({
                ctx.globalCompositeOperation = 'destination-out';
                selectedPathIndices.forEach(idx => {
                    const path = pages[currentPageIndex]?.[idx];
-                   if(path) renderPath(ctx, {...path, isEraser: false, size: path.size + 2}, canvas.width, canvas.height);
+                   if(path && !path.isEraser) renderPath(ctx, {...path, isEraser: false, size: path.size + 2}, canvas.width, canvas.height);
                });
                ctx.globalCompositeOperation = 'source-over';
                
                // Draw them at offset
                selectedPathIndices.forEach(idx => {
                    const path = pages[currentPageIndex]?.[idx];
-                   if(path) {
+                   if(path && !path.isEraser) {
                        const offsetPath = {
                            ...path,
                            points: path.points.map(p => ({x: p.x + dragOffset.x, y: p.y + dragOffset.y}))
@@ -473,7 +620,7 @@ export default function DigitalPrescription({
                ctx.globalCompositeOperation = 'destination-out';
                selectedPathIndices.forEach(idx => {
                    const path = pages[currentPageIndex]?.[idx];
-                   if(path) renderPath(ctx, {...path, isEraser: false, size: path.size + 2}, canvas.width, canvas.height);
+                   if(path && !path.isEraser) renderPath(ctx, {...path, isEraser: false, size: path.size + 2}, canvas.width, canvas.height);
                });
                ctx.globalCompositeOperation = 'source-over';
 
@@ -483,7 +630,7 @@ export default function DigitalPrescription({
                // Draw them scaled
                selectedPathIndices.forEach(idx => {
                    const path = pages[currentPageIndex]?.[idx];
-                   if(path) {
+                   if(path && !path.isEraser) {
                        const scaledPath = {
                            ...path,
                            points: path.points.map(p => ({
@@ -491,6 +638,11 @@ export default function DigitalPrescription({
                                x: minX + (p.x - minX) * scaleFactor,
                                y: minY + (p.y - minY) * scaleFactor
                            }))
+                       };
+                       renderPath(ctx, scaledPath, canvas.width, canvas.height);
+                   }
+               });
+            }
                        };
                        renderPath(ctx, scaledPath, canvas.width, canvas.height);
                    }
@@ -662,9 +814,9 @@ export default function DigitalPrescription({
     const onPointerDown = (e: React.PointerEvent) => {
         e.preventDefault();
 
-        // Restore Palm Rejection: Strictly ONLY allow Stylus/Pen for drawing. 
+        // Restore Palm Rejection: Strictly ONLY allow Stylus/Pen or Mouse for drawing. 
         // This ensures fingers can still be used for Pinch-to-zoom gestures.
-        if (e.pointerType !== 'pen' && toolMode !== 'select') return;
+        if (e.pointerType === 'touch' && toolMode !== 'select') return;
 
         if (toolMode === 'eraser' && eraserCursorRef.current) {
             eraserCursorRef.current.style.display = 'block';
@@ -755,6 +907,15 @@ export default function DigitalPrescription({
         activePointerIdRef.current = e.pointerId;
 
         isDrawingRef.current = true;
+
+        if (toolMode === 'eraser') {
+            currentPagePathsRef.current = [...(pages[currentPageIndex] || [])];
+            lastEraserPosRef.current = pos;
+            eraserModifiedRef.current = false;
+            performErase(pos, pos);
+            return;
+        }
+
         const pressure = e.pressure || 0.5;
         currentPathRef.current = [{ ...pos, pressure }];
         isDirtyRef.current = true;
@@ -763,8 +924,8 @@ export default function DigitalPrescription({
     const onPointerMove = (e: React.PointerEvent) => {
         e.preventDefault();
 
-        // Restore palm rejection: Only track the active pen
-        if (e.pointerType !== 'pen' && toolMode !== 'select') return;
+        // Restore palm rejection: Only track the active pen or mouse
+        if (e.pointerType === 'touch' && toolMode !== 'select') return;
         
         if (eraserCursorRef.current) {
             if (toolMode === 'eraser') {
@@ -808,6 +969,21 @@ export default function DigitalPrescription({
         if (!isDrawingRef.current) return;
         if (e.pointerId !== activePointerIdRef.current) return;
 
+        if (toolMode === 'eraser') {
+            const coalescedEvents = (e.nativeEvent as any).getCoalescedEvents
+                ? (e.nativeEvent as any).getCoalescedEvents()
+                : [e.nativeEvent];
+
+            for (const ce of coalescedEvents) {
+                const cPos = getCanvasPos(ce.clientX, ce.clientY);
+                if (lastEraserPosRef.current) {
+                    performErase(lastEraserPosRef.current, cPos);
+                }
+                lastEraserPosRef.current = cPos;
+            }
+            return;
+        }
+
         // Process all coalesced (high-frequency) events for smooth strokes
         const coalescedEvents = (e.nativeEvent as any).getCoalescedEvents
             ? (e.nativeEvent as any).getCoalescedEvents()
@@ -826,7 +1002,7 @@ export default function DigitalPrescription({
 
     // Shared commit logic for pointerup / pointercancel / pointerleave
     const commitStroke = (e?: React.PointerEvent) => {
-        if (e && e.pointerType !== 'pen' && toolMode !== 'select') return;
+        if (e && e.pointerType === 'touch' && toolMode !== 'select') return;
 
         if (toolMode === 'select' && isResizingSelection) {
             setIsResizingSelection(false);
@@ -897,24 +1073,47 @@ export default function DigitalPrescription({
         isDrawingRef.current = false;
         activePointerIdRef.current = null;
 
+        if (toolMode === 'eraser') {
+            lastEraserPosRef.current = null;
+            if (wasDrawing && eraserModifiedRef.current && currentPagePathsRef.current) {
+                const updatedPages = [...pages];
+                updatedPages[currentPageIndex] = currentPagePathsRef.current;
+                setPages(updatedPages);
+
+                const newHistory = history.slice(0, historyStep + 1);
+                newHistory.push(updatedPages);
+                setHistory(newHistory);
+                setHistoryStep(newHistory.length - 1);
+
+                if (onPathsChange) {
+                    onPathsChange(updatedPages);
+                }
+                eraserModifiedRef.current = false;
+            }
+            currentPathRef.current = [];
+            isDirtyRef.current = true;
+            return;
+        }
+
         if (wasDrawing && currentPathRef.current.length > 0) {
             if (toolMode === 'lasso') {
                 const poly = currentPathRef.current.map(p => [p.x, p.y]);
                 if (poly.length > 2) {
-                    const newSelected = [];
+                    const newSelected: number[] = [];
                     (pages[currentPageIndex] || []).forEach((path, idx) => {
+                        if (path.isEraser) return;
                         const isInside = path.points.some(p => polygonContains(poly, [p.x, p.y]));
                         if (isInside) newSelected.push(idx);
                     });
                     setSelectedPathIndices(newSelected);
                     if (newSelected.length > 0) setToolMode('select');
                 }
-            } else if (toolMode === 'pen' || toolMode === 'eraser') {
+            } else if (toolMode === 'pen') {
                 const newPath = {
                     points: [...currentPathRef.current],
                     color: penColor,
-                    size: toolMode === 'eraser' ? eraserSize : penSize,
-                    isEraser: toolMode === 'eraser',
+                    size: penSize,
+                    isEraser: false,
                 };
                 const updatedPages = [...pages];
                 updatedPages[currentPageIndex] = [...(updatedPages[currentPageIndex] || []), newPath];
@@ -1236,6 +1435,7 @@ export default function DigitalPrescription({
         // Immediately discard any in-progress stroke — do NOT commit it
         isDrawingRef.current = false;
         activePointerIdRef.current = null;
+        lastEraserPosRef.current = null;
         currentPathRef.current = [];
         lastTouchDistanceRef.current = null;
         isDirtyRef.current = true;
@@ -1531,6 +1731,16 @@ export default function DigitalPrescription({
                                     }}
                                     className="w-12 md:w-16 h-1 bg-muted rounded-lg appearance-none cursor-pointer accent-blue-600"
                                 />
+                                {toolMode === 'eraser' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setEraserMode(prev => prev === 'precision' ? 'stroke' : 'precision')}
+                                        className="text-[10px] font-bold px-2 py-0.5 rounded-full border border-border bg-background hover:bg-muted text-foreground transition-all shadow-xs"
+                                        title={eraserMode === 'precision' ? "Precision Eraser (erases touched area)" : "Stroke Eraser (erases entire stroke)"}
+                                    >
+                                        {eraserMode === 'precision' ? 'Partial' : 'Whole Stroke'}
+                                    </button>
+                                )}
                             </div>
                         )}
                         
