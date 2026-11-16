@@ -189,7 +189,7 @@ export default function UserManagement() {
   const staffCount = users.filter(u => u.role === 'staff').length;
 
   return (
-    <div className="max-w-7xl mx-auto py-6 sm:py-8 px-4 sm:px-6 space-y-8 font-jakarta-sans">
+    <div className="w-full space-y-6 sm:space-y-8 font-jakarta-sans">
       
       {/* Page Header (Minimal & Professional matching Settings alignment) */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-200/80 dark:border-slate-800">

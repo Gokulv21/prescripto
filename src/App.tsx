@@ -24,22 +24,24 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
         const mod = await importer();
         return mod;
       } catch (err: any) {
-        const msg = String(err?.message || err || '');
+        const msg = String(err?.message || err || '').toLowerCase();
         const isChunkErr =
-          msg.includes('Failed to fetch dynamically imported module') ||
-          msg.includes('Importing a module script failed') ||
-          msg.includes('Loading chunk') ||
-          msg.includes('error loading dynamically imported module');
+          msg.includes('dynamically imported') ||
+          msg.includes('module script failed') ||
+          msg.includes('loading chunk') ||
+          msg.includes('load failed') ||
+          msg.includes('failed to fetch') ||
+          msg.includes('networkerror');
 
         if (attempt < 2) {
-          await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
           continue;
         }
 
         if (isChunkErr && typeof window !== 'undefined') {
           try {
             const lastRetry = parseInt(sessionStorage.getItem(CHUNK_RELOAD_KEY) || '0', 10);
-            if (!lastRetry || Date.now() - lastRetry > 15000) {
+            if (!lastRetry || Date.now() - lastRetry > 10000) {
               sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
               window.location.reload();
               return new Promise<{ default: T }>(() => {});
@@ -99,7 +101,7 @@ function ClinicWrapper() {
   const { user, roles } = useAuth();
   const { data: clinic, isLoading, error, refetch } = useQuery({
     queryKey: ['clinic', slug],
-    staleTime: 0, // Always fetch fresh clinic status to ensure immediate blocking
+    staleTime: 1000 * 60 * 5, // Cache for 5 mins; realtime listener below updates immediately on DB change
     queryFn: async () => {
       if (!slug) return null;
       const { data, error } = await supabase.from('clinics').select('*').eq('slug', slug).single();

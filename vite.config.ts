@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => ({
     // mode === 'development' &&
     // componentTagger(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       injectRegister: 'auto',
       strategies: 'generateSW',
       includeAssets: ['favicon.ico', 'prescriptionLogo.png', 'logo.png'],

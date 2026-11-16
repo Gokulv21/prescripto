@@ -394,7 +394,7 @@ export default function PatientList() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 font-jakarta-sans animate-in fade-in duration-500 pb-12">
+    <div className="w-full space-y-6 font-jakarta-sans animate-in fade-in duration-500 pb-12">
       <PageBanner
         title="Patient Directory"
         description="Manage patient records, access visit history, and review past digital prescriptions."
@@ -406,7 +406,7 @@ export default function PatientList() {
         />
       </PageBanner>
 
-      <div className="px-4 md:px-8 space-y-6">
+      <div className="space-y-6">
         <div className="relative">
           <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, phone or ID..." className="pl-10" />

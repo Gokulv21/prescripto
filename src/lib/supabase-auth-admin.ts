@@ -11,6 +11,7 @@ export const registerClient = createClient<Database>(
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
+      storageKey: 'prescripto_register_isolated_auth',
       storage: {
         getItem: () => null,
         setItem: () => {},

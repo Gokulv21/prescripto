@@ -148,7 +148,7 @@ export default function PrintQueue() {
             initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
-            className="mx-4 md:mx-8 mt-3 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-700 dark:text-amber-400"
+            className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-700 dark:text-amber-400"
           >
             <div className="flex items-center gap-2 text-sm font-bold">
               <BellRing className="w-4 h-4 animate-bounce" />
@@ -193,7 +193,7 @@ export default function PrintQueue() {
         </div>
       )}
 
-      <div className="px-4 md:px-8 space-y-8">
+      <div className="space-y-6 sm:space-y-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-heading font-bold text-foreground">Prescriptions To Print</h1>
@@ -223,7 +223,7 @@ export default function PrintQueue() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 max-w-4xl mx-auto">
+        <div className="grid grid-cols-1 gap-3 w-full">
           {prescriptions.map(rx => (
             <Card key={rx.id} className="animate-fade-in border-border bg-card hover:bg-muted/20 transition-colors shadow-sm overflow-hidden">
               <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
@@ -244,7 +244,7 @@ export default function PrintQueue() {
                     {rx.diagnosis && <span className="text-muted-foreground/70 break-words">· {rx.diagnosis}</span>}
                   </p>
                 </div>
-                <div className="flex items-center sm:shrink-0">
+                <div className="flex items-center sm:shrink-0 w-full sm:w-auto">
                    <Button onClick={() => printPrescription(rx)} className="w-full sm:w-auto gap-2 px-5 shadow-md hover:shadow-lg transition-all" size="lg">
                     <Printer className="w-4 h-4" />Print Prescription
                   </Button>

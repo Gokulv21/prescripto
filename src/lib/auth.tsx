@@ -163,7 +163,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }, 5000);
 
       try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        const { data: { session: initialSession }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          console.warn('[Auth] Stale or invalid session detected:', sessionError.message);
+          try {
+            await supabase.auth.signOut({ scope: 'local' });
+          } catch {}
+          if (mounted) setLoading(false);
+          return;
+        }
         if (mounted && initialSession) {
           setSession(initialSession);
           setUser(initialSession.user);
@@ -171,8 +179,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else if (mounted) {
           setLoading(false);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[Auth] Initial session error:', err);
+        if (err?.message?.includes('Refresh Token') || err?.status === 400) {
+          try {
+            await supabase.auth.signOut({ scope: 'local' });
+          } catch {}
+        }
         if (mounted) setLoading(false);
       } finally {
         clearTimeout(safetyTimer);

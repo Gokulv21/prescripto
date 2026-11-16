@@ -27,7 +27,21 @@
               l.pathname.slice(0, -1) + decoded + l.hash
           );
         }
-      }(window.location))
+      }(window.location));
+
+      // Resilient Vite chunk import handler: automatically reload if a chunk hash rotated
+      window.addEventListener('vite:preloadError', function(event) {
+        try {
+          var last = parseInt(sessionStorage.getItem('prescripto_preload_reload') || '0', 10);
+          if (!last || Date.now() - last > 8000) {
+            sessionStorage.setItem('prescripto_preload_reload', String(Date.now()));
+            event.preventDefault();
+            window.location.reload();
+          }
+        } catch (e) {
+          window.location.reload();
+        }
+      });
     </script>
     <style>
       canvas {

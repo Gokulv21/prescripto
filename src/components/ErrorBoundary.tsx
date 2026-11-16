@@ -25,15 +25,17 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("[ErrorBoundary] Uncaught application error:", error, errorInfo);
-    const msg = String(error?.message || '');
+    const msg = String(error?.message || '').toLowerCase();
     const isChunkErr =
-      msg.includes('Failed to fetch dynamically imported module') ||
-      msg.includes('Importing a module script failed') ||
-      msg.includes('Loading chunk');
+      msg.includes('dynamically imported') ||
+      msg.includes('module script failed') ||
+      msg.includes('loading chunk') ||
+      msg.includes('load failed') ||
+      msg.includes('failed to fetch');
     if (isChunkErr && typeof window !== 'undefined') {
       try {
         const last = parseInt(sessionStorage.getItem('prescripto_eb_chunk_reload') || '0', 10);
-        if (!last || Date.now() - last > 15000) {
+        if (!last || Date.now() - last > 10000) {
           sessionStorage.setItem('prescripto_eb_chunk_reload', String(Date.now()));
           window.location.reload();
           return;

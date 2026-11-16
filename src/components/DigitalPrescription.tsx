@@ -643,11 +643,6 @@ export default function DigitalPrescription({
                    }
                });
             }
-                       };
-                       renderPath(ctx, scaledPath, canvas.width, canvas.height);
-                   }
-               });
-            }
             
             // Draw Bounding Box
             let minX=1, minY=1, maxX=0, maxY=0;
@@ -1736,9 +1731,9 @@ export default function DigitalPrescription({
                                         type="button"
                                         onClick={() => setEraserMode(prev => prev === 'precision' ? 'stroke' : 'precision')}
                                         className="text-[10px] font-bold px-2 py-0.5 rounded-full border border-border bg-background hover:bg-muted text-foreground transition-all shadow-xs"
-                                        title={eraserMode === 'precision' ? "Precision Eraser (erases touched area)" : "Stroke Eraser (erases entire stroke)"}
+                                        title={eraserMode === 'precision' ? "Pixel Eraser (erases touched area)" : "Object Eraser (erases entire stroke)"}
                                     >
-                                        {eraserMode === 'precision' ? 'Partial' : 'Whole Stroke'}
+                                        {eraserMode === 'precision' ? 'Pixel Eraser' : 'Object Eraser'}
                                     </button>
                                 )}
                             </div>

@@ -136,10 +136,11 @@ serve(async (req) => {
       const candidateModels = [
         'gemini-2.5-flash',
         'gemini-2.5-flash-lite',
+        'gemini-1.5-flash',
+        'gemini-1.5-flash-8b',
+        'gemini-1.5-pro',
         'gemini-flash-latest',
         'gemini-flash-lite-latest',
-        'gemini-3.5-flash-lite',
-        'gemini-3.1-flash-lite',
       ]
 
       const systemInstruction = `You are Google Gemini acting as "Nova", a helpful clinical, medical, and clinic-operations AI assistant for PreScripto.

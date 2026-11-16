@@ -353,7 +353,7 @@ export default function ClinicSettings() {
     : (clinic?.name ? `Dr. In-Charge (${clinic.name})` : 'Dr. In-Charge');
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-8 font-jakarta-sans">
+    <div className="w-full space-y-6 sm:space-y-8 font-jakarta-sans">
       {/* ── First-Time Clinic Owner Onboarding Tour Dialog ── */}
       <Dialog open={showOnboardingTour} onOpenChange={setShowOnboardingTour}>
         <DialogContent className="max-w-[560px] w-[95vw] p-0 overflow-hidden rounded-[2.5rem] border-none shadow-2xl bg-card">

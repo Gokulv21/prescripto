@@ -524,7 +524,7 @@ export default function Dashboard() {
   const activeSegments = Math.round(progressRatio * totalSegments);
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto font-jakarta-sans">
+    <div className="space-y-6 w-full font-jakarta-sans">
       {/* ── Greeting Header (Matches Skynex Typography) ── */}
       <div className="flex items-start justify-between">
         <div>

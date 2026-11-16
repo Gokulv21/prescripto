@@ -97,6 +97,26 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
   }, [isCurrentlyDashboard, slug]);
 
+  // Idle preload critical route chunks so page transitions are instantaneous and never fail
+  useEffect(() => {
+    const preloadRoutes = () => {
+      import('@/pages/Dashboard').catch(() => {});
+      import('@/pages/DoctorConsultation').catch(() => {});
+      import('@/pages/PrintQueue').catch(() => {});
+      import('@/pages/PatientList').catch(() => {});
+      import('@/pages/NurseEntry').catch(() => {});
+      import('@/pages/DoctorProfile').catch(() => {});
+      import('@/pages/ClinicSettings').catch(() => {});
+    };
+    if (typeof window !== 'undefined') {
+      if ('requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(preloadRoutes, { timeout: 3000 });
+      } else {
+        setTimeout(preloadRoutes, 1500);
+      }
+    }
+  }, []);
+
   // Instagram-style Tab Navigation:
   // When switching between tabs on mobile, replace the current history entry
   // instead of continuously pushing each tab into the browser history stack.
@@ -471,8 +491,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        {/* Page Content Container */}
-        <div className="w-full max-w-5xl mx-auto p-3.5 sm:p-6 md:p-8 pb-36 md:pb-16 min-h-full">
+        {/* Page Content Container - Globally Uniform & Mobile-Optimized */}
+        <div className="w-full max-w-7xl mx-auto px-3.5 sm:px-6 md:px-8 py-4 sm:py-6 pb-36 md:pb-16 min-h-full">
           {children}
         </div>
       </main>

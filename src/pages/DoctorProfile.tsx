@@ -1218,7 +1218,7 @@ export default function DoctorProfile() {
     }
 
     return (
-        <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-10 animate-in fade-in duration-700 font-jakarta-sans pb-24">
+        <div className="w-full space-y-6 sm:space-y-8 animate-in fade-in duration-700 font-jakarta-sans pb-24">
 
             {/* Header Section: Doctor Profile Card + Large Illustration on Right outside white box */}
             <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
