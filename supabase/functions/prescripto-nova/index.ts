@@ -133,14 +133,12 @@ serve(async (req) => {
     // 5. Call Google Gemini AI with server-side secret API key (zero client leakage)
     const modelErrors: string[] = []
     if (geminiApiKey) {
+      // Long-term supported production models ordered by speed and stability
       const candidateModels = [
+        'gemini-1.5-flash',
         'gemini-2.5-flash',
         'gemini-2.5-flash-lite',
-        'gemini-1.5-flash',
-        'gemini-1.5-flash-8b',
-        'gemini-1.5-pro',
-        'gemini-flash-latest',
-        'gemini-flash-lite-latest',
+        'gemini-1.5-pro'
       ]
 
       const systemInstruction = `You are Google Gemini acting as "Nova", a helpful clinical, medical, and clinic-operations AI assistant for PreScripto.
@@ -155,7 +153,7 @@ ${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(
 
       const turns: { role: 'user' | 'model'; parts: { text: string }[] }[] = []
       if (Array.isArray(history)) {
-        for (const h of history.slice(-8)) {
+        for (const h of history.slice(-6)) {
           if (!h?.text) continue
           const role = h.sender === 'user' ? 'user' : 'model'
           if (turns.length === 0 && role !== 'user') continue
@@ -166,6 +164,7 @@ ${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(
           }
         }
       }
+
       const userPrompt = patientMatches.length > 0
         ? `${message}\n\nMatching Patients found in clinic: ${JSON.stringify(patientMatches)}`
         : message
@@ -177,16 +176,20 @@ ${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(
 
       const callModel = async (model: string): Promise<{ text?: string; authFatal?: boolean }> => {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiApiKey)}`
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 4500)
         try {
           let geminiRes = await fetch(geminiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: systemInstruction }] },
               contents: turns,
-              generationConfig: { temperature: 0.4, maxOutputTokens: 4096 }
+              generationConfig: { temperature: 0.4, maxOutputTokens: 2048 }
             })
           })
+          clearTimeout(timer)
 
           // Fallback without systemInstruction if model rejects it with HTTP 400
           if (!geminiRes.ok && geminiRes.status === 400) {
@@ -195,14 +198,21 @@ ${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(
                 ? { role: t.role, parts: [{ text: `${systemInstruction}\n\nUSER QUERY:\n${t.parts[0].text}` }] }
                 : t
             )
-            geminiRes = await fetch(geminiUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: fallbackTurns,
-                generationConfig: { temperature: 0.4, maxOutputTokens: 4096 }
+            const fbController = new AbortController()
+            const fbTimer = setTimeout(() => fbController.abort(), 4000)
+            try {
+              geminiRes = await fetch(geminiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: fbController.signal,
+                body: JSON.stringify({
+                  contents: fallbackTurns,
+                  generationConfig: { temperature: 0.4, maxOutputTokens: 2048 }
+                })
               })
-            })
+            } finally {
+              clearTimeout(fbTimer)
+            }
           }
 
           if (geminiRes.ok) {
@@ -224,15 +234,14 @@ ${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(
           modelErrors.push(`${model}: ${errMsg}`)
           return { authFatal: geminiRes.status === 403 || geminiRes.status === 401 }
         } catch (err: any) {
-          modelErrors.push(`${model}: ${err?.message || 'Network failure'}`)
+          clearTimeout(timer)
+          modelErrors.push(`${model}: ${err?.message || 'Network timeout'}`)
           return {}
         }
       }
 
-      const tried = new Set<string>()
-      let authFatal = false
-      for (const model of candidateModels) {
-        tried.add(model)
+      // Fast failover across at most 2 candidate models (max 9s total)
+      for (const model of candidateModels.slice(0, 2)) {
         const res = await callModel(model)
         if (res.text) {
           return new Response(
@@ -243,56 +252,7 @@ ${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
         }
-        if (res.authFatal) {
-          authFatal = true
-          break
-        }
-      }
-
-      // Dynamically discover currently active Gemini models for this API key if presets failed
-      if (!authFatal) {
-        try {
-          const listRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(geminiApiKey)}&pageSize=100`
-          )
-          if (listRes.ok) {
-            const listJson = await listRes.json()
-            const discovered: string[] = (listJson?.models || [])
-              .filter((m: any) =>
-                Array.isArray(m?.supportedGenerationMethods) &&
-                m.supportedGenerationMethods.includes('generateContent') &&
-                typeof m?.name === 'string' &&
-                m.name.includes('gemini-') &&
-                !/(embedding|imagen|veo|tts|audio|live|robotics|computer-use|image-generation|aqa|1\.5|2\.0)/i.test(m.name)
-              )
-              .map((m: any) => String(m.name).replace(/^models\//, ''))
-              .filter((id: string) => !tried.has(id))
-              .sort((a: string, b: string) => {
-                const score = (id: string) =>
-                  (id.includes('flash') ? 10 : 0) +
-                  (id.includes('lite') ? 4 : 0) +
-                  (id.includes('latest') ? 3 : 0) -
-                  (id.includes('pro') ? 2 : 0)
-                return score(b) - score(a)
-              })
-              .slice(0, 4)
-
-            for (const model of discovered) {
-              const res = await callModel(model)
-              if (res.text) {
-                return new Response(
-                  JSON.stringify({
-                    text: res.text,
-                    patientCards: patientMatches.length > 1 ? patientMatches : undefined,
-                  }),
-                  { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                )
-              }
-            }
-          }
-        } catch {
-          // ignore model list errors
-        }
+        if (res.authFatal) break
       }
     } else {
       modelErrors.push('GEMINI_API_KEY secret is not configured in Supabase Edge Functions')

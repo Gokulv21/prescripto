@@ -231,13 +231,10 @@ async function callGeminiAI(
 ): Promise<GeminiResult> {
   // Active Google Gemini models ordered from fastest/newest to latest aliases
   const candidateModels = [
+    'gemini-1.5-flash',
     'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-8b',
     'gemini-1.5-pro',
-    'gemini-flash-latest',
-    'gemini-flash-lite-latest',
   ];
 
   const contents = buildGeminiContents(history, userPrompt);
@@ -595,10 +592,10 @@ ${clinicContextText}`;
   try {
     const cleanHistory = history
       .filter(m => m && m.text && !m.id?.startsWith('init-') && !m.id?.startsWith('err-'))
-      .slice(-8)
+      .slice(-6)
       .map(m => ({ sender: m.sender, text: m.text.slice(0, 1000) }));
 
-    const { data: edgeRes, error: edgeErr } = await supabase.functions.invoke('prescripto-nova', {
+    const invokePromise = supabase.functions.invoke('prescripto-nova', {
       body: {
         message: query,
         clinicId: clinicId,
@@ -607,6 +604,13 @@ ${clinicContextText}`;
         history: cleanHistory
       }
     });
+
+    // Hard 8-second client timeout to prevent indefinite spinning in UI
+    const timeoutPromise = new Promise<{ data: any; error: any }>((resolve) =>
+      setTimeout(() => resolve({ data: null, error: new Error('AI service response timeout (exceeded 8s)') }), 8000)
+    );
+
+    const { data: edgeRes, error: edgeErr } = await Promise.race([invokePromise, timeoutPromise]);
 
     if (!edgeErr && edgeRes?.text && !edgeRes?.fallback) {
       return {
@@ -637,6 +641,28 @@ ${clinicContextText}`;
   }
 
   // 5. Offline / API Outage Fallback (ONLY when Gemini did not respond)
+  const lowerQ = query.toLowerCase();
+  const isAboutNova = (
+    lowerQ.includes('working principle') ||
+    lowerQ.includes('who are you') ||
+    lowerQ.includes('what are you') ||
+    lowerQ.includes('how do you work') ||
+    lowerQ.includes('what can you do') ||
+    lowerQ.includes('unoda velai') ||
+    lowerQ.includes('nee yaaru')
+  );
+
+  if (isAboutNova) {
+    return {
+      id: `msg-${Date.now()}`,
+      sender: 'assistant',
+      text: prefersTamil
+        ? `வணக்கம்! நான் **Nova**, Zevox நிறுவனத்தால் PreScripto மருத்துவமனை தொகுப்பிற்காக உருவாக்கப்பட்ட மருத்துவ & கிளினிக் செயல்பாட்டு AI Copilot.\n\n**என் செயல்பாட்டுக் கொள்கை (Working Principle):**\n• **Clinical Records & History:** நோயாளிகளின் முந்தைய வருகைகள், டிஜிட்டல் மருந்து சீட்டுகள் (Prescriptions) மற்றும் மருத்துவ சோதனைகளை உடனுக்குடன் மீட்டெடுத்தல்.\n• **Operational Intelligence:** கிளினிக்கின் நேரடி டோக்கன் வரிசை, தினசரி வருகைகள் மற்றும் அனலிட்டிக்ஸ் வழிகாட்டல்.\n• **Strict Tenant Privacy:** ஒவ்வொரு கிளினிக்கின் தகவல்களும் பிற கிளினிக்குகளுடன் பகிரப்படாமல் 100% பாதுகாப்பாக தனிமைப்படுத்தப்பட்டிருக்கும்.\n• **Prescription Printing & TV Display:** டோக்கன் அறிவிப்புகள் மற்றும் பிரிண்ட் பணிகளை எளிதாக்குதல்.`
+        : `Hello! I am **Nova**, the clinical operations AI assistant engineered by **Zevox** for **PreScripto**.\n\n**Working Principles & Core Capabilities:**\n• **Real-Time Patient & Prescription Intelligence:** Instant recall of patient medical history, previous visits, vitals, and diagnoses within this clinic.\n• **Live Clinic Operations & Analytics:** Instant status of today's waiting room tokens, consultation queue flow, and volume metrics.\n• **Strict Multi-Tenant Medical Isolation:** Total data isolation ensuring zero data leakage between different clinics.\n• **Direct Assistance:** Fast guidance across prescriptions, printer queue, TV display chime, and clinical settings.`,
+      timestamp: new Date()
+    };
+  }
+
   if (isAnalyticsIntent(query)) {
     if (!canViewClinicAnalytics) {
       return {
