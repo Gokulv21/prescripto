@@ -133,13 +133,52 @@ serve(async (req) => {
     // 5. Call Google Gemini AI with server-side secret API key (zero client leakage)
     const modelErrors: string[] = []
     if (geminiApiKey) {
-      // Long-term supported production models ordered by speed and stability
-      const candidateModels = [
-        'gemini-1.5-flash',
-        'gemini-2.5-flash',
+      // Dynamic model discovery with Google's recommended gemini-3.0-flash default
+      let modelsToTry = [
+        'gemini-3.0-flash',
         'gemini-2.5-flash-lite',
-        'gemini-1.5-pro'
+        'gemini-flash-latest',
+        'gemini-flash-lite-latest',
+        'gemini-3.5-flash-lite',
+        'gemini-3.0-pro'
       ]
+
+      try {
+        const listController = new AbortController()
+        const listTimer = setTimeout(() => listController.abort(), 2000)
+        const listRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(geminiApiKey)}&pageSize=50`,
+          { signal: listController.signal }
+        )
+        clearTimeout(listTimer)
+        if (listRes.ok) {
+          const listJson = await listRes.json()
+          const discovered = (listJson?.models || [])
+            .filter((m: any) =>
+              Array.isArray(m?.supportedGenerationMethods) &&
+              m.supportedGenerationMethods.includes('generateContent') &&
+              typeof m?.name === 'string' &&
+              m.name.includes('gemini-') &&
+              !/(embedding|imagen|veo|tts|audio|live|robotics|computer-use|image-generation|aqa)/i.test(m.name)
+            )
+            .map((m: any) => String(m.name).replace(/^models\//, ''))
+
+          if (discovered.length > 0) {
+            discovered.sort((a: string, b: string) => {
+              const score = (id: string) =>
+                (id.includes('3.0') ? 25 : 0) +
+                (id.includes('flash') ? 15 : 0) +
+                (id.includes('lite') ? 8 : 0) +
+                (id.includes('latest') ? 5 : 0) -
+                (id.includes('pro') ? 2 : 0)
+              return score(b) - score(a)
+            })
+            modelsToTry = [...new Set([...discovered, ...modelsToTry])]
+          }
+        }
+      } catch {
+        // Fallback to static presets if listModels times out
+      }
 
       const systemInstruction = `You are Google Gemini acting as "Nova", a helpful clinical, medical, and clinic-operations AI assistant for PreScripto.
 User Role: ${userRole || 'Staff'}
@@ -240,8 +279,8 @@ ${typeof clinicContext === 'string' && clinicContext ? `\n${clinicContext.slice(
         }
       }
 
-      // Fast failover across at most 2 candidate models (max 9s total)
-      for (const model of candidateModels.slice(0, 2)) {
+      // Fast failover across top models (max 9s total)
+      for (const model of modelsToTry.slice(0, 3)) {
         const res = await callModel(model)
         if (res.text) {
           return new Response(

@@ -231,10 +231,12 @@ async function callGeminiAI(
 ): Promise<GeminiResult> {
   // Active Google Gemini models ordered from fastest/newest to latest aliases
   const candidateModels = [
-    'gemini-1.5-flash',
-    'gemini-2.5-flash',
+    'gemini-3.0-flash',
     'gemini-2.5-flash-lite',
-    'gemini-1.5-pro',
+    'gemini-flash-latest',
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-3.0-pro'
   ];
 
   const contents = buildGeminiContents(history, userPrompt);
@@ -648,7 +650,13 @@ ${clinicContextText}`;
     lowerQ.includes('what are you') ||
     lowerQ.includes('how do you work') ||
     lowerQ.includes('what can you do') ||
+    lowerQ.includes('what you do') ||
+    lowerQ.includes("what you'll do") ||
+    lowerQ.includes('what you will do') ||
+    lowerQ.includes('features') ||
     lowerQ.includes('unoda velai') ||
+    lowerQ.includes('unnala enna panna mudiyum') ||
+    lowerQ.includes('nee enna pannuva') ||
     lowerQ.includes('nee yaaru')
   );
 
